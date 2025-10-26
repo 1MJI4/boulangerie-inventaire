@@ -21,6 +21,7 @@ model Inventaire {
   dateInventaire     DateTime @default(now()) @db.Date // Important : stocke seulement la date (YYYY-MM-DD)
   quantiteRestante   Int
   quantiteProduite   Int?     // Le '?' rend le champ optionnel (nullable)
+  quantitePrevue     Int?     // Quantité prévue pour le lendemain (optionnel)
 
   produitId Int
   produit   Produit  @relation(fields: [produitId], references: [id]) // Relation : un Inventaire est lié à un Produit
