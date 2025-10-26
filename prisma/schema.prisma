@@ -1,0 +1,29 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Table des produits (Liste des articles de la boulangerie)
+model Produit {
+  id        Int         @id @default(autoincrement())
+  nom       String      @unique
+  inventaires Inventaire[] // Relation : un Produit peut avoir plusieurs Inventaires
+}
+
+// Table des inventaires (Saisie quotidienne)
+model Inventaire {
+  id                 Int      @id @default(autoincrement())
+  dateInventaire     DateTime @default(now()) @db.Date // Important : stocke seulement la date (YYYY-MM-DD)
+  quantiteRestante   Int
+  quantiteProduite   Int?     // Le '?' rend le champ optionnel (nullable)
+
+  produitId Int
+  produit   Produit  @relation(fields: [produitId], references: [id]) // Relation : un Inventaire est lié à un Produit
+
+  @@unique([produitId, dateInventaire]) // S'assure qu'un produit n'est inventorié qu'une fois par jour
+}
