@@ -82,19 +82,28 @@ export default function SaisiePrevue() {
       demain.setDate(demain.getDate() + 1);
       const dateDemain = demain.toISOString().split('T')[0];
       
+      console.log('💾 Sauvegarde des prévisions pour:', dateDemain);
+      
       for (const inv of inventaires) {
         if (inv.quantitePrevue !== null) {
+          console.log(`💾 Sauvegarde produit ${inv.produitId}: ${inv.quantitePrevue}`);
+          
           const response = await fetch('/api/inventaires', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              produitId: inv.produitId,
-              dateInventaire: dateDemain,
-              quantitePrevue: inv.quantitePrevue
+              inventaires: [{
+                produitId: inv.produitId,
+                dateInventaire: dateDemain,
+                quantitePrevue: inv.quantitePrevue
+              }]
             }),
           });
+
+          const result = await response.json();
+          console.log(`✅ Réponse API pour produit ${inv.produitId}:`, result);
 
           if (!response.ok) {
             throw new Error('Erreur lors de la sauvegarde');
@@ -148,13 +157,18 @@ export default function SaisiePrevue() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-2">
-                📋 Planifier Demain
+                📋 Planifier la Production
               </h1>
-              <p className="text-gray-600 mb-1">
-                Définissez les quantités à produire pour {dateDemain()}
-              </p>
+              <div className="bg-gradient-to-r from-purple-100 to-blue-100 p-4 rounded-lg mb-2">
+                <p className="text-lg font-semibold text-gray-800">
+                  🗓️ Aujourd'hui: {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                </p>
+                <p className="text-lg font-semibold text-purple-700">
+                  🎯 Production pour: {dateDemain()}
+                </p>
+              </div>
               <p className="text-sm text-purple-600">
-                💡 Souvent utilisé pour les viennoiseries et pains spéciaux
+                💡 Définissez ce qui doit être produit cette nuit pour demain
               </p>
             </div>
             <div className="flex gap-2">

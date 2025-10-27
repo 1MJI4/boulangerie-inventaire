@@ -12,6 +12,7 @@ datasource db {
 model Produit {
   id        Int         @id @default(autoincrement())
   nom       String      @unique
+  ordre     Int         @default(999) // Ordre d'affichage (plus petit = affiché en premier)
   inventaires Inventaire[] // Relation : un Produit peut avoir plusieurs Inventaires
 }
 

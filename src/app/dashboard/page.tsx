@@ -13,80 +13,102 @@ interface Inventaire {
   dateInventaire: string;
   quantiteRestante: number;
   quantiteProduite: number | null;
+  quantitePrevue: number | null;
   produit: Produit;
 }
 
+interface DateInventaire {
+  date: string;
+  totalProduits: number;
+  totalProduit: number;
+  totalVendu: number;
+  tauxVente: number;
+}
+
 export default function DashboardInventaires() {
-  const [inventaires, setInventaires] = useState<Inventaire[]>([]);
-  const [filtreDate, setFiltreDate] = useState(
-    new Date().toISOString().split('T')[0]
-  );
+  const [datesInventaires, setDatesInventaires] = useState<DateInventaire[]>([]);
+  const [inventairesDetail, setInventairesDetail] = useState<Inventaire[]>([]);
+  const [modalOuverte, setModalOuverte] = useState(false);
+  const [dateSelectionnee, setDateSelectionnee] = useState('');
   const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState({
-    totalProduits: 0,
-    totalProduit: 0,
-    totalVendu: 0,
-    tauxVente: 0
-  });
+  const [loadingDetail, setLoadingDetail] = useState(false);
 
   useEffect(() => {
-    loadInventaires();
-  }, [filtreDate]);
+    loadDatesInventaires();
+  }, []);
 
-  const loadInventaires = async () => {
+  const loadDatesInventaires = async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (filtreDate) {
-        params.append('date', filtreDate);
-      }
-      
-      const response = await fetch(`/api/inventaires?${params}`);
+      // Charger tous les inventaires des 30 derniers jours
+      const response = await fetch('/api/inventaires');
       const data = await response.json();
-      setInventaires(data);
       
-      // Calculer les statistiques
-      calculerStats(data);
+      // Grouper par date et calculer les stats
+      const groupesParDate = data.reduce((acc: any, inv: Inventaire) => {
+        const date = inv.dateInventaire;
+        if (!acc[date]) {
+          acc[date] = [];
+        }
+        acc[date].push(inv);
+        return acc;
+      }, {});
+
+      const datesAvecStats = Object.keys(groupesParDate)
+        .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
+        .slice(0, 10) // Dernières 10 dates
+        .map(date => {
+          const inventaires = groupesParDate[date];
+          return calculerStatsDate(date, inventaires);
+        });
+
+      setDatesInventaires(datesAvecStats);
     } catch (error) {
-      console.error('Erreur lors du chargement des inventaires:', error);
+      console.error('Erreur lors du chargement des dates:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const calculerStats = (inventaires: Inventaire[]) => {
-    const stats = {
+  const calculerStatsDate = (date: string, inventaires: Inventaire[]): DateInventaire => {
+    const totalProduit = inventaires.reduce((sum, inv) => sum + (inv.quantiteProduite || 0), 0);
+    const totalVendu = inventaires.reduce((sum, inv) => {
+      const produit = inv.quantiteProduite || 0;
+      const restant = inv.quantiteRestante;
+      return sum + Math.max(0, produit - restant);
+    }, 0);
+    
+    const tauxVente = totalProduit > 0 ? Math.round((totalVendu / totalProduit) * 100) : 0;
+
+    return {
+      date,
       totalProduits: inventaires.length,
-      totalProduit: inventaires.reduce((sum, inv) => sum + (inv.quantiteProduite || 0), 0),
-      totalVendu: inventaires.reduce((sum, inv) => {
-        const produit = inv.quantiteProduite || 0;
-        const restant = inv.quantiteRestante;
-        return sum + Math.max(0, produit - restant);
-      }, 0),
-      tauxVente: inventaires.length > 0 ? Math.round(
-        (inventaires.reduce((sum, inv) => {
-          const produit = inv.quantiteProduite || 0;
-          const restant = inv.quantiteRestante;
-          const vendu = Math.max(0, produit - restant);
-          return sum + (produit > 0 ? (vendu / produit) * 100 : 0);
-        }, 0) / inventaires.filter(inv => (inv.quantiteProduite || 0) > 0).length)
-      ) : 0
+      totalProduit,
+      totalVendu,
+      tauxVente
     };
-    setStats(stats);
   };
 
-  const loadInventairesRecents = async () => {
-    setLoading(true);
+  const ouvrirModal = async (date: string) => {
+    setDateSelectionnee(date);
+    setModalOuverte(true);
+    setLoadingDetail(true);
+    
     try {
-      const response = await fetch('/api/inventaires?limit=50');
+      const response = await fetch(`/api/inventaires?date=${date}`);
       const data = await response.json();
-      setInventaires(data);
-      setFiltreDate(''); // Effacer le filtre de date
+      setInventairesDetail(data);
     } catch (error) {
-      console.error('Erreur lors du chargement des inventaires:', error);
+      console.error('Erreur lors du chargement des détails:', error);
     } finally {
-      setLoading(false);
+      setLoadingDetail(false);
     }
+  };
+
+  const fermerModal = () => {
+    setModalOuverte(false);
+    setDateSelectionnee('');
+    setInventairesDetail([]);
   };
 
   const formatDate = (dateString: string) => {
@@ -100,15 +122,21 @@ export default function DashboardInventaires() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-4 px-4 sm:py-8 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Dashboard Inventaires */}
+      <div className="max-w-6xl mx-auto">
+        {/* En-tête */}
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Dashboard Inventaires</h1>
-              <p className="text-gray-600">Analyse des performances de vente</p>
+              <p className="text-gray-600">Aperçu des performances par date</p>
             </div>
             <div className="flex gap-2">
+              <Link 
+                href="/historique-previsions"
+                className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg transition-colors duration-200 text-sm font-medium"
+              >
+                📊 Historique
+              </Link>
               <Link 
                 href="/planification-demain"
                 className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg transition-colors duration-200 text-sm font-medium"
@@ -125,207 +153,151 @@ export default function DashboardInventaires() {
           </div>
         </div>
 
-        {/* Filtres */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 sm:mb-8">
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Filtres</h2>
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-end">
-            <div className="flex-1 sm:flex-none">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Date spécifique
-              </label>
-              <input
-                type="date"
-                value={filtreDate}
-                onChange={(e) => setFiltreDate(e.target.value)}
-                className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base text-gray-900"
-                title="Sélectionner une date"
-                placeholder="Sélectionner une date"
-              />
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-              <button
-                onClick={loadInventaires}
-                className="w-full sm:w-auto bg-blue-600 text-white px-4 py-3 rounded-md hover:bg-blue-700 font-medium text-base transition-colors"
-              >
-                Filtrer
-              </button>
-              <button
-                onClick={loadInventairesRecents}
-                className="w-full sm:w-auto bg-gray-500 text-white px-4 py-3 rounded-md hover:bg-gray-600 font-medium text-base transition-colors"
-              >
-                Voir tous les récents
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Statistiques - Mobile responsive */}
-        {filtreDate && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
-              <h3 className="text-sm sm:text-base font-medium text-gray-700 mb-1 sm:mb-2">Produits inventoriés</h3>
-              <p className="text-2xl sm:text-3xl font-bold text-blue-600">{stats.totalProduits}</p>
-            </div>
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
-              <h3 className="text-sm sm:text-base font-medium text-gray-700 mb-1 sm:mb-2">Total produit</h3>
-              <p className="text-2xl sm:text-3xl font-bold text-green-600">{stats.totalProduit}</p>
-            </div>
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
-              <h3 className="text-sm sm:text-base font-medium text-gray-700 mb-1 sm:mb-2">Total vendu</h3>
-              <p className="text-2xl sm:text-3xl font-bold text-purple-600">{stats.totalVendu}</p>
-            </div>
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
-              <h3 className="text-sm sm:text-base font-medium text-gray-700 mb-1 sm:mb-2">Taux de vente</h3>
-              <p className="text-2xl sm:text-3xl font-bold text-orange-600">{stats.tauxVente}%</p>
-            </div>
-          </div>
-        )}
-
-        {/* Liste des inventaires */}
+        {/* Liste des dates d'inventaire */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
-              {filtreDate ? `Inventaires du ${formatDate(filtreDate)}` : 'Inventaires récents'}
-            </h2>
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-xl font-semibold text-gray-900">Inventaires récents</h2>
+            <p className="text-sm text-gray-600 mt-1">Cliquez sur une date pour voir les détails</p>
           </div>
           
           {loading ? (
             <div className="p-8 text-center">
               <p className="text-gray-500">Chargement...</p>
             </div>
-          ) : inventaires.length === 0 ? (
+          ) : datesInventaires.length === 0 ? (
             <div className="p-8 text-center">
-              <p className="text-gray-500">
-                {filtreDate ? 'Aucun inventaire trouvé pour cette date' : 'Aucun inventaire trouvé'}
-              </p>
+              <p className="text-gray-500">Aucun inventaire trouvé</p>
             </div>
           ) : (
-            <>
-              {/* Version Mobile : Cards */}
-              <div className="block sm:hidden p-4 space-y-4">
-                {inventaires.map((inventaire) => {
-                  const produit = inventaire.quantiteProduite || 0;
-                  const restant = inventaire.quantiteRestante;
-                  const vendu = Math.max(0, produit - restant);
-                  const tauxVente = produit > 0 ? Math.round((vendu / produit) * 100) : 0;
-                  
-                  return (
-                    <div key={inventaire.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                      <div className="flex justify-between items-start mb-2">
-                        <h3 className="font-medium text-gray-900 text-base">
-                          {inventaire.produit.nom}
-                        </h3>
-                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                          tauxVente >= 80 ? 'bg-green-100 text-green-800' :
-                          tauxVente >= 60 ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
-                        }`}>
-                          {tauxVente}%
-                        </span>
+            <div className="divide-y divide-gray-200">
+              {datesInventaires.map((dateInv) => (
+                <button
+                  key={dateInv.date}
+                  onClick={() => ouvrirModal(dateInv.date)}
+                  className="w-full px-6 py-4 text-left hover:bg-gray-50 transition-colors focus:outline-none focus:bg-gray-50"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-medium text-gray-900">
+                        {formatDate(dateInv.date)}
+                      </h3>
+                      <p className="text-sm text-gray-600">
+                        {dateInv.totalProduits} produit(s) inventorié(s)
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-4 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 bg-green-100 rounded-full"></span>
+                        <span className="text-gray-600">Produit: <span className="font-medium text-green-600">{dateInv.totalProduit}</span></span>
                       </div>
-                      <div className="text-sm text-gray-600 space-y-1">
-                        <p><span className="font-medium">Date:</span> {new Date(inventaire.dateInventaire).toLocaleDateString('fr-FR')}</p>
-                        <div className="flex justify-between">
-                          <p><span className="font-medium">Produit:</span> <span className="text-green-600">{produit}</span></p>
-                          <p><span className="font-medium">Vendu:</span> <span className="text-blue-600">{vendu}</span></p>
-                          <p><span className="font-medium">Restant:</span> <span className="text-orange-600">{restant}</span></p>
-                        </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 bg-blue-100 rounded-full"></span>
+                        <span className="text-gray-600">Vendu: <span className="font-medium text-blue-600">{dateInv.totalVendu}</span></span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`w-3 h-3 rounded-full ${
+                          dateInv.tauxVente >= 80 ? 'bg-green-500' :
+                          dateInv.tauxVente >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+                        }`}></span>
+                        <span className="text-gray-600">Taux: <span className="font-medium">{dateInv.tauxVente}%</span></span>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-
-              {/* Version Desktop : Tableau */}
-              <div className="hidden sm:block overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Date
-                      </th>
-                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Produit
-                      </th>
-                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Produit
-                      </th>
-                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Vendu
-                      </th>
-                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Restant
-                      </th>
-                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Taux Vente
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {inventaires.map((inventaire) => {
-                      const produit = inventaire.quantiteProduite || 0;
-                      const restant = inventaire.quantiteRestante;
-                      const vendu = Math.max(0, produit - restant);
-                      const tauxVente = produit > 0 ? Math.round((vendu / produit) * 100) : 0;
-                      
-                      return (
-                        <tr key={inventaire.id} className="hover:bg-gray-50">
-                          <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {new Date(inventaire.dateInventaire).toLocaleDateString('fr-FR')}
-                          </td>
-                          <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            {inventaire.produit.nom}
-                          </td>
-                          <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium">
-                              {produit}
-                            </span>
-                          </td>
-                          <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-medium">
-                              {vendu}
-                            </span>
-                          </td>
-                          <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded-full text-xs font-medium">
-                              {restant}
-                            </span>
-                          </td>
-                          <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                              tauxVente >= 80 ? 'bg-green-100 text-green-800' :
-                              tauxVente >= 60 ? 'bg-yellow-100 text-yellow-800' :
-                              'bg-red-100 text-red-800'
-                            }`}>
-                              {tauxVente}%
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </>
+                  </div>
+                </button>
+              ))}
+            </div>
           )}
         </div>
 
         {/* Liens de navigation */}
-        <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row gap-3 sm:gap-4">
-          <a
+        <div className="mt-6 flex flex-col sm:flex-row gap-3">
+          <Link
             href="/inventaire"
-            className="inline-flex items-center justify-center bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700 font-medium text-base transition-colors"
+            className="inline-flex items-center justify-center bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700 font-medium transition-colors"
           >
             ➕ Nouvelle saisie d'inventaire
-          </a>
-          <a
+          </Link>
+          <Link
             href="/test-api"
-            className="inline-flex items-center justify-center bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700 font-medium text-base transition-colors"
+            className="inline-flex items-center justify-center bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700 font-medium transition-colors"
           >
             🛠️ Gérer les produits
-          </a>
+          </Link>
         </div>
       </div>
+
+      {/* Modal de détails */}
+      {modalOuverte && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Détails du {formatDate(dateSelectionnee)}
+              </h3>
+              <button
+                onClick={fermerModal}
+                className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+              {loadingDetail ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-500">Chargement des détails...</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {inventairesDetail.map((inventaire) => {
+                    const produit = inventaire.quantiteProduite || 0;
+                    const restant = inventaire.quantiteRestante;
+                    const vendu = Math.max(0, produit - restant);
+                    const tauxVente = produit > 0 ? Math.round((vendu / produit) * 100) : 0;
+                    
+                    return (
+                      <div key={inventaire.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                        <div className="flex justify-between items-start mb-2">
+                          <h4 className="font-medium text-gray-900 text-lg">
+                            {inventaire.produit.nom}
+                          </h4>
+                          <span className={`inline-flex px-3 py-1 text-sm font-medium rounded-full ${
+                            tauxVente >= 80 ? 'bg-green-100 text-green-800' :
+                            tauxVente >= 60 ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-red-100 text-red-800'
+                          }`}>
+                            {tauxVente}% vendu
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-4 text-center">
+                          <div className="bg-green-100 p-3 rounded">
+                            <p className="text-sm text-gray-600">Produit</p>
+                            <p className="text-xl font-bold text-green-600">{produit}</p>
+                          </div>
+                          <div className="bg-blue-100 p-3 rounded">
+                            <p className="text-sm text-gray-600">Vendu</p>
+                            <p className="text-xl font-bold text-blue-600">{vendu}</p>
+                          </div>
+                          <div className="bg-orange-100 p-3 rounded">
+                            <p className="text-sm text-gray-600">Restant</p>
+                            <p className="text-xl font-bold text-orange-600">{restant}</p>
+                          </div>
+                        </div>
+                        {inventaire.quantitePrevue && (
+                          <div className="mt-3 bg-purple-100 p-3 rounded">
+                            <p className="text-sm text-gray-600">Était prévu pour ce jour</p>
+                            <p className="text-lg font-medium text-purple-600">{inventaire.quantitePrevue}</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

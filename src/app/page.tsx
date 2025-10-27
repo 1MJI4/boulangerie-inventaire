@@ -125,7 +125,7 @@ export default function Home() {
         </div>
 
         {/* Navigation Cards Gestion */}
-        <div className="mt-8 space-y-4 sm:space-y-6 lg:space-y-0 lg:grid lg:grid-cols-1 lg:gap-6 max-w-2xl mx-auto">
+        <div className="mt-8 space-y-4 sm:space-y-6 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-6 max-w-4xl mx-auto">
           {/* Gestion Produits */}
           <a
             href="/test-api"
@@ -140,6 +140,23 @@ export default function Home() {
             </p>
             <div className="text-red-600 font-medium text-sm sm:text-base">
               Gérer les produits →
+            </div>
+          </a>
+
+          {/* Historique Prévisions */}
+          <a
+            href="/historique-previsions"
+            className="block bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-300 p-6 border-l-4 border-indigo-500 active:bg-gray-50"
+          >
+            <div className="text-3xl sm:text-4xl mb-3 sm:mb-4">📈</div>
+            <h2 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-2 sm:mb-3">
+              Historique Prévisions
+            </h2>
+            <p className="text-gray-600 text-sm sm:text-base mb-3 sm:mb-4 leading-relaxed">
+              Analysez la précision de vos planifications passées
+            </p>
+            <div className="text-indigo-600 font-medium text-sm sm:text-base">
+              Voir l'historique →
             </div>
           </a>
         </div>

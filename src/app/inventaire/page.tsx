@@ -124,7 +124,7 @@ export default function SaisieInventaire() {
           >
             ← Retour à l'accueil
           </a>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Saisie Inventaire Quotidien</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-black">Saisie Inventaire Quotidien</h1>
         </div>
         
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -132,7 +132,7 @@ export default function SaisieInventaire() {
             <form onSubmit={handleSubmit}>
               {/* Sélection de la date */}
               <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-black mb-2">
                   Date d'inventaire
                 </label>
                 <input
@@ -148,12 +148,12 @@ export default function SaisieInventaire() {
               <div className="block sm:hidden space-y-4 mb-6">
                 {inventaires.map((inv) => (
                   <div key={inv.produitId} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                    <h3 className="font-medium text-gray-900 mb-3 text-base">
+                    <h3 className="font-medium text-black mb-3 text-base">
                       {getProduitNom(inv.produitId)}
                     </h3>
                     <div className="space-y-3">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <label className="block text-sm font-medium text-black mb-1">
                           Quantité Restante *
                         </label>
                         <input
@@ -166,7 +166,7 @@ export default function SaisieInventaire() {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <label className="block text-sm font-medium text-black mb-1">
                           Quantité Produite (optionnel)
                         </label>
                         <input
@@ -179,7 +179,7 @@ export default function SaisieInventaire() {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <label className="block text-sm font-medium text-black mb-1">
                           Quantité Prévue pour demain (optionnel)
                         </label>
                         <input
@@ -201,13 +201,13 @@ export default function SaisieInventaire() {
                 <table className="min-w-full bg-white border border-gray-200 rounded-lg">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
                         Produit
                       </th>
-                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
                         Quantité Restante *
                       </th>
-                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
                         Quantité Produite
                       </th>
                       <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-purple-600 uppercase tracking-wider">
@@ -218,7 +218,7 @@ export default function SaisieInventaire() {
                   <tbody className="bg-white divide-y divide-gray-200">
                     {inventaires.map((inv) => (
                       <tr key={inv.produitId} className="hover:bg-gray-50">
-                        <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm font-medium text-black">
                           {getProduitNom(inv.produitId)}
                         </td>
                         <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
@@ -280,7 +280,7 @@ export default function SaisieInventaire() {
             {/* Résultat */}
             {result && (
               <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <h3 className="font-medium text-gray-700 mb-2">Résultat:</h3>
+                <h3 className="font-medium text-black mb-2">Résultat:</h3>
                 <pre className="bg-white p-3 rounded text-xs sm:text-sm overflow-auto max-h-40 sm:max-h-64 border border-gray-300">
                   {result}
                 </pre>

@@ -41,7 +41,10 @@ export async function POST(request: Request) {
 export async function GET() {
   try {
     const produits = await prisma.produit.findMany({
-      orderBy: { nom: 'asc' }
+      orderBy: [
+        { ordre: 'asc' },  // D'abord par ordre
+        { nom: 'asc' }     // Puis par nom si même ordre
+      ]
     });
     return NextResponse.json(produits);
   } catch (error) {
@@ -53,15 +56,15 @@ export async function GET() {
 // PUT - Modifier un produit (avec code de sécurité)
 export async function PUT(request: Request) {
   try {
-    const { id, nouveauNom, codeSecurite } = await request.json();
+    const { id, nouveauNom, nouvelOrdre, codeSecurite } = await request.json();
 
     // Vérification du code de sécurité
     if (codeSecurite !== '5551') {
       return NextResponse.json({ error: 'Code de sécurité incorrect' }, { status: 403 });
     }
 
-    if (!id || !nouveauNom || typeof nouveauNom !== 'string') {
-      return NextResponse.json({ error: 'ID et nouveau nom requis' }, { status: 400 });
+    if (!id) {
+      return NextResponse.json({ error: 'ID requis' }, { status: 400 });
     }
 
     // Vérifier que le produit existe
@@ -73,22 +76,44 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Produit introuvable' }, { status: 404 });
     }
 
-    // Vérifier que le nouveau nom n'existe pas déjà (sauf pour le produit actuel)
-    const nomExiste = await prisma.produit.findFirst({
-      where: { 
-        nom: nouveauNom.trim(),
-        NOT: { id: parseInt(id) }
-      }
-    });
+    // Préparer les données à mettre à jour
+    const updateData: any = {};
 
-    if (nomExiste) {
-      return NextResponse.json({ error: 'Un produit avec ce nom existe déjà' }, { status: 400 });
+    // Si on veut changer le nom
+    if (nouveauNom && typeof nouveauNom === 'string') {
+      // Vérifier que le nouveau nom n'existe pas déjà (sauf pour le produit actuel)
+      const nomExiste = await prisma.produit.findFirst({
+        where: { 
+          nom: nouveauNom.trim(),
+          NOT: { id: parseInt(id) }
+        }
+      });
+
+      if (nomExiste) {
+        return NextResponse.json({ error: 'Un produit avec ce nom existe déjà' }, { status: 400 });
+      }
+
+      updateData.nom = nouveauNom.trim();
+    }
+
+    // Si on veut changer l'ordre
+    if (nouvelOrdre !== undefined && nouvelOrdre !== null) {
+      const ordre = parseInt(nouvelOrdre);
+      if (isNaN(ordre) || ordre < 0) {
+        return NextResponse.json({ error: 'L\'ordre doit être un nombre positif' }, { status: 400 });
+      }
+      updateData.ordre = ordre;
+    }
+
+    // Vérifier qu'on a au moins une donnée à mettre à jour
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: 'Aucune donnée à modifier' }, { status: 400 });
     }
 
     // Mettre à jour le produit
     const produitMisAJour = await prisma.produit.update({
       where: { id: parseInt(id) },
-      data: { nom: nouveauNom.trim() }
+      data: updateData
     });
 
     return NextResponse.json({ 

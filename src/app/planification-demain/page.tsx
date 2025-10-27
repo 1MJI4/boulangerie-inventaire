@@ -31,29 +31,42 @@ export default function PlanificationDemain() {
       demain.setDate(demain.getDate() + 1);
       const dateDemain = demain.toISOString().split('T')[0];
 
+      console.log('🔍 Recherche des prévisions pour:', dateDemain);
+
       // Charger les inventaires de demain qui ont une quantitePrevue
       const response = await fetch(`/api/inventaires?date=${dateDemain}`);
       const inventaires = await response.json();
+
+      console.log('📦 Inventaires trouvés:', inventaires);
+      console.log('📊 Nombre d\'inventaires:', inventaires.length);
 
       // Charger tous les produits pour les noms
       const produitsResponse = await fetch('/api/produits');
       const produits: Produit[] = await produitsResponse.json();
 
-      // Filtrer seulement ceux qui ont une quantitePrevue > 0
-      const planificationData = inventaires
-        .filter((inv: any) => inv.quantitePrevue && inv.quantitePrevue > 0)
-        .map((inv: any) => {
-          const produit = produits.find(p => p.id === inv.produitId);
-          return {
-            produitId: inv.produitId,
-            produitNom: produit?.nom || 'Produit inconnu',
-            quantitePrevue: inv.quantitePrevue
-          };
-        });
+      console.log('🛍️ Produits disponibles:', produits);
 
+      // Filtrer seulement ceux qui ont une quantitePrevue > 0
+      const avecPrevisions = inventaires.filter((inv: any) => {
+        console.log(`🔎 Produit ${inv.produitId}: quantitePrevue = ${inv.quantitePrevue}`);
+        return inv.quantitePrevue && inv.quantitePrevue > 0;
+      });
+
+      console.log('✅ Inventaires avec prévisions:', avecPrevisions);
+
+      const planificationData = avecPrevisions.map((inv: any) => {
+        const produit = produits.find(p => p.id === inv.produitId);
+        return {
+          produitId: inv.produitId,
+          produitNom: produit?.nom || 'Produit inconnu',
+          quantitePrevue: inv.quantitePrevue
+        };
+      });
+
+      console.log('🎯 Planification finale:', planificationData);
       setPlanification(planificationData);
     } catch (error) {
-      console.error('Erreur lors du chargement de la planification:', error);
+      console.error('❌ Erreur lors du chargement de la planification:', error);
     } finally {
       setLoading(false);
     }
@@ -90,10 +103,18 @@ export default function PlanificationDemain() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-2">
-                📋 Planification de Production
+                📋 Planning de Production
               </h1>
-              <p className="text-lg text-gray-600">
-                {dateDemain()}
+              <div className="bg-gradient-to-r from-blue-100 to-purple-100 p-4 rounded-lg mb-2">
+                <p className="text-lg font-semibold text-gray-800">
+                  🕐 Aujourd'hui: {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                </p>
+                <p className="text-lg font-semibold text-blue-700">
+                  🏭 À produire pour: {dateDemain()}
+                </p>
+              </div>
+              <p className="text-sm text-blue-600">
+                📋 Liste des productions planifiées pour cette nuit
               </p>
             </div>
             <Link 
@@ -108,19 +129,33 @@ export default function PlanificationDemain() {
         {/* Liste de planification */}
         {planification.length === 0 ? (
           <div className="bg-white rounded-lg shadow-lg p-8 text-center">
-            <div className="text-6xl mb-4">🌙</div>
+            <div className="text-6xl mb-4">📋</div>
             <h2 className="text-xl font-semibold text-gray-800 mb-2">
-              Aucune production planifiée
+              Aucune production planifiée pour demain
             </h2>
             <p className="text-gray-600 mb-4">
-              Aucune quantité prévue n'a été définie pour demain.
+              Le manager n'a pas encore défini les quantités à produire pour {dateDemain()}.
             </p>
-            <Link 
-              href="/saisie-prevue"
-              className="bg-purple-500 hover:bg-purple-600 text-white px-6 py-2 rounded-lg transition-colors duration-200 inline-block"
-            >
-              Définir la planification
-            </Link>
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+              <p className="text-sm text-yellow-800">
+                💡 <strong>Pour planifier la production :</strong><br/>
+                Le manager doit aller sur "Saisie Prévue" et définir les quantités à produire pour demain.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Link 
+                href="/saisie-prevue"
+                className="bg-purple-500 hover:bg-purple-600 text-white px-6 py-3 rounded-lg transition-colors duration-200 font-medium"
+              >
+                📋 Définir la planification (Manager)
+              </Link>
+              <Link 
+                href="/dashboard"
+                className="bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-lg transition-colors duration-200 font-medium"
+              >
+                📊 Voir le dashboard
+              </Link>
+            </div>
           </div>
         ) : (
           <div className="bg-white rounded-lg shadow-lg overflow-hidden">
