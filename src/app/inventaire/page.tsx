@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 interface Produit {
   id: number;
   nom: string;
+  ordre: number;
 }
 
 interface InventaireItem {
@@ -32,10 +33,13 @@ export default function SaisieInventaire() {
     try {
       const response = await fetch('/api/produits');
       const data = await response.json();
-      setProduits(data);
       
-      // Initialiser un inventaire vide pour chaque produit
-      const inventairesInitiaux = data.map((produit: Produit) => ({
+      // Trier les produits par ordre comme dans la saisie vendeur
+      const produitsTries = data.sort((a: Produit, b: Produit) => a.ordre - b.ordre);
+      setProduits(produitsTries);
+      
+      // Initialiser un inventaire vide pour chaque produit dans le bon ordre
+      const inventairesInitiaux = produitsTries.map((produit: Produit) => ({
         produitId: produit.id,
         quantiteRestante: 0,
         quantiteProduite: null,

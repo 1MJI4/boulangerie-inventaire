@@ -231,12 +231,12 @@ export async function GET(request: Request) {
       where,
       include: {
         produit: {
-          select: { id: true, nom: true }
+          select: { id: true, nom: true, ordre: true }
         }
       },
       orderBy: [
         { dateInventaire: 'desc' },
-        { produit: { nom: 'asc' } }
+        { produit: { ordre: 'asc' } }
       ],
       take: limitParam ? parseInt(limitParam) : undefined,
     });
