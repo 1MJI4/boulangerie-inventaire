@@ -1,5 +1,7 @@
 'use client';
 
+
+import { dateDuJour, decalerJours } from '@/lib/dateProduction';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
@@ -11,7 +13,7 @@ interface Produit {
 interface Inventaire {
   id: number;
   dateInventaire: string;
-  quantiteRestante: number;
+  quantiteRestante: number | null;
   quantiteProduite: number | null;
   quantitePrevue: number | null;
   produit: Produit;
@@ -22,7 +24,9 @@ interface PrevisionParDate {
   previsions: Inventaire[];
   totalPrevu: number;
   totalProduit: number;
-  precision: number; // Pourcentage de précision
+  /** null tant qu'aucune production n'a été saisie pour cette journée. */
+  precision: number | null;
+  lignesProduites: number;
 }
 
 export default function HistoriquePrevisions() {
@@ -40,7 +44,9 @@ export default function HistoriquePrevisions() {
     setLoading(true);
     try {
       // Charger tous les inventaires des 30 derniers jours
-      const response = await fetch('/api/inventaires');
+      // Bornée côté serveur, et filtrée sur les lignes qui ont une prévision.
+      const debut = decalerJours(dateDuJour(), -90);
+      const response = await fetch(`/api/inventaires?debut=${debut}&avecPrevision=1&limit=2000`);
       const data = await response.json();
       
       // Filtrer seulement ceux qui ont des prévisions
@@ -73,18 +79,29 @@ export default function HistoriquePrevisions() {
   };
 
   const calculerStatsPrevision = (date: string, previsions: Inventaire[]): PrevisionParDate => {
-    const totalPrevu = previsions.reduce((sum, inv) => sum + (inv.quantitePrevue || 0), 0);
-    const totalProduit = previsions.reduce((sum, inv) => sum + (inv.quantiteProduite || 0), 0);
-    
-    // Calculer la précision (% de réalisation par rapport aux prévisions)
-    const precision = totalPrevu > 0 ? Math.round((totalProduit / totalPrevu) * 100) : 0;
+    const totalPrevu = previsions.reduce((sum, inv) => sum + (inv.quantitePrevue ?? 0), 0);
+    const totalProduit = previsions.reduce((sum, inv) => sum + (inv.quantiteProduite ?? 0), 0);
+
+    // La précision ne se calcule que sur les lignes réellement produites. Une
+    // journée prévue mais pas encore saisie affichait « 0 % » en rouge, comme
+    // si le fournil n'avait rien fait — alors qu'il n'a simplement pas encore
+    // renseigné ses quantités.
+    const produites = previsions.filter((inv) => inv.quantiteProduite != null);
+    const prevuComptabilise = produites.reduce((sum, inv) => sum + (inv.quantitePrevue ?? 0), 0);
+    const produitComptabilise = produites.reduce((sum, inv) => sum + (inv.quantiteProduite ?? 0), 0);
+
+    const precision =
+      produites.length === 0 || prevuComptabilise === 0
+        ? null
+        : Math.round((produitComptabilise / prevuComptabilise) * 100);
 
     return {
       date,
       previsions,
       totalPrevu,
       totalProduit,
-      precision
+      precision,
+      lignesProduites: produites.length,
     };
   };
 
@@ -120,51 +137,51 @@ export default function HistoriquePrevisions() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-4 px-4 sm:py-8 sm:px-6 lg:px-8">
-      <div className="max-w-6xl mx-auto">
-        {/* En-tête */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+    <div className="min-h-screen bg-surface-2 py-4 px-4 sm:py-8 sm:px-6 lg:px-8">
+      <div>
+{/* En-tête */}
+        <div className="bg-surface rounded-xl border border-line p-6 mb-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">📊 Historique des Prévisions</h1>
-              <p className="text-gray-600">Analyse de la précision de vos planifications</p>
+              <h1 className="text-2xl sm:text-3xl font-bold text-ink">Historique des Prévisions</h1>
+              <p className="text-ink-2">Analyse de la précision de vos planifications</p>
             </div>
             <div className="flex gap-2">
               <Link 
                 href="/saisie-prevue"
-                className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg transition-colors duration-200 text-sm font-medium"
+                className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-xl transition-colors duration-200 text-sm font-medium"
               >
-                📋 Nouvelle prévision
+                Nouvelle prévision
               </Link>
               <Link 
                 href="/dashboard"
-                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors duration-200 text-sm font-medium"
+                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-xl transition-colors duration-200 text-sm font-medium"
               >
-                ← Dashboard
+                Dashboard
               </Link>
             </div>
           </div>
         </div>
 
         {/* Liste des prévisions */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-900">Prévisions récentes</h2>
-            <p className="text-sm text-gray-600 mt-1">Cliquez sur une date pour voir les détails</p>
+        <div className="bg-surface rounded-xl shadow-sm border border-line overflow-hidden">
+          <div className="px-6 py-4 border-b border-line">
+            <h2 className="text-xl font-semibold text-ink">Prévisions récentes</h2>
+            <p className="text-sm text-ink-2 mt-1">Cliquez sur une date pour voir les détails</p>
           </div>
           
           {loading ? (
             <div className="p-8 text-center">
-              <p className="text-gray-500">Chargement...</p>
+              <p className="text-ink-3">Chargement...</p>
             </div>
           ) : previsions.length === 0 ? (
             <div className="p-8 text-center">
-              <div className="text-6xl mb-4">📋</div>
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">Aucune prévision trouvée</h3>
-              <p className="text-gray-500 mb-4">Commencez à planifier vos productions pour voir l'historique ici</p>
+              <div className="text-6xl mb-4"></div>
+              <h3 className="text-xl font-semibold text-ink-2 mb-2">Aucune prévision trouvée</h3>
+              <p className="text-ink-3 mb-4">Commencez à planifier vos productions pour voir l'historique ici</p>
               <Link 
                 href="/saisie-prevue"
-                className="bg-purple-500 hover:bg-purple-600 text-white px-6 py-2 rounded-lg transition-colors"
+                className="bg-purple-500 hover:bg-purple-600 text-white px-6 py-2 rounded-xl transition-colors"
               >
                 Créer ma première prévision
               </Link>
@@ -175,33 +192,39 @@ export default function HistoriquePrevisions() {
                 <button
                   key={previsionDate.date}
                   onClick={() => ouvrirModal(previsionDate.date, previsionDate.previsions)}
-                  className="w-full px-6 py-4 text-left hover:bg-gray-50 transition-colors focus:outline-none focus:bg-gray-50"
+                  className="w-full px-6 py-4 text-left hover:bg-surface-2 transition-colors focus:outline-none focus:bg-surface-2"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
-                      <h3 className="text-lg font-medium text-gray-900">
+                      <h3 className="text-lg font-medium text-ink">
                         {formatDate(previsionDate.date)}
                       </h3>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-ink-2">
                         Prévu le {getDateHier(previsionDate.date)} • {previsionDate.previsions.length} produit(s)
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-4 text-sm">
                       <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 bg-purple-100 rounded-full"></span>
-                        <span className="text-gray-600">Prévu: <span className="font-medium text-purple-600">{previsionDate.totalPrevu}</span></span>
+                        <span className="w-3 h-3 bg-accent-doux rounded-full"></span>
+                        <span className="text-ink-2">Prévu: <span className="font-medium text-accent">{previsionDate.totalPrevu}</span></span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 bg-green-100 rounded-full"></span>
-                        <span className="text-gray-600">Produit: <span className="font-medium text-green-600">{previsionDate.totalProduit}</span></span>
+                        <span className="w-3 h-3 bg-ok-doux rounded-full"></span>
+                        <span className="text-ink-2">Produit: <span className="font-medium text-ok">{previsionDate.totalProduit}</span></span>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className={`w-3 h-3 rounded-full ${
-                          previsionDate.precision >= 90 ? 'bg-green-500' :
-                          previsionDate.precision >= 75 ? 'bg-yellow-500' : 
-                          previsionDate.precision >= 50 ? 'bg-orange-500' : 'bg-red-500'
+                          previsionDate.precision === null ? 'bg-line-fort' :
+                          previsionDate.precision >= 90 ? 'bg-ok' :
+                          previsionDate.precision >= 75 ? 'bg-attention' : 'bg-alerte'
                         }`}></span>
-                        <span className="text-gray-600">Précision: <span className="font-medium">{previsionDate.precision}%</span></span>
+                        <span className="text-ink-2">
+                          {previsionDate.precision === null ? (
+                            <span className="text-ink-3">production pas encore saisie</span>
+                          ) : (
+                            <>Précision: <span className="font-medium">{previsionDate.precision}%</span></>
+                          )}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -215,15 +238,15 @@ export default function HistoriquePrevisions() {
         <div className="mt-6 flex flex-col sm:flex-row gap-3">
           <Link
             href="/planification-demain"
-            className="inline-flex items-center justify-center bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700 font-medium transition-colors"
+            className="inline-flex items-center justify-center bg-accent text-white px-6 py-3 rounded-md hover:bg-accent-fort font-medium transition-colors"
           >
-            👁️ Planning actuel
+            Planning actuel
           </Link>
           <Link
             href="/saisie-prevue"
             className="inline-flex items-center justify-center bg-purple-600 text-white px-6 py-3 rounded-md hover:bg-purple-700 font-medium transition-colors"
           >
-            📋 Nouvelle prévision
+            Nouvelle prévision
           </Link>
         </div>
       </div>
@@ -231,19 +254,19 @@ export default function HistoriquePrevisions() {
       {/* Modal de détails */}
       {modalOuverte && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+          <div className="bg-surface rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+            <div className="px-6 py-4 border-b border-line flex justify-between items-center">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">
+                <h3 className="text-lg font-semibold text-ink">
                   Prévisions pour le {formatDate(dateSelectionnee)}
                 </h3>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-ink-2">
                   Planifié le {getDateHier(dateSelectionnee)}
                 </p>
               </div>
               <button
                 onClick={fermerModal}
-                className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+                className="text-ink-3 hover:text-ink-2 text-2xl font-bold"
               >
                 ×
               </button>
@@ -252,45 +275,56 @@ export default function HistoriquePrevisions() {
             <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
               <div className="space-y-4">
                 {previsionsDetail.map((inventaire) => {
-                  const prevu = inventaire.quantitePrevue || 0;
-                  const produit = inventaire.quantiteProduite || 0;
-                  const precisionProduit = prevu > 0 ? Math.round((produit / prevu) * 100) : 0;
+                  const prevu = inventaire.quantitePrevue ?? 0;
+                  const produitConnu = inventaire.quantiteProduite;
+                  const produit = produitConnu ?? 0;
+                  const precisionProduit =
+                    produitConnu != null && prevu > 0 ? Math.round((produit / prevu) * 100) : null;
                   
                   return (
-                    <div key={inventaire.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <div key={inventaire.id} className="bg-surface-2 rounded-xl p-4 border border-line">
                       <div className="flex justify-between items-start mb-3">
-                        <h4 className="font-medium text-gray-900 text-lg">
+                        <h4 className="font-medium text-ink text-lg">
                           {inventaire.produit.nom}
                         </h4>
                         <span className={`inline-flex px-3 py-1 text-sm font-medium rounded-full ${
-                          precisionProduit >= 90 ? 'bg-green-100 text-green-800' :
-                          precisionProduit >= 75 ? 'bg-yellow-100 text-yellow-800' :
-                          precisionProduit >= 50 ? 'bg-orange-100 text-orange-800' :
-                          'bg-red-100 text-red-800'
+                          precisionProduit === null ? 'bg-surface-2 text-ink-3' :
+                          precisionProduit >= 90 ? 'bg-ok-doux text-ok' :
+                          precisionProduit >= 75 ? 'bg-attention-doux text-attention' :
+                          'bg-alerte-doux text-alerte'
                         }`}>
-                          {precisionProduit}% de précision
+                          {precisionProduit === null
+                            ? 'production pas encore saisie'
+                            : `${precisionProduit}% de précision`}
                         </span>
                       </div>
                       
                       <div className="grid grid-cols-2 gap-4 text-center">
-                        <div className="bg-purple-100 p-3 rounded">
-                          <p className="text-sm text-gray-600">Était prévu</p>
-                          <p className="text-2xl font-bold text-purple-600">{prevu}</p>
+                        <div className="bg-accent-doux p-3 rounded">
+                          <p className="text-sm text-ink-2">Était prévu</p>
+                          <p className="text-2xl font-bold text-accent">{prevu}</p>
                         </div>
-                        <div className="bg-green-100 p-3 rounded">
-                          <p className="text-sm text-gray-600">Réellement produit</p>
-                          <p className="text-2xl font-bold text-green-600">{produit}</p>
+                        <div className="bg-ok-doux p-3 rounded">
+                          <p className="text-sm text-ink-2">Réellement produit</p>
+                          <p className="text-2xl font-bold text-ok">{produitConnu ?? '—'}</p>
                         </div>
                       </div>
                       
-                      <div className="mt-3 text-center">
-                        <div className="bg-gray-100 p-2 rounded">
-                          <p className="text-sm text-gray-600">
-                            Écart: {produit - prevu > 0 ? '+' : ''}{produit - prevu}
-                            {produit - prevu > 0 ? ' (surproduction)' : produit - prevu < 0 ? ' (sous-production)' : ' (pile poil!)'}
-                          </p>
+                      {produitConnu != null ? (
+                        <div className="mt-3 text-center">
+                          <div className="bg-surface-2 p-2 rounded">
+                            <p className="text-sm text-ink-2">
+                              Écart&nbsp;: {produit - prevu > 0 ? '+' : ''}
+                              {produit - prevu}
+                              {produit - prevu > 0
+                                ? ' (surproduction)'
+                                : produit - prevu < 0
+                                  ? ' (sous-production)'
+                                  : ' (exactement la demande)'}
+                            </p>
+                          </div>
                         </div>
-                      </div>
+                      ) : null}
                     </div>
                   );
                 })}

@@ -11,8 +11,12 @@ try {
   // Check if DATABASE_URL is available
   if (!process.env.DATABASE_URL) {
     console.error('❌ DATABASE_URL environment variable is not set');
-    console.error('Please configure DATABASE_URL in your Railway service settings');
+    console.error('Configure DATABASE_URL (pooler transactionnel Supabase, port 6543) dans .env');
     process.exit(1);
+  }
+
+  if (!process.env.DIRECT_URL) {
+    console.warn('⚠️  DIRECT_URL non défini — les migrations Prisma nécessitent le pooler session (port 5432)');
   }
   
   execSync('prisma generate', { stdio: 'inherit' });

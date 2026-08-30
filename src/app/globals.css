@@ -1,26 +1,157 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ============================================================
+   Palette
+   Un fond neutre légèrement chaud, une seule couleur d'accent,
+   et trois couleurs de statut. Rien d'autre.
+   ============================================================ */
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root {
+  --ground: #f5f4f2;
+  --surface: #ffffff;
+  --surface-2: #faf9f7;
+  --line: #e3e0dc;
+  --line-fort: #cdc8c1;
+
+  --ink: #1a1917;
+  --ink-2: #5c5852;
+  --ink-3: #8b857d;
+
+  --accent: #a04f22;
+  --accent-fort: #83401b;
+  --accent-doux: #f6ece4;
+
+  --ok: #2c6a4a;
+  --ok-doux: #e6f0e9;
+  --attention: #8a6413;
+  --attention-doux: #f7efdc;
+  --alerte: #a33a2f;
+  --alerte-doux: #f8e7e4;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --ground: #14130f;
+    --surface: #1c1b18;
+    --surface-2: #232220;
+    --line: #322f2b;
+    --line-fort: #494540;
+
+    --ink: #ecebe7;
+    --ink-2: #adaaa3;
+    --ink-3: #837f78;
+
+    --accent: #d98b57;
+    --accent-fort: #e8a074;
+    --accent-doux: #33241a;
+
+    --ok: #6cbf95;
+    --ok-doux: #16281f;
+    --attention: #d3ab5c;
+    --attention-doux: #2c2415;
+    --alerte: #e58275;
+    --alerte-doux: #2f1c19;
   }
 }
 
+@theme inline {
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-fort: var(--line-fort);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-accent: var(--accent);
+  --color-accent-fort: var(--accent-fort);
+  --color-accent-doux: var(--accent-doux);
+  --color-ok: var(--ok);
+  --color-ok-doux: var(--ok-doux);
+  --color-attention: var(--attention);
+  --color-attention-doux: var(--attention-doux);
+  --color-alerte: var(--alerte);
+  --color-alerte-doux: var(--alerte-doux);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Les chiffres s'alignent en colonne dans toutes les listes de quantités. */
+.chiffres {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Les flèches des champs numériques sont inutilisables au doigt. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============================================================
+   La feuille de production part à l'imprimante telle qu'à l'écran
+   ============================================================ */
+
+@media print {
+  @page {
+    margin: 14mm;
+  }
+
+  body {
+    background: #fff;
+    color: #000;
+  }
+
+  .sans-impression {
+    display: none !important;
+  }
+
+  .zone-impression {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    max-width: none !important;
+  }
+
+  .ligne-impression {
+    border-bottom: 1px solid #999;
+    break-inside: avoid;
+  }
 }

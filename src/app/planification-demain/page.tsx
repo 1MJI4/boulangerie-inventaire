@@ -1,263 +1,328 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
+// Écran du fournil : ce que le manager a demandé pour la journée en cours.
+//
+// Deux exigences propres à ce poste. La journée affichée est la journée de
+// production (bascule à 14h) et non « demain » : ouverte à 3h du matin, la
+// page cherchait auparavant les prévisions du surlendemain et restait vide.
+// Et l'écran reste allumé des heures sur un plan de travail : il va donc
+// chercher les nouvelles quantités tout seul, et signale ce qui vient
+// d'arriver plutôt que de les glisser silencieusement dans la liste.
 
-interface Produit {
-  id: number;
-  nom: string;
-}
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide, Progression, Puce } from '@/components/ui';
+import { SelecteurJournee } from '@/components/SelecteurJournee';
+import { formatDateLong, journeeProduction } from '@/lib/dateProduction';
+import { useMemoireLocale } from '@/lib/memoireLocale';
+import { DESCRIPTION_POSTE, LIBELLE_POSTE, POSTES, estPoste, type Poste } from '@/lib/postes';
 
-interface PlanificationItem {
+type LigneFournil = {
   produitId: number;
-  produitNom: string;
-  quantitePrevue: number;
-}
+  quantitePrevue: number | null;
+  quantiteProduite: number | null;
+  faitLe: string | null;
+  produit: { id: number; nom: string; categorie: string; poste: Poste; ordre: number };
+};
 
-export default function PlanificationDemain() {
-  const [planification, setPlanification] = useState<PlanificationItem[]>([]);
-  const [loading, setLoading] = useState(true);
+/** Le manager saisit pendant que le fournil regarde : on va rechercher souvent. */
+const INTERVALLE_RAFRAICHISSEMENT_MS = 45_000;
 
+export default function Fournil() {
+  const [date, setDate] = useState(() => journeeProduction());
+  const [posteMemorise, setPosteMemorise] = useMemoireLocale<string>(
+    'boulangerie:poste-fournil',
+    'patissier'
+  );
+  const poste: Poste = estPoste(posteMemorise) ? posteMemorise : 'patissier';
+
+  const [lignes, setLignes] = useState<LigneFournil[]>([]);
+  const [chargement, setChargement] = useState(true);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [enCours, setEnCours] = useState<Set<number>>(new Set());
+  const [actualiseA, setActualiseA] = useState<Date | null>(null);
+  const [nouveautes, setNouveautes] = useState<Set<number>>(new Set());
+
+  // Ce que le fournil avait déjà sous les yeux, pour ne signaler que le neuf.
+  const dejaVus = useRef<Map<number, number | null> | null>(null);
+
+  const charger = useCallback(
+    async (silencieux = false) => {
+      if (!silencieux) setChargement(true);
+      try {
+        const reponse = await fetch(`/api/inventaires?date=${date}&poste=${poste}&avecPrevision=1`);
+        if (!reponse.ok) throw new Error('chargement impossible');
+        const donnees: LigneFournil[] = await reponse.json();
+
+        const precedent = dejaVus.current;
+        if (precedent) {
+          const neuf = new Set<number>();
+          for (const ligne of donnees) {
+            const avant = precedent.get(ligne.produitId);
+            if (avant === undefined || avant !== ligne.quantitePrevue) neuf.add(ligne.produitId);
+          }
+          if (neuf.size > 0) setNouveautes((prec) => new Set([...prec, ...neuf]));
+        }
+
+        dejaVus.current = new Map(donnees.map((l) => [l.produitId, l.quantitePrevue]));
+        setLignes(donnees);
+        setActualiseA(new Date());
+        setErreur(null);
+      } catch {
+        if (!silencieux) setErreur('Impossible de charger la feuille de production.');
+      } finally {
+        setChargement(false);
+      }
+    },
+    [date, poste]
+  );
+
+  // Changer de poste ou de journée remet le compteur de nouveautés à zéro.
   useEffect(() => {
-    chargerPlanification();
-  }, []);
+    dejaVus.current = null;
+    setNouveautes(new Set());
+    void charger();
+  }, [charger]);
 
-  const chargerPlanification = async () => {
+  // Relecture régulière, mise en pause quand l'écran n'est pas regardé.
+  useEffect(() => {
+    const tic = setInterval(() => {
+      if (document.visibilityState === 'visible') void charger(true);
+    }, INTERVALLE_RAFRAICHISSEMENT_MS);
+
+    const auReveil = () => {
+      if (document.visibilityState === 'visible') void charger(true);
+    };
+    document.addEventListener('visibilitychange', auReveil);
+
+    return () => {
+      clearInterval(tic);
+      document.removeEventListener('visibilitychange', auReveil);
+    };
+  }, [charger]);
+
+  const basculerFait = async (ligne: LigneFournil) => {
+    const faitMaintenant = ligne.faitLe === null;
+    const horodatage = faitMaintenant ? new Date().toISOString() : null;
+
+    setLignes((prec) =>
+      prec.map((l) => (l.produitId === ligne.produitId ? { ...l, faitLe: horodatage } : l))
+    );
+    setEnCours((prec) => new Set(prec).add(ligne.produitId));
+
     try {
-      setLoading(true);
-      
-      // Date de demain
-      const demain = new Date();
-      demain.setDate(demain.getDate() + 1);
-      const dateDemain = demain.toISOString().split('T')[0];
-
-      console.log('🔍 Recherche des prévisions pour:', dateDemain);
-
-      // Charger les inventaires de demain qui ont une quantitePrevue
-      const response = await fetch(`/api/inventaires?date=${dateDemain}`);
-      const inventaires = await response.json();
-
-      console.log('📦 Inventaires trouvés:', inventaires);
-      console.log('📊 Nombre d\'inventaires:', inventaires.length);
-
-      // Charger tous les produits pour les noms
-      const produitsResponse = await fetch('/api/produits');
-      const produits: Produit[] = await produitsResponse.json();
-
-      console.log('🛍️ Produits disponibles:', produits);
-
-      // Filtrer seulement ceux qui ont une quantitePrevue > 0
-      const avecPrevisions = inventaires.filter((inv: any) => {
-        console.log(`🔎 Produit ${inv.produitId}: quantitePrevue = ${inv.quantitePrevue}`);
-        return inv.quantitePrevue && inv.quantitePrevue > 0;
+      const reponse = await fetch('/api/inventaires', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dateInventaire: date,
+          inventaires: [{ produitId: ligne.produitId, faitLe: horodatage }],
+        }),
       });
-
-      console.log('✅ Inventaires avec prévisions:', avecPrevisions);
-
-      const planificationData = avecPrevisions.map((inv: any) => {
-        const produit = produits.find(p => p.id === inv.produitId);
-        return {
-          produitId: inv.produitId,
-          produitNom: produit?.nom || 'Produit inconnu',
-          quantitePrevue: inv.quantitePrevue
-        };
-      });
-
-      console.log('🎯 Planification finale:', planificationData);
-      setPlanification(planificationData);
-    } catch (error) {
-      console.error('❌ Erreur lors du chargement de la planification:', error);
+      if (!reponse.ok) throw new Error();
+    } catch {
+      setLignes((prec) =>
+        prec.map((l) => (l.produitId === ligne.produitId ? { ...l, faitLe: ligne.faitLe } : l))
+      );
+      setErreur("La coche n'a pas pu être enregistrée. Vérifiez la connexion.");
     } finally {
-      setLoading(false);
+      setEnCours((prec) => {
+        const suivant = new Set(prec);
+        suivant.delete(ligne.produitId);
+        return suivant;
+      });
     }
   };
 
-  const dateDemain = () => {
-    const demain = new Date();
-    demain.setDate(demain.getDate() + 1);
-    return demain.toLocaleDateString('fr-FR', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
+  const parCategorie = useMemo(() => {
+    const groupes = new Map<string, LigneFournil[]>();
+    for (const ligne of [...lignes].sort((a, b) => a.produit.ordre - b.produit.ordre)) {
+      const liste = groupes.get(ligne.produit.categorie) ?? [];
+      liste.push(ligne);
+      groupes.set(ligne.produit.categorie, liste);
+    }
+    return [...groupes.entries()];
+  }, [lignes]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-4">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const faits = lignes.filter((l) => l.faitLe !== null).length;
+  const total = lignes.reduce((somme, l) => somme + (l.quantitePrevue ?? 0), 0);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-4">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-2">
-                📋 Planning de Production
-              </h1>
-              <div className="bg-gradient-to-r from-blue-100 to-purple-100 p-4 rounded-lg mb-2">
-                <p className="text-lg font-semibold text-gray-800">
-                  🕐 Aujourd'hui: {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
-                </p>
-                <p className="text-lg font-semibold text-blue-700">
-                  🏭 À produire pour: {dateDemain()}
-                </p>
-              </div>
-              <p className="text-sm text-blue-600">
-                📋 Liste des productions planifiées pour cette nuit
-              </p>
-            </div>
-            <Link 
-              href="/"
-              className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors duration-200 text-sm font-medium"
-            >
-              ← Retour
-            </Link>
+    <>
+      <Entete
+        titre={`Feuille ${LIBELLE_POSTE[poste].toLowerCase()}`}
+        sousTitre={
+          <>
+            À produire pour le{' '}
+            <span className="font-medium capitalize text-ink">{formatDateLong(date)}</span>
+          </>
+        }
+        actions={
+          <div className="sans-impression flex items-center gap-2">
+            <SelecteurJournee date={date} onChange={setDate} libelle="Fournée" />
+            <Bouton variante="secondaire" onClick={() => window.print()}>
+              Imprimer
+            </Bouton>
           </div>
+        }
+      />
+
+      <div className="sans-impression mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="tablist" aria-label="Poste" className="flex gap-1 rounded-lg border border-line bg-surface p-1">
+            {POSTES.map((p) => (
+              <button
+                key={p}
+                role="tab"
+                aria-selected={poste === p}
+                onClick={() => setPosteMemorise(p)}
+                className={`min-h-9 rounded-md px-3 text-sm font-medium transition-colors ${
+                  poste === p ? 'bg-accent-doux text-accent' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
+                }`}
+              >
+                {LIBELLE_POSTE[p]}
+              </button>
+            ))}
+          </div>
+          <span className="text-xs text-ink-3">{DESCRIPTION_POSTE[poste]}</span>
         </div>
 
-        {/* Liste de planification */}
-        {planification.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-lg p-8 text-center">
-            <div className="text-6xl mb-4">📋</div>
-            <h2 className="text-xl font-semibold text-gray-800 mb-2">
-              Aucune production planifiée pour demain
-            </h2>
-            <p className="text-gray-600 mb-4">
-              Le manager n'a pas encore défini les quantités à produire pour {dateDemain()}.
-            </p>
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-              <p className="text-sm text-yellow-800">
-                💡 <strong>Pour planifier la production :</strong><br/>
-                Le manager doit aller sur "Saisie Prévue" et définir les quantités à produire pour demain.
-              </p>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Link 
-                href="/saisie-prevue"
-                className="bg-purple-500 hover:bg-purple-600 text-white px-6 py-3 rounded-lg transition-colors duration-200 font-medium"
-              >
-                📋 Définir la planification (Manager)
-              </Link>
-              <Link 
-                href="/dashboard"
-                className="bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-lg transition-colors duration-200 font-medium"
-              >
-                📊 Voir le dashboard
-              </Link>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-            {/* Version Mobile */}
-            <div className="block sm:hidden">
-              <div className="bg-gradient-to-r from-purple-500 to-blue-600 text-white p-4">
-                <h2 className="text-lg font-semibold">À Produire Cette Nuit</h2>
-                <p className="text-purple-100 text-sm">{planification.length} produit(s) planifié(s)</p>
-              </div>
-              <div className="divide-y divide-gray-200">
-                {planification.map((item) => (
-                  <div key={item.produitId} className="p-4">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h3 className="font-semibold text-gray-800 text-lg">
-                          {item.produitNom}
-                        </h3>
-                        <p className="text-gray-600 text-sm">Quantité à produire</p>
-                      </div>
-                      <div className="text-right">
-                        <div className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full font-bold text-lg">
-                          {item.quantitePrevue}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Version Desktop */}
-            <div className="hidden sm:block">
-              <div className="bg-gradient-to-r from-purple-500 to-blue-600 text-white p-6">
-                <h2 className="text-xl font-semibold mb-2">Production Planifiée pour la Nuit</h2>
-                <p className="text-purple-100">{planification.length} produit(s) à préparer</p>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Produit
-                      </th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Quantité à Produire
-                      </th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Type
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {planification.map((item) => (
-                      <tr key={item.produitId} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">
-                            {item.produitNom}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <span className="inline-flex px-4 py-2 rounded-full text-lg font-bold bg-purple-100 text-purple-800">
-                            {item.quantitePrevue}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <span className="text-sm text-gray-500">
-                            {item.produitNom.toLowerCase().includes('croissant') || 
-                             item.produitNom.toLowerCase().includes('pain') ||
-                             item.produitNom.toLowerCase().includes('brioche') ? 
-                             '🥐 Viennoiserie' : '🍰 Pâtisserie'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="bg-gray-50 px-6 py-4 flex flex-col sm:flex-row gap-3 justify-between items-center">
-              <p className="text-sm text-gray-600">
-                💡 Cette liste est mise à jour automatiquement selon les prévisions définies
-              </p>
-              <div className="flex gap-2">
-                <Link 
-                  href="/saisie-prevue"
-                  className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg transition-colors duration-200 text-sm"
-                >
-                  Modifier prévisions
-                </Link>
-                <button 
-                  onClick={chargerPlanification}
-                  className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors duration-200 text-sm"
-                >
-                  🔄 Actualiser
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={() => void charger(true)}
+          className="text-xs text-ink-3 underline underline-offset-2 hover:text-ink-2"
+          title="Relancer la lecture maintenant"
+        >
+          {actualiseA
+            ? `actualisé à ${actualiseA.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}`
+            : 'actualiser'}
+        </button>
       </div>
-    </div>
+
+      {nouveautes.size > 0 ? (
+        <div className="sans-impression mb-4">
+          <Alerte ton="ok">
+            <span className="font-medium">
+              {nouveautes.size} quantité{nouveautes.size > 1 ? 's' : ''} vient
+              {nouveautes.size > 1 ? 'nent' : ''} d&apos;arriver du manager.
+            </span>{' '}
+            <button
+              onClick={() => setNouveautes(new Set())}
+              className="underline underline-offset-2"
+            >
+              J&apos;ai vu
+            </button>
+          </Alerte>
+        </div>
+      ) : null}
+
+      {erreur ? (
+        <div className="sans-impression mb-4">
+          <Alerte>
+            {erreur}{' '}
+            <button onClick={() => void charger()} className="underline underline-offset-2">
+              Réessayer
+            </button>
+          </Alerte>
+        </div>
+      ) : null}
+
+      {chargement ? (
+        <Chargement libelle="Chargement de la feuille…" />
+      ) : lignes.length === 0 ? (
+        <Carte>
+          <EtatVide
+            titre="Le manager n'a pas encore envoyé de quantités"
+            detail={`Rien n'est demandé au ${LIBELLE_POSTE[poste].toLowerCase()} pour le ${formatDateLong(date)}. Cet écran se met à jour tout seul : laissez-le ouvert, les quantités apparaîtront dès la saisie.`}
+          />
+        </Carte>
+      ) : (
+        <div className="zone-impression space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Puce ton="accent">
+                <span className="chiffres">{total}</span> pièces au total
+              </Puce>
+              <Puce ton={faits === lignes.length ? 'ok' : 'neutre'}>
+                <span className="chiffres">{lignes.length}</span> références
+              </Puce>
+            </div>
+            <div className="sans-impression">
+              <Progression fait={faits} total={lignes.length} />
+            </div>
+          </div>
+
+          {parCategorie.map(([categorie, liste]) => (
+            <Carte key={categorie}>
+              <h2 className="border-b border-line px-4 py-2.5 text-sm font-semibold text-ink">
+                {categorie}
+              </h2>
+
+              <ul>
+                {liste.map((ligne) => {
+                  const fait = ligne.faitLe !== null;
+                  const nouveau = nouveautes.has(ligne.produitId);
+
+                  return (
+                    <li
+                      key={ligne.produitId}
+                      className={`ligne-impression flex items-center gap-4 border-b border-line px-4 py-3 last:border-b-0 ${
+                        nouveau ? 'bg-ok-doux' : ''
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => void basculerFait(ligne)}
+                        disabled={enCours.has(ligne.produitId)}
+                        aria-pressed={fait}
+                        aria-label={`Marquer ${ligne.produit.nom} comme produit`}
+                        className={`sans-impression flex h-8 w-8 shrink-0 items-center justify-center rounded-md border text-sm transition-colors ${
+                          fait
+                            ? 'border-ok bg-ok text-white'
+                            : 'border-line-fort text-transparent hover:border-accent'
+                        }`}
+                      >
+                        ✓
+                      </button>
+
+                      <span
+                        aria-hidden
+                        className="ligne-impression hidden h-5 w-5 shrink-0 border border-black print:block"
+                      />
+
+                      <span
+                        className={`min-w-0 flex-1 truncate text-lg ${
+                          fait ? 'text-ink-3 line-through' : 'text-ink'
+                        }`}
+                      >
+                        {ligne.produit.nom}
+                        {nouveau ? (
+                          <span className="sans-impression ml-2 text-xs font-medium text-ok">
+                            nouveau
+                          </span>
+                        ) : null}
+                      </span>
+
+                      {ligne.quantiteProduite != null ? (
+                        <span className="sans-impression chiffres shrink-0 text-xs text-ink-3">
+                          {ligne.quantiteProduite} produits
+                        </span>
+                      ) : null}
+
+                      <span
+                        className={`chiffres shrink-0 text-3xl font-semibold tabular-nums ${
+                          fait ? 'text-ink-3' : 'text-ink'
+                        }`}
+                      >
+                        {ligne.quantitePrevue}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </Carte>
+          ))}
+        </div>
+      )}
+    </>
   );
 }

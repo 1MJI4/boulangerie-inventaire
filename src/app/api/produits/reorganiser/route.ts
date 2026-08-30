@@ -9,17 +9,15 @@ export async function PUT(request: Request) {
     const { ordreNouveau, codeSecurite } = await request.json();
 
     // Vérification du code de sécurité
-    if (codeSecurite !== '5551') {
+    if (!process.env.CODE_GESTION || codeSecurite !== process.env.CODE_GESTION) {
       return NextResponse.json({ error: 'Code de sécurité incorrect' }, { status: 403 });
     }
 
     if (!ordreNouveau || !Array.isArray(ordreNouveau)) {
       return NextResponse.json({ 
-        error: 'Format invalide. Attendu: { ordreNouveau: [produitId1, produitId2, ...], codeSecurite: "5551" }' 
+        error: 'Format invalide. Attendu: { ordreNouveau: [produitId1, produitId2, ...], codeSecurite: "..." }' 
       }, { status: 400 });
     }
-
-    console.log(`🔄 Début réorganisation de ${ordreNouveau.length} produits`);
     const startTime = Date.now();
 
     // Vérifier que tous les produits existent
@@ -63,7 +61,6 @@ export async function PUT(request: Request) {
         const batch = updates.slice(i, i + batchSize);
         const batchResults = await Promise.all(batch);
         results.push(...batchResults);
-        console.log(`📦 Batch réorganisation ${Math.floor(i/batchSize) + 1}/${Math.ceil(updates.length/batchSize)} terminé`);
       }
 
       return results;
@@ -71,9 +68,6 @@ export async function PUT(request: Request) {
 
     const endTime = Date.now();
     const duration = endTime - startTime;
-
-    console.log(`✅ Réorganisation terminée en ${duration}ms pour ${result.length} produits`);
-
     return NextResponse.json({
       message: `Réorganisation de ${result.length} produits réussie en ${duration}ms`,
       success: result.length,

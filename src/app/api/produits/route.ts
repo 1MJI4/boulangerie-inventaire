@@ -1,191 +1,183 @@
-// app/api/produits/route.ts
+// src/app/api/produits/route.ts
 
 import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { estPoste } from '@/lib/postes';
 
+/** Le code de gestion ne doit pas vivre dans le dépôt : il vient de l'environnement. */
+const CODE_GESTION = process.env.CODE_GESTION ?? '';
+
+function codeValide(fourni: unknown): boolean {
+  if (!CODE_GESTION) return false;
+  return typeof fourni === 'string' && fourni === CODE_GESTION;
+}
+
+const refusCode = () =>
+  NextResponse.json(
+    {
+      error: CODE_GESTION
+        ? 'Code de gestion incorrect'
+        : "Le code de gestion n'est pas configuré sur le serveur (CODE_GESTION).",
+    },
+    { status: 403 }
+  );
+
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const poste = searchParams.get('poste');
+    const categorie = searchParams.get('categorie');
+    const inclureInactifs = searchParams.get('inclureInactifs') === '1';
+
+    const where: Prisma.ProduitWhereInput = {};
+    if (estPoste(poste)) where.poste = poste;
+    if (categorie) where.categorie = categorie;
+    if (!inclureInactifs) where.actif = true;
+
+    const produits = await prisma.produit.findMany({
+      where,
+      orderBy: [{ ordre: 'asc' }, { nom: 'asc' }],
+      select: { id: true, nom: true, ordre: true, categorie: true, poste: true, actif: true },
+    });
+
+    return NextResponse.json(produits);
+  } catch (error) {
+    console.error('GET /api/produits', error);
+    return NextResponse.json({ error: 'Impossible de charger les produits.' }, { status: 500 });
+  }
+}
+
+/** Ajout en masse : "Croissant, Torsade, Huit" */
 export async function POST(request: Request) {
   try {
-    const { noms } = await request.json(); // noms est une chaîne comme "Croissant, Pain, Tarte"
+    const { noms, categorie, poste, codeSecurite } = await request.json();
+    if (!codeValide(codeSecurite)) return refusCode();
 
-    if (!noms || typeof noms !== 'string') {
-      return NextResponse.json({ error: 'Noms invalides' }, { status: 400 });
+    if (typeof noms !== 'string') {
+      return NextResponse.json({ error: 'Liste de noms invalide' }, { status: 400 });
     }
 
-    // 1. Transformer la chaîne en tableau de noms (nettoyage inclus)
-    const productNames = noms
-      .split(',')
-      .map((name: string) => name.trim())
-      .filter((name: string) => name.length > 0)
-      .map((name: string) => ({ nom: name }));
+    const donnees = [...new Set(
+      noms.split(',').map((n: string) => n.trim()).filter(Boolean)
+    )].map((nom) => ({
+      nom,
+      ...(typeof categorie === 'string' && categorie ? { categorie } : {}),
+      ...(estPoste(poste) ? { poste } : {}),
+    }));
 
-    if (productNames.length === 0) {
+    if (donnees.length === 0) {
       return NextResponse.json({ error: 'Aucun nom de produit valide fourni.' }, { status: 400 });
     }
 
-    // 2. Création en masse avec Prisma (gestion des duplicata si un produit existe déjà)
-    // Note : on utilise createMany pour l'efficacité, avec 'skipDuplicates: true'
-    const result = await prisma.produit.createMany({
-      data: productNames,
-      skipDuplicates: true, // Ignore les produits qui ont le même nom (champ @unique)
-    });
-
-    return NextResponse.json({ message: `${result.count} produit(s) ajouté(s) ou mis à jour.` });
-
+    const resultat = await prisma.produit.createMany({ data: donnees, skipDuplicates: true });
+    return NextResponse.json({ message: `${resultat.count} produit(s) ajouté(s).` });
   } catch (error) {
-    console.error('Erreur lors de l\'ajout en masse:', error);
-    return NextResponse.json({ error: 'Échec de l\'ajout des produits.' }, { status: 500 });
+    console.error('POST /api/produits', error);
+    return NextResponse.json({ error: "L'ajout des produits a échoué." }, { status: 500 });
   }
 }
 
-// OPTIONNEL : API pour lister les produits (utile pour le frontend)
-export async function GET() {
-  try {
-    const produits = await prisma.produit.findMany({
-      orderBy: [
-        { ordre: 'asc' },  // D'abord par ordre
-        { nom: 'asc' }     // Puis par nom si même ordre
-      ]
-    });
-    return NextResponse.json(produits);
-  } catch (error) {
-    console.error('Erreur lors de la récupération des produits:', error);
-    return NextResponse.json({ error: 'Échec de la récupération des produits.' }, { status: 500 });
-  }
-}
-
-// PUT - Modifier un produit (avec code de sécurité)
 export async function PUT(request: Request) {
   try {
-    const { id, nouveauNom, nouvelOrdre, codeSecurite } = await request.json();
+    const { id, nouveauNom, nouvelOrdre, categorie, poste, actif, codeSecurite } =
+      await request.json();
+    if (!codeValide(codeSecurite)) return refusCode();
 
-    // Vérification du code de sécurité
-    if (codeSecurite !== '5551') {
-      return NextResponse.json({ error: 'Code de sécurité incorrect' }, { status: 403 });
+    const produitId = Number(id);
+    if (!Number.isInteger(produitId)) {
+      return NextResponse.json({ error: 'Identifiant requis' }, { status: 400 });
     }
 
-    if (!id) {
-      return NextResponse.json({ error: 'ID requis' }, { status: 400 });
+    const donnees: Prisma.ProduitUpdateInput = {};
+
+    if (typeof nouveauNom === 'string' && nouveauNom.trim()) {
+      const nom = nouveauNom.trim();
+      const conflit = await prisma.produit.findFirst({
+        where: { nom, NOT: { id: produitId } },
+        select: { id: true },
+      });
+      if (conflit) {
+        return NextResponse.json({ error: 'Un produit porte déjà ce nom' }, { status: 400 });
+      }
+      donnees.nom = nom;
     }
 
-    // Vérifier que le produit existe
-    const produitExiste = await prisma.produit.findUnique({
-      where: { id: parseInt(id) }
-    });
+    if (nouvelOrdre !== undefined && nouvelOrdre !== null) {
+      const ordre = Number(nouvelOrdre);
+      if (!Number.isInteger(ordre) || ordre < 0) {
+        return NextResponse.json({ error: "L'ordre doit être un entier positif" }, { status: 400 });
+      }
+      donnees.ordre = ordre;
+    }
 
-    if (!produitExiste) {
+    if (typeof categorie === 'string' && categorie.trim()) donnees.categorie = categorie.trim();
+    if (estPoste(poste)) donnees.poste = poste;
+    if (typeof actif === 'boolean') donnees.actif = actif;
+
+    if (Object.keys(donnees).length === 0) {
+      return NextResponse.json({ error: 'Aucune modification demandée' }, { status: 400 });
+    }
+
+    const produit = await prisma.produit.update({ where: { id: produitId }, data: donnees });
+    return NextResponse.json({ message: 'Produit modifié', produit });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
       return NextResponse.json({ error: 'Produit introuvable' }, { status: 404 });
     }
-
-    // Préparer les données à mettre à jour
-    const updateData: any = {};
-
-    // Si on veut changer le nom
-    if (nouveauNom && typeof nouveauNom === 'string') {
-      // Vérifier que le nouveau nom n'existe pas déjà (sauf pour le produit actuel)
-      const nomExiste = await prisma.produit.findFirst({
-        where: { 
-          nom: nouveauNom.trim(),
-          NOT: { id: parseInt(id) }
-        }
-      });
-
-      if (nomExiste) {
-        return NextResponse.json({ error: 'Un produit avec ce nom existe déjà' }, { status: 400 });
-      }
-
-      updateData.nom = nouveauNom.trim();
-    }
-
-    // Si on veut changer l'ordre
-    if (nouvelOrdre !== undefined && nouvelOrdre !== null) {
-      const ordre = parseInt(nouvelOrdre);
-      if (isNaN(ordre) || ordre < 0) {
-        return NextResponse.json({ error: 'L\'ordre doit être un nombre positif' }, { status: 400 });
-      }
-      updateData.ordre = ordre;
-    }
-
-    // Vérifier qu'on a au moins une donnée à mettre à jour
-    if (Object.keys(updateData).length === 0) {
-      return NextResponse.json({ error: 'Aucune donnée à modifier' }, { status: 400 });
-    }
-
-    // Mettre à jour le produit
-    const produitMisAJour = await prisma.produit.update({
-      where: { id: parseInt(id) },
-      data: updateData
-    });
-
-    return NextResponse.json({ 
-      message: 'Produit modifié avec succès', 
-      produit: produitMisAJour 
-    });
-
-  } catch (error) {
-    console.error('Erreur lors de la modification du produit:', error);
-    return NextResponse.json({ error: 'Échec de la modification du produit.' }, { status: 500 });
+    console.error('PUT /api/produits', error);
+    return NextResponse.json({ error: 'La modification a échoué.' }, { status: 500 });
   }
 }
 
-// DELETE - Supprimer un produit (avec code de sécurité)
+/**
+ * Un produit qui a un historique n'est jamais supprimé : il est désactivé.
+ * Supprimer effacerait des mois d'inventaire au passage.
+ */
 export async function DELETE(request: Request) {
   try {
     const { id, codeSecurite, forceSuppression } = await request.json();
+    if (!codeValide(codeSecurite)) return refusCode();
 
-    // Vérification du code de sécurité
-    if (codeSecurite !== '5551') {
-      return NextResponse.json({ error: 'Code de sécurité incorrect' }, { status: 403 });
+    const produitId = Number(id);
+    if (!Number.isInteger(produitId)) {
+      return NextResponse.json({ error: 'Identifiant requis' }, { status: 400 });
     }
 
-    if (!id) {
-      return NextResponse.json({ error: 'ID du produit requis' }, { status: 400 });
-    }
-
-    // Vérifier que le produit existe
-    const produitExiste = await prisma.produit.findUnique({
-      where: { id: parseInt(id) },
-      include: {
-        inventaires: {
-          select: { id: true, dateInventaire: true }
-        }
-      }
+    const produit = await prisma.produit.findUnique({
+      where: { id: produitId },
+      select: { id: true, nom: true, _count: { select: { inventaires: true } } },
     });
 
-    if (!produitExiste) {
+    if (!produit) {
       return NextResponse.json({ error: 'Produit introuvable' }, { status: 404 });
     }
 
-    // Si il y a des inventaires liés
-    if (produitExiste.inventaires.length > 0) {
-      if (!forceSuppression) {
-        return NextResponse.json({ 
-          error: 'Ce produit a des inventaires associés',
-          inventairesCount: produitExiste.inventaires.length,
-          canForceDelete: true,
-          message: 'Utilisez la suppression forcée pour supprimer le produit et tous ses inventaires.'
-        }, { status: 400 });
-      }
+    const historique = produit._count.inventaires;
 
-      // Suppression forcée : supprimer d'abord tous les inventaires
-      await prisma.inventaire.deleteMany({
-        where: { produitId: parseInt(id) }
+    if (historique > 0 && !forceSuppression) {
+      await prisma.produit.update({ where: { id: produitId }, data: { actif: false } });
+      return NextResponse.json({
+        message: `« ${produit.nom} » a été retiré des listes de saisie. Ses ${historique} jour(s) d'historique sont conservés.`,
+        desactive: true,
+        historique,
       });
     }
 
-    // Supprimer le produit
-    await prisma.produit.delete({
-      where: { id: parseInt(id) }
-    });
+    await prisma.$transaction([
+      prisma.inventaire.deleteMany({ where: { produitId } }),
+      prisma.produit.delete({ where: { id: produitId } }),
+    ]);
 
-    return NextResponse.json({ 
-      message: forceSuppression 
-        ? `Produit et ${produitExiste.inventaires.length} inventaire(s) supprimé(s) avec succès`
-        : 'Produit supprimé avec succès',
-      deletedInventories: forceSuppression ? produitExiste.inventaires.length : 0
+    return NextResponse.json({
+      message:
+        historique > 0
+          ? `« ${produit.nom} » et ${historique} jour(s) d'historique ont été supprimés.`
+          : `« ${produit.nom} » a été supprimé.`,
+      supprime: true,
     });
-
   } catch (error) {
-    console.error('Erreur lors de la suppression du produit:', error);
-    return NextResponse.json({ error: 'Échec de la suppression du produit.' }, { status: 500 });
+    console.error('DELETE /api/produits', error);
+    return NextResponse.json({ error: 'La suppression a échoué.' }, { status: 500 });
   }
 }
