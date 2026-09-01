@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { diagnostiquer } from '@/lib/erreurBase';
 import { estUneRupture, journeeProduction } from '@/lib/dateProduction';
 import { estPoste } from '@/lib/postes';
 
@@ -371,10 +372,7 @@ export async function GET(request: Request) {
     return NextResponse.json(inventaires);
   } catch (error) {
     console.error('GET /api/inventaires', error);
-    return NextResponse.json(
-      { error: 'Impossible de charger les inventaires.' },
-      { status: 500 }
-    );
+    return NextResponse.json(diagnostiquer(error), { status: 500 });
   }
 }
 

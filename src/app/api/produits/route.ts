@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { diagnostiquer } from '@/lib/erreurBase';
 import { estPoste } from '@/lib/postes';
 
 /** Le code de gestion ne doit pas vivre dans le dépôt : il vient de l'environnement. */
@@ -44,7 +45,7 @@ export async function GET(request: Request) {
     return NextResponse.json(produits);
   } catch (error) {
     console.error('GET /api/produits', error);
-    return NextResponse.json({ error: 'Impossible de charger les produits.' }, { status: 500 });
+    return NextResponse.json(diagnostiquer(error), { status: 500 });
   }
 }
 
