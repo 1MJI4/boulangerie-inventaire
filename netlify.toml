@@ -1,0 +1,23 @@
+# netlify.toml
+
+[build]
+  # scripts/build.js enchaine `prisma generate` puis `next build`.
+  # Regenerer le client a chaque build est indispensable : le cache de Netlify
+  # peut resservir un node_modules ou le client ne connait pas le schema actuel.
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # Prisma telecharge ses moteurs pendant le build ; sans cela un cache partiel
+  # fait echouer la verification de somme de controle.
+  PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING = "1"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# L'application lit et ecrit la saisie en cours : rien ne doit etre mis en cache.
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Cache-Control = "no-store, max-age=0"

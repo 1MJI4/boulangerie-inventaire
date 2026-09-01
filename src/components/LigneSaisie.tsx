@@ -56,7 +56,14 @@ export function LigneSaisie({
 
   const tailleCible = compact ? 'h-9 w-9' : 'h-11 w-11';
   const hauteurChamp = compact ? 'h-9' : 'h-11';
-  const largeurChamp = carte ? 'flex-1 min-w-0' : compact ? 'w-16' : 'w-20';
+  // En carte le champ s'étire pour offrir une grande cible au doigt, mais
+  // borné : sur une carte large, un champ de 280 px pour trois chiffres se lit
+  // comme une zone de texte, pas comme une quantité.
+  const largeurChamp = carte
+    ? 'flex-1 min-w-0 max-w-[9rem]'
+    : compact
+      ? 'w-16'
+      : 'w-20';
 
   const classesConteneur = carte
     ? `ligne-impression flex flex-col justify-between rounded-lg border transition-colors ${

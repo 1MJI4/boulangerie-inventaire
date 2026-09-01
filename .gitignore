@@ -125,3 +125,6 @@ temp/
 # Build outputs
 dist/
 build/
+
+# Netlify
+.netlify

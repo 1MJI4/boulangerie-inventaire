@@ -117,7 +117,11 @@ export default function DashboardInventaires() {
     setLoadingDetail(true);
     
     try {
-      const response = await fetch(`/api/inventaires?date=${date}`);
+      // L'API n'accepte que YYYY-MM-DD. Un horodatage ISO complet est rejeté
+      // silencieusement : le filtre de date saute et la fenêtre affiche toutes
+      // les journées confondues, chaque produit en plusieurs exemplaires.
+      const jour = String(date).slice(0, 10);
+      const response = await fetch(`/api/inventaires?date=${jour}`);
       const data = await response.json();
       
       // Trier les inventaires par ordre des produits comme dans la saisie vendeur

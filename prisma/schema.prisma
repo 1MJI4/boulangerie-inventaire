@@ -1,6 +1,11 @@
 // prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
+  // Les fonctions Netlify tournent sur AWS Lambda (Amazon Linux, OpenSSL 3).
+  // Sans ce moteur, l'application se deploie mais chaque appel a la base
+  // echoue avec "Query Engine not found" - la panne la plus frequente de
+  // Prisma sur Netlify.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
