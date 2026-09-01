@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { Carte } from '@/components/ui';
 import { useProfil } from '@/components/ProfilAppareil';
@@ -51,8 +52,17 @@ export default function Accueil() {
   return (
     <>
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
-          Inventaire de la boulangerie
+        {/* Ici le logotype a la place de respirer et reste lisible. */}
+        <Image
+          src="/logo.png"
+          alt="PAin PAtisserie"
+          width={900}
+          height={317}
+          priority
+          className="mb-3 h-auto w-52 sm:w-64"
+        />
+        <h1 className="text-xl font-semibold tracking-tight text-ink sm:text-2xl">
+          Inventaire
         </h1>
         <p className="mt-2 text-sm text-ink-2">
           Prochaine fournée&nbsp;:{' '}

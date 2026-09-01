@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { BandeauOnglets } from './BandeauOnglets';
@@ -20,9 +21,22 @@ export function BarreNavigation() {
       <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
         <Link
           href={profil ? DEFINITIONS[profil].accueil : '/'}
-          className="shrink-0 text-[15px] font-semibold tracking-tight text-ink hover:text-accent"
+          className="flex shrink-0 items-center gap-2"
+          aria-label="PAin PAtisserie — accueil"
         >
-          Boulangerie
+          {/* Le logotype complet serait illisible à cette hauteur : on garde
+              le monogramme, et le nom en toutes lettres à côté. */}
+          <Image
+            src="/monogramme.png"
+            alt=""
+            width={28}
+            height={28}
+            priority
+            className="h-7 w-7 rounded-md"
+          />
+          <span className="hidden text-[15px] font-semibold tracking-tight text-ink sm:inline">
+            PAin PAtisserie
+          </span>
         </Link>
 
         {/* La barre déborde sur téléphone : elle se fait glisser au doigt
