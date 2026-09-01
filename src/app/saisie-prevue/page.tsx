@@ -171,12 +171,12 @@ export default function SaisiePrevisions() {
 
             return (
               <Carte key={categorie}>
-                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-3 px-4">
                   <button
                     type="button"
                     onClick={() => basculer(categorie)}
                     aria-expanded={ouvert}
-                    className="flex min-w-0 items-center gap-2 text-left"
+                    className="-mx-2 flex min-h-11 min-w-0 items-center gap-2 rounded-md px-2 text-left hover:bg-surface-2"
                   >
                     <span aria-hidden className="text-ink-3">
                       {ouvert ? '▾' : '▸'}

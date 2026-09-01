@@ -1,44 +1,52 @@
+'use client';
+
 import Link from 'next/link';
 import { Carte } from '@/components/ui';
-import { formatDateLong, journeeProduction, dateDuJour } from '@/lib/dateProduction';
+import { useProfil } from '@/components/ProfilAppareil';
+import { dateDuJour, formatDateLong, journeeProduction } from '@/lib/dateProduction';
+import { DEFINITIONS, LIBELLES_ECRANS } from '@/lib/profils';
 
-const TACHES = [
-  {
-    href: '/saisie-prevue',
-    titre: 'Prévisions',
-    description: 'Le manager note les quantités voulues pour la prochaine fournée.',
+const DESCRIPTIONS: Record<string, { description: string; moment?: string }> = {
+  '/saisie-prevue': {
+    description: 'Noter les quantités voulues pour la prochaine fournée.',
     moment: 'fin d’après-midi',
   },
-  {
-    href: '/planification-demain',
-    titre: 'Feuille de production',
-    description: 'Le pâtissier et le boulanger lisent ce qu’il y a à produire.',
+  '/planification-demain': {
+    description: 'Lire ce qu’il y a à produire, et cocher au fur et à mesure.',
     moment: 'la nuit',
   },
-  {
-    href: '/saisie-production',
-    titre: 'Production réalisée',
-    description: 'Les quantités effectivement sorties du four.',
+  '/saisie-production': {
+    description: 'Saisir les quantités réellement sorties du four.',
     moment: 'au petit matin',
   },
-  {
-    href: '/saisie-vendeur',
-    titre: 'Comptage du restant',
-    description: 'Ce qu’il reste en rayon, zone du magasin par zone.',
+  '/saisie-vendeur': {
+    description: 'Compter ce qu’il reste en rayon, zone par zone.',
     moment: 'en fin de journée',
   },
-];
+  '/inventaire': { description: 'Demandé, produit, restant et vendu sur une journée.' },
+  '/dashboard': { description: 'Tendances et taux d’invendu sur la durée.' },
+  '/historique-previsions': { description: 'Ce qui a été demandé, jour après jour.' },
+  '/test-api': { description: 'Ajouter, renommer et réordonner les articles.' },
+};
 
-const CONSULTATION = [
-  { href: '/inventaire', titre: 'Inventaire complet', description: 'Demandé, produit, restant et vendu sur une journée.' },
-  { href: '/dashboard', titre: 'Tableau de bord', description: 'Tendances et taux d’invendu sur la durée.' },
-  { href: '/historique-previsions', titre: 'Historique des prévisions', description: 'Ce qui a été demandé, jour après jour.' },
-  { href: '/test-api', titre: 'Catalogue produits', description: 'Ajouter, renommer et réordonner les articles.' },
+/** Les quatre écrans qui forment le tour de la journée, dans l'ordre. */
+const DEROULE = [
+  '/saisie-prevue',
+  '/planification-demain',
+  '/saisie-production',
+  '/saisie-vendeur',
 ];
 
 export default function Accueil() {
+  const { profil, prete, ouvrirSelecteur } = useProfil();
   const journee = journeeProduction();
   const aujourdhui = dateDuJour();
+
+  if (!prete || !profil) return null;
+
+  const definition = DEFINITIONS[profil];
+  const deroule = definition.ecrans.filter((e) => DEROULE.includes(e));
+  const consultation = definition.ecrans.filter((e) => !DEROULE.includes(e));
 
   return (
     <>
@@ -53,41 +61,67 @@ export default function Accueil() {
             <span className="text-ink-3"> — la journée bascule à 14h</span>
           ) : null}
         </p>
+        <p className="mt-1 text-xs text-ink-3">
+          Cet appareil est réglé sur « {definition.libelle} ».{' '}
+          <button
+            type="button"
+            onClick={ouvrirSelecteur}
+            className="underline underline-offset-2 hover:text-ink-2"
+          >
+            Changer
+          </button>
+        </p>
       </div>
 
-      <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-ink-3">
-        Le tour de la journée
-      </h2>
-      <ol className="mb-10 grid gap-3 sm:grid-cols-2">
-        {TACHES.map((tache, index) => (
-          <li key={tache.href}>
-            <Link href={tache.href} className="block h-full">
-              <Carte className="h-full p-4 transition-colors hover:border-accent">
-                <div className="flex items-baseline gap-2">
-                  <span className="chiffres text-xs text-ink-3">{index + 1}</span>
-                  <h3 className="text-base font-medium text-ink">{tache.titre}</h3>
-                </div>
-                <p className="mt-1.5 text-sm text-ink-2 text-pretty">{tache.description}</p>
-                <p className="mt-3 text-xs text-ink-3">{tache.moment}</p>
-              </Carte>
-            </Link>
-          </li>
-        ))}
-      </ol>
+      {deroule.length > 0 ? (
+        <>
+          <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-ink-3">
+            {deroule.length > 1 ? 'Le tour de la journée' : 'Votre écran'}
+          </h2>
+          <ol className="mb-10 grid gap-3 sm:grid-cols-2">
+            {deroule.map((href, index) => (
+              <li key={href}>
+                <Link href={href} className="block h-full">
+                  <Carte className="h-full p-4 transition-colors hover:border-accent">
+                    <div className="flex items-baseline gap-2">
+                      {deroule.length > 1 ? (
+                        <span className="chiffres text-xs text-ink-3">{index + 1}</span>
+                      ) : null}
+                      <h3 className="text-base font-medium text-ink">{LIBELLES_ECRANS[href]}</h3>
+                    </div>
+                    <p className="mt-1.5 text-sm text-ink-2 text-pretty">
+                      {DESCRIPTIONS[href]?.description}
+                    </p>
+                    {DESCRIPTIONS[href]?.moment ? (
+                      <p className="mt-3 text-xs text-ink-3">{DESCRIPTIONS[href]?.moment}</p>
+                    ) : null}
+                  </Carte>
+                </Link>
+              </li>
+            ))}
+          </ol>
+        </>
+      ) : null}
 
-      <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-ink-3">Consulter</h2>
-      <ul className="grid gap-3 sm:grid-cols-2">
-        {CONSULTATION.map((lien) => (
-          <li key={lien.href}>
-            <Link href={lien.href} className="block h-full">
-              <Carte className="h-full p-4 transition-colors hover:border-accent">
-                <h3 className="text-base font-medium text-ink">{lien.titre}</h3>
-                <p className="mt-1.5 text-sm text-ink-2 text-pretty">{lien.description}</p>
-              </Carte>
-            </Link>
-          </li>
-        ))}
-      </ul>
+      {consultation.length > 0 ? (
+        <>
+          <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-ink-3">Consulter</h2>
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {consultation.map((href) => (
+              <li key={href}>
+                <Link href={href} className="block h-full">
+                  <Carte className="h-full p-4 transition-colors hover:border-accent">
+                    <h3 className="text-base font-medium text-ink">{LIBELLES_ECRANS[href]}</h3>
+                    <p className="mt-1.5 text-sm text-ink-2 text-pretty">
+                      {DESCRIPTIONS[href]?.description}
+                    </p>
+                  </Carte>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
     </>
   );
 }

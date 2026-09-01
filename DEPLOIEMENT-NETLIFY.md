@@ -29,16 +29,24 @@ Netlify détecte Next.js et lit `netlify.toml`. Les réglages y sont déjà :
 **Site configuration → Environment variables.** Sans elles le build passe mais
 l'application ne joint pas la base.
 
-| Variable | Valeur |
-|---|---|
-| `DATABASE_URL` | pooler transaction (port 6543), avec `?pgbouncer=true&connection_limit=1` |
-| `DIRECT_URL` | pooler session (port 5432) |
-| `CODE_GESTION` | le code du catalogue produits — **changez-le** |
-| `NEXTAUTH_SECRET` | la clé aléatoire de votre `.env` |
-| `NEXTAUTH_URL` | l'URL du site une fois connue, ex. `https://boulangerie.netlify.app` |
+Il en faut **trois**, pas une de plus :
 
-`NEXTAUTH_URL` n'est connue qu'après le premier déploiement : déployez, notez
-l'URL, ajoutez la variable, puis relancez un déploiement.
+| Variable | Valeur | Lue par |
+|---|---|---|
+| `DATABASE_URL` | pooler transaction (port 6543), avec `?pgbouncer=true&connection_limit=1` | l'application |
+| `DIRECT_URL` | pooler session (port 5432) | les migrations Prisma |
+| `CODE_GESTION` | le code qui débloque le profil manager et le catalogue — **changez-le** | l'API |
+
+Cochez « Same value for all deploy contexts » : sans cela les déploiements de
+prévisualisation n'auront pas de base et échoueront.
+
+**`NEXTAUTH_SECRET` et `NEXTAUTH_URL` ne servent à rien.** Elles traînent dans
+le `.env` depuis le squelette de départ, mais aucun code ne les lit — il n'y a
+pas de NextAuth dans ce projet. Ne les recopiez pas sur Netlify.
+
+Attention : `.env` n'est **pas** poussé sur GitHub (il est dans `.gitignore`, et
+c'est bien ainsi). Netlify n'a donc aucun moyen de deviner ces valeurs : sans
+elles, le build réussit et toutes les pages tombent en 500.
 
 ## 4. Vérifier
 

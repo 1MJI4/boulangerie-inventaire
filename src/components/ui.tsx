@@ -13,12 +13,12 @@ export function Entete({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+    <div className="mb-4 flex flex-wrap items-start justify-between gap-3 sm:mb-6 sm:gap-4">
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink text-balance sm:text-3xl">
+        <h1 className="text-xl font-semibold tracking-tight text-ink text-balance sm:text-3xl">
           {titre}
         </h1>
-        {sousTitre ? <div className="mt-1.5 text-sm text-ink-2">{sousTitre}</div> : null}
+        {sousTitre ? <div className="mt-1 text-[13px] text-ink-2 sm:mt-1.5 sm:text-sm">{sousTitre}</div> : null}
       </div>
       {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
     </div>

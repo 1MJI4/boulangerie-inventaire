@@ -345,14 +345,14 @@ export default function GestionProduits() {
             <h2 className="text-lg sm:text-xl font-semibold text-ink mb-4">Ajouter des produits</h2>
             <form onSubmit={handleSubmit}>
               <div className="mb-4">
-                <label className="block text-sm font-medium text-black mb-2">
+                <label className="block text-sm font-medium text-ink mb-2">
                   Noms des produits (séparés par des virgules)
                 </label>
                 <textarea
                   value={noms}
                   onChange={(e) => setNoms(e.target.value)}
                   placeholder="Croissant, Pain de campagne, Tarte aux pommes..."
-                  className="w-full p-3 border border-line rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base text-black"
+                  className="w-full p-3 border border-line rounded-md focus:ring-2 focus:ring-blue-500 focus:border-accent text-base text-ink"
                   rows={4}
                   required
                 />
@@ -414,7 +414,7 @@ export default function GestionProduits() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-accent text-white p-3 rounded-md hover:bg-accent-fort disabled:bg-gray-400 font-medium text-base transition-colors"
+                className="w-full bg-accent text-white p-3 rounded-md hover:bg-accent-fort disabled:bg-ink-3 font-medium text-base transition-colors"
               >
                 {loading ? 'Ajout en cours...' : 'Ajouter les produits'}
               </button>
@@ -422,7 +422,7 @@ export default function GestionProduits() {
             
             {result && (
               <div className="mt-4">
-                <h3 className="font-medium text-black mb-2">Résultat:</h3>
+                <h3 className="font-medium text-ink mb-2">Résultat:</h3>
                 <pre className="bg-surface-2 border border-line p-3 rounded text-xs sm:text-sm overflow-auto max-h-40">
                   {result}
                 </pre>
@@ -438,13 +438,13 @@ export default function GestionProduits() {
                 <button
                   onClick={startReorganisation}
                   disabled={modeReorganisation}
-                  className="w-full sm:w-auto bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 font-medium text-sm transition-colors disabled:bg-gray-400"
+                  className="w-full sm:w-auto bg-accent text-white px-4 py-2 rounded-md hover:bg-accent-fort font-medium text-sm transition-colors disabled:bg-ink-3"
                 >
                   Réorganiser l'ordre
                 </button>
                 <button
                   onClick={loadProduits}
-                  className="w-full sm:w-auto bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 font-medium text-sm transition-colors"
+                  className="w-full sm:w-auto bg-ok text-white px-4 py-2 rounded-md hover:bg-ok font-medium text-sm transition-colors"
                 >
                   Actualiser
                 </button>
@@ -465,13 +465,13 @@ export default function GestionProduits() {
                 <span className="text-xs font-medium text-accent">Suggestions rapides :</span>
                 <button
                   onClick={() => { /* TODO: Auto-numéroter */ }}
-                  className="text-xs bg-accent-doux hover:bg-blue-200 text-accent px-2 py-1 rounded"
+                  className="text-xs bg-accent-doux hover:bg-accent-fort text-accent px-2 py-1 rounded"
                 >
                   Auto-numéroter 1,2,3...
                 </button>
                 <button
                   onClick={() => { /* TODO: Grouper par type */ }}
-                  className="text-xs bg-accent-doux hover:bg-blue-200 text-accent px-2 py-1 rounded"
+                  className="text-xs bg-accent-doux hover:bg-accent-fort text-accent px-2 py-1 rounded"
                 >
                   Grouper par type
                 </button>
@@ -480,12 +480,12 @@ export default function GestionProduits() {
 
             {/* Interface de réorganisation */}
             {modeReorganisation && (
-              <div className="bg-accent-doux border border-purple-200 rounded-xl p-4 mb-4">
+              <div className="bg-accent-doux border border-accent rounded-xl p-4 mb-4">
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4">
                   <h3 className="font-semibold text-accent mb-2 sm:mb-0">Mode Réorganisation</h3>
                   <button
                     onClick={cancelReorganisation}
-                    className="text-sm bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded"
+                    className="text-sm bg-ink-3 hover:bg-ink-2 text-white px-3 py-1 rounded"
                   >
                     Annuler
                   </button>
@@ -494,8 +494,8 @@ export default function GestionProduits() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   {/* Liste des produits disponibles */}
                   <div>
-                    <h4 className="font-medium text-black mb-2">Produits disponibles</h4>
-                    <p className="text-sm text-black mb-3">Cliquez pour ajouter à votre ordre :</p>
+                    <h4 className="font-medium text-ink mb-2">Produits disponibles</h4>
+                    <p className="text-sm text-ink mb-3">Cliquez pour ajouter à votre ordre :</p>
                     <div className="max-h-60 overflow-y-auto space-y-2">
                       {produits.map((produit) => (
                         <button
@@ -503,12 +503,12 @@ export default function GestionProduits() {
                           onClick={() => ajouterProduitAOrdre(produit)}
                           className={`w-full text-left p-3 rounded-xl border transition-colors ${
                             ordreSelectionne.includes(produit.id)
-                              ? 'bg-ok-doux border-green-300 text-ok'
+                              ? 'bg-ok-doux border-ok text-ok'
                               : 'bg-surface border-line hover:bg-surface-2'
                           }`}
                         >
                           <div className="flex items-center justify-between">
-                            <span className="font-medium text-black">{produit.nom}</span>
+                            <span className="font-medium text-ink">{produit.nom}</span>
                             <div className="flex items-center gap-2">
                               <span className="text-xs bg-surface-2 px-2 py-1 rounded">#{produit.id}</span>
                               {ordreSelectionne.includes(produit.id) && (
@@ -523,11 +523,11 @@ export default function GestionProduits() {
 
                   {/* Ordre sélectionné */}
                   <div>
-                    <h4 className="font-medium text-black mb-2">Ordre pour les vendeurs</h4>
-                    <p className="text-sm text-black mb-3">Ordre d'affichage (utilisez pour ajuster) :</p>
+                    <h4 className="font-medium text-ink mb-2">Ordre pour les vendeurs</h4>
+                    <p className="text-sm text-ink mb-3">Ordre d'affichage (utilisez pour ajuster) :</p>
                     
                     {ordreSelectionne.length === 0 ? (
-                      <div className="bg-surface-2 border border-line rounded-xl p-4 text-center text-black">
+                      <div className="bg-surface-2 border border-line rounded-xl p-4 text-center text-ink">
                         Aucun produit sélectionné
                       </div>
                     ) : (
@@ -544,7 +544,7 @@ export default function GestionProduits() {
                                     <span className="bg-accent-doux text-accent text-sm font-bold px-2 py-1 rounded">
                                       {index + 1}
                                     </span>
-                                    <span className="font-medium text-black">{produit.nom}</span>
+                                    <span className="font-medium text-ink">{produit.nom}</span>
                                   </div>
                                   <div className="flex items-center gap-1">
                                     <button
@@ -582,14 +582,14 @@ export default function GestionProduits() {
                               type="password"
                               value={codeSecurite}
                               onChange={(e) => setCodeSecurite(e.target.value)}
-                              className="w-full p-2 border border-line rounded-md focus:ring-2 focus:ring-purple-500 text-black"
+                              className="w-full p-2 border border-line rounded-md focus:ring-2 focus:ring-purple-500 text-ink"
                               placeholder="Code de gestion"
                             />
                           </div>
                           <button
                             onClick={sauvegarderNouvelOrdre}
                             disabled={savingOrdre || !codeSecurite}
-                            className="w-full bg-purple-600 text-white py-2 px-4 rounded-md hover:bg-purple-700 disabled:bg-gray-400 font-medium transition-colors"
+                            className="w-full bg-accent text-white py-2 px-4 rounded-md hover:bg-accent-fort disabled:bg-ink-3 font-medium transition-colors"
                           >
                             {savingOrdre ? 'Sauvegarde...' : `💾 Sauvegarder l'ordre (${ordreSelectionne.length} produits)`}
                           </button>
@@ -604,8 +604,8 @@ export default function GestionProduits() {
             {produits.length === 0 ? (
               <div className="text-center py-8">
                 <div className="text-4xl mb-3"></div>
-                <p className="text-black text-base">Aucun produit trouvé</p>
-                <p className="text-black text-sm mt-1">Ajoutez vos premiers produits ci-dessus</p>
+                <p className="text-ink text-base">Aucun produit trouvé</p>
+                <p className="text-ink text-sm mt-1">Ajoutez vos premiers produits ci-dessus</p>
               </div>
             ) : (
               <>
@@ -617,33 +617,33 @@ export default function GestionProduits() {
                         // Mode modification
                         <div className="space-y-3">
                           <div>
-                            <label className="block text-sm font-medium text-black mb-1">Nom du produit</label>
+                            <label className="block text-sm font-medium text-ink mb-1">Nom du produit</label>
                             <input
                               type="text"
                               value={nouveauNom}
                               onChange={(e) => setNouveauNom(e.target.value)}
-                              className="w-full p-2 border border-line rounded-md focus:ring-2 focus:ring-blue-500 text-black"
+                              className="w-full p-2 border border-line rounded-md focus:ring-2 focus:ring-blue-500 text-ink"
                               placeholder="Nouveau nom"
                             />
                           </div>
                           <div>
-                            <label className="block text-sm font-medium text-black mb-1">Ordre d'affichage</label>
+                            <label className="block text-sm font-medium text-ink mb-1">Ordre d'affichage</label>
                             <input
                               type="number"
                               min="0"
                               value={nouvelOrdre}
                               onChange={(e) => setNouvelOrdre(e.target.value)}
-                              className="w-full p-2 border border-line rounded-md focus:ring-2 focus:ring-blue-500 text-black"
+                              className="w-full p-2 border border-line rounded-md focus:ring-2 focus:ring-blue-500 text-ink"
                               placeholder="Position (1=premier, 2=deuxième...)"
                             />
                           </div>
                           <div>
-                            <label className="block text-sm font-medium text-black mb-1">Code de sécurité</label>
+                            <label className="block text-sm font-medium text-ink mb-1">Code de sécurité</label>
                             <input
                               type="password"
                               value={codeSecurite}
                               onChange={(e) => setCodeSecurite(e.target.value)}
-                              className="w-full p-2 border border-line rounded-md focus:ring-2 focus:ring-blue-500 text-black"
+                              className="w-full p-2 border border-line rounded-md focus:ring-2 focus:ring-blue-500 text-ink"
                               placeholder="Code de gestion"
                             />
                           </div>
@@ -651,13 +651,13 @@ export default function GestionProduits() {
                             <button
                               onClick={() => handleModification(produit.id)}
                               disabled={loading}
-                              className="flex-1 bg-green-600 text-white py-2 px-3 rounded text-sm hover:bg-green-700 disabled:bg-gray-400"
+                              className="flex-1 bg-ok text-white py-2 px-3 rounded text-sm hover:bg-ok disabled:bg-ink-3"
                             >
                               Confirmer
                             </button>
                             <button
                               onClick={cancelModification}
-                              className="flex-1 bg-gray-500 text-white py-2 px-3 rounded text-sm hover:bg-gray-600"
+                              className="flex-1 bg-ink-3 text-white py-2 px-3 rounded text-sm hover:bg-ink-2"
                             >
                               Annuler
                             </button>
@@ -723,12 +723,12 @@ export default function GestionProduits() {
                       {modeModification === produit.id ? (
                         // Mode modification desktop
                         <div className="flex items-center gap-3">
-                          <span className="text-sm text-black font-mono w-12">#{produit.id}</span>
+                          <span className="text-sm text-ink font-mono w-12">#{produit.id}</span>
                           <input
                             type="text"
                             value={nouveauNom}
                             onChange={(e) => setNouveauNom(e.target.value)}
-                            className="flex-1 p-2 border border-line rounded-md focus:ring-2 focus:ring-blue-500 text-black"
+                            className="flex-1 p-2 border border-line rounded-md focus:ring-2 focus:ring-blue-500 text-ink"
                             placeholder="Nom du produit"
                             title="Nom du produit"
                           />
@@ -737,7 +737,7 @@ export default function GestionProduits() {
                             min="0"
                             value={nouvelOrdre}
                             onChange={(e) => setNouvelOrdre(e.target.value)}
-                            className="w-20 p-2 border border-line rounded-md focus:ring-2 focus:ring-blue-500 text-black"
+                            className="w-20 p-2 border border-line rounded-md focus:ring-2 focus:ring-blue-500 text-ink"
                             placeholder="Ordre"
                             title="Ordre d'affichage"
                           />
@@ -745,20 +745,20 @@ export default function GestionProduits() {
                             type="password"
                             value={codeSecurite}
                             onChange={(e) => setCodeSecurite(e.target.value)}
-                            className="w-24 p-2 border border-line rounded-md focus:ring-2 focus:ring-blue-500 text-black"
+                            className="w-24 p-2 border border-line rounded-md focus:ring-2 focus:ring-blue-500 text-ink"
                             placeholder="Code de gestion"
                             title="Code de sécurité"
                           />
                           <button
                             onClick={() => handleModification(produit.id)}
                             disabled={loading}
-                            className="bg-green-600 text-white py-2 px-3 rounded text-sm hover:bg-green-700 disabled:bg-gray-400"
+                            className="bg-ok text-white py-2 px-3 rounded text-sm hover:bg-ok disabled:bg-ink-3"
                           >
                             
                           </button>
                           <button
                             onClick={cancelModification}
-                            className="bg-gray-500 text-white py-2 px-3 rounded text-sm hover:bg-gray-600"
+                            className="bg-ink-3 text-white py-2 px-3 rounded text-sm hover:bg-ink-2"
                           >
                             
                           </button>
@@ -783,7 +783,7 @@ export default function GestionProduits() {
                             </button>
                             <button
                               onClick={() => handleSuppression(produit.id, produit.nom)}
-                              className="bg-red-600 text-white py-1 px-3 rounded text-sm hover:bg-red-700"
+                              className="bg-alerte text-white py-1 px-3 rounded text-sm hover:bg-alerte"
                             >
                               Supprimer
                             </button>
@@ -809,9 +809,9 @@ export default function GestionProduits() {
 
         {/* Alerte de suppression forcée */}
         {produitASupprimer && (
-          <div className="mt-6 bg-alerte-doux border border-red-200 rounded-xl p-4">
-            <h3 className="font-medium text-red-900 mb-2">Produit avec inventaires détecté</h3>
-            <div className="bg-surface border border-red-200 rounded p-3 mb-4">
+          <div className="mt-6 bg-alerte-doux border border-alerte rounded-xl p-4">
+            <h3 className="font-medium text-alerte mb-2">Produit avec inventaires détecté</h3>
+            <div className="bg-surface border border-alerte rounded p-3 mb-4">
               <p className="text-alerte text-sm">
                 <strong>Produit :</strong> {produitASupprimer.nom}<br/>
                 <strong>Inventaires associés :</strong> {produitASupprimer.inventairesCount}<br/>
@@ -822,13 +822,13 @@ export default function GestionProduits() {
               <button
                 onClick={handleSuppressionForcee}
                 disabled={loading}
-                className="bg-red-600 text-white px-4 py-3 rounded-md hover:bg-red-700 disabled:bg-gray-400 font-medium text-base"
+                className="bg-alerte text-white px-4 py-3 rounded-md hover:bg-alerte disabled:bg-ink-3 font-medium text-base"
               >
                 Suppression forcée (produit + inventaires)
               </button>
               <button
                 onClick={() => setProduitASupprimer(null)}
-                className="bg-gray-500 text-white px-4 py-3 rounded-md hover:bg-gray-600 font-medium text-base"
+                className="bg-ink-3 text-white px-4 py-3 rounded-md hover:bg-ink-2 font-medium text-base"
               >
                 Annuler
               </button>
@@ -840,11 +840,11 @@ export default function GestionProduits() {
         )}
 
         {/* Code de sécurité pour modification/suppression */}
-        <div className="mt-6 bg-orange-50 border border-orange-200 rounded-xl p-4">
-          <h3 className="font-medium text-orange-900 mb-2">Code de sécurité</h3>
+        <div className="mt-6 bg-attention-doux border border-attention rounded-xl p-4">
+          <h3 className="font-medium text-attention mb-2">Code de sécurité</h3>
           <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
             <div className="flex-1">
-              <label className="block text-sm font-medium text-orange-700 mb-1">
+              <label className="block text-sm font-medium text-attention mb-1">
                 Code de gestion (requis pour modifier ou supprimer)
               </label>
               <div className="relative">
@@ -852,10 +852,10 @@ export default function GestionProduits() {
                   type="password"
                   value={codeSecurite}
                   onChange={(e) => setCodeSecurite(e.target.value)}
-                  className={`w-full p-3 border rounded-md focus:ring-2 focus:border-orange-500 text-black ${
+                  className={`w-full p-3 border rounded-md focus:ring-2 focus:border-attention text-ink ${
                     codeSecurite.trim().length > 0 
-                      ? 'border-green-300 bg-ok-doux focus:ring-green-500' 
-                      : 'border-orange-300 focus:ring-orange-500'
+                      ? 'border-ok bg-ok-doux focus:ring-green-500' 
+                      : 'border-attention focus:ring-orange-500'
                   }`}
                   placeholder="Entrez le code de gestion"
                 />
@@ -866,12 +866,12 @@ export default function GestionProduits() {
             </div>
             <button
               onClick={() => setCodeSecurite('')}
-              className="w-full sm:w-auto bg-gray-500 text-white px-4 py-3 rounded-md hover:bg-gray-600 font-medium text-base"
+              className="w-full sm:w-auto bg-ink-3 text-white px-4 py-3 rounded-md hover:bg-ink-2 font-medium text-base"
             >
               Effacer
             </button>
           </div>
-          <p className="text-orange-700 text-sm mt-2">
+          <p className="text-attention text-sm mt-2">
             <strong>Tip:</strong> Entrez d'abord le code, puis cliquez sur "Modifier" ou "Supprimer"
             {codeSecurite.trim().length > 0 && (
               <span className="text-ok font-medium"> Code correct !</span>
@@ -881,7 +881,7 @@ export default function GestionProduits() {
 
         {/* Instructions et conseils */}
         <div className="mt-6 sm:mt-8 bg-accent-doux border border-accent rounded-xl p-4">
-          <h3 className="font-medium text-blue-900 mb-2 text-base">Guide d'utilisation :</h3>
+          <h3 className="font-medium text-accent mb-2 text-base">Guide d'utilisation :</h3>
           <ul className="text-accent text-sm space-y-1">
             <li>• <strong>Ajouter</strong> : Séparez les noms de produits par des virgules</li>
             <li>• <strong>Modifier</strong> : 
@@ -907,7 +907,7 @@ export default function GestionProduits() {
         <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row gap-3 sm:gap-4">
           <a
             href="/inventaire"
-            className="inline-flex items-center justify-center bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700 font-medium text-base transition-colors"
+            className="inline-flex items-center justify-center bg-ok text-white px-6 py-3 rounded-md hover:bg-ok font-medium text-base transition-colors"
           >
             Aller à la saisie d'inventaire
           </a>

@@ -9,12 +9,18 @@ import { IndicateurSauvegarde } from '@/components/IndicateurSauvegarde';
 import { LigneSaisie } from '@/components/LigneSaisie';
 import { SelecteurJournee } from '@/components/SelecteurJournee';
 import { formatDateLong, journeeProduction } from '@/lib/dateProduction';
+import { useProfil } from '@/components/ProfilAppareil';
 import { LIBELLE_POSTE, POSTES, type Poste } from '@/lib/postes';
+import { DEFINITIONS } from '@/lib/profils';
 import { useSaisieJournee } from '@/lib/useSaisieJournee';
 
 export default function SaisieProduction() {
   const [date, setDate] = useState(() => journeeProduction());
-  const [poste, setPoste] = useState<Poste>('patissier');
+  const { profil } = useProfil();
+  const posteImpose = profil ? DEFINITIONS[profil].posteImpose : undefined;
+  const [posteChoisi, setPoste] = useState<Poste>('patissier');
+  // Le boulanger ne saisit que sa propre production.
+  const poste: Poste = posteImpose ?? posteChoisi;
   const [recherche, setRecherche] = useState('');
 
   const saisie = useSaisieJournee({ date, champ: 'quantiteProduite', poste });
@@ -49,21 +55,23 @@ export default function SaisieProduction() {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div role="tablist" aria-label="Poste" className="flex gap-1 rounded-lg border border-line bg-surface p-1">
-          {POSTES.map((p) => (
-            <button
-              key={p}
-              role="tab"
-              aria-selected={poste === p}
-              onClick={() => setPoste(p)}
-              className={`min-h-9 rounded-md px-3 text-sm font-medium transition-colors ${
-                poste === p ? 'bg-accent-doux text-accent' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
-              }`}
-            >
-              {LIBELLE_POSTE[p]}
-            </button>
-          ))}
-        </div>
+        {posteImpose ? null : (
+          <div role="tablist" aria-label="Poste" className="flex gap-1 rounded-lg border border-line bg-surface p-1">
+            {POSTES.map((p) => (
+              <button
+                key={p}
+                role="tab"
+                aria-selected={poste === p}
+                onClick={() => setPoste(p)}
+                className={`min-h-9 rounded-md px-3 text-sm font-medium transition-colors ${
+                  poste === p ? 'bg-accent-doux text-accent' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
+                }`}
+              >
+                {LIBELLE_POSTE[p]}
+              </button>
+            ))}
+          </div>
+        )}
 
         <input
           type="search"

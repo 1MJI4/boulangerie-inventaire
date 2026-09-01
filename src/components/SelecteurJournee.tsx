@@ -25,7 +25,7 @@ export function SelecteurJournee({
         type="button"
         onClick={() => onChange(decalerJours(date, -1))}
         aria-label="Journée précédente"
-        className="flex h-9 w-9 items-center justify-center rounded-md text-ink-2 hover:bg-surface-2 hover:text-ink"
+        className="flex h-11 w-11 items-center justify-center rounded-md text-lg text-ink-2 hover:bg-surface-2 hover:text-ink"
       >
         <span aria-hidden>‹</span>
       </button>
@@ -41,7 +41,7 @@ export function SelecteurJournee({
         type="button"
         onClick={() => onChange(decalerJours(date, 1))}
         aria-label="Journée suivante"
-        className="flex h-9 w-9 items-center justify-center rounded-md text-ink-2 hover:bg-surface-2 hover:text-ink"
+        className="flex h-11 w-11 items-center justify-center rounded-md text-lg text-ink-2 hover:bg-surface-2 hover:text-ink"
       >
         <span aria-hidden>›</span>
       </button>

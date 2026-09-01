@@ -124,6 +124,37 @@ Lecture seule, grands chiffres, une case à cocher par ligne pour suivre
 l'avancement, et un bouton d'impression — la feuille scotchée au mur reste le
 mode dégradé le plus fiable quand la tablette lâche.
 
+### Profils d'appareil
+
+Chaque tablette retient le poste auquel elle sert, et n'affiche que ses écrans.
+Il n'y a ni compte ni mot de passe : personne ne tape un identifiant à 4h du
+matin, et le personnel les partagerait de toute façon.
+
+| Profil | Écrans | Poste |
+|---|---|---|
+| **Vendeur** | Comptage | — |
+| **Pâtissier** | Fournil, Production | imposé à pâtissier |
+| **Boulanger** | Fournil, Production | imposé à boulanger |
+| **Manager** | les huit écrans | libre, onglets visibles |
+
+Au premier démarrage, l'application demande à qui sert l'appareil. Le choix est
+retenu dans le navigateur de cette tablette uniquement.
+
+Sur les profils pâtissier et boulanger, le **poste est imposé** : les onglets
+disparaissent, et il n'y a aucun moyen de tomber sur la liste de l'autre.
+
+Basculer entre vendeur, pâtissier et boulanger est libre — c'est un changement
+de poste. Passer en **manager demande le code de gestion** (`CODE_GESTION`),
+vérifié côté serveur : le code ne descend jamais dans le navigateur, et la
+comparaison est à durée constante.
+
+Ce n'est pas une barrière de sécurité, c'est un filtre qui évite les accidents.
+Les opérations destructrices sur le catalogue restent protégées par le même code,
+côté API.
+
+Si le navigateur refuse le stockage local (navigation privée), le choix du profil
+est redemandé à chaque ouverture. Utilisez un onglet normal sur les tablettes.
+
 ### Pages supprimées
 
 `vente`, `production` et `prevision` étaient des doublons jamais liés depuis

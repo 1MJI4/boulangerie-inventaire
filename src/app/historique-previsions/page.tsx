@@ -149,13 +149,13 @@ export default function HistoriquePrevisions() {
             <div className="flex gap-2">
               <Link 
                 href="/saisie-prevue"
-                className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-xl transition-colors duration-200 text-sm font-medium"
+                className="bg-accent hover:bg-accent text-white px-4 py-2 rounded-xl transition-colors duration-200 text-sm font-medium"
               >
                 Nouvelle prévision
               </Link>
               <Link 
                 href="/dashboard"
-                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-xl transition-colors duration-200 text-sm font-medium"
+                className="bg-ink-3 hover:bg-ink-2 text-white px-4 py-2 rounded-xl transition-colors duration-200 text-sm font-medium"
               >
                 Dashboard
               </Link>
@@ -181,7 +181,7 @@ export default function HistoriquePrevisions() {
               <p className="text-ink-3 mb-4">Commencez à planifier vos productions pour voir l'historique ici</p>
               <Link 
                 href="/saisie-prevue"
-                className="bg-purple-500 hover:bg-purple-600 text-white px-6 py-2 rounded-xl transition-colors"
+                className="bg-accent hover:bg-accent text-white px-6 py-2 rounded-xl transition-colors"
               >
                 Créer ma première prévision
               </Link>
@@ -244,7 +244,7 @@ export default function HistoriquePrevisions() {
           </Link>
           <Link
             href="/saisie-prevue"
-            className="inline-flex items-center justify-center bg-purple-600 text-white px-6 py-3 rounded-md hover:bg-purple-700 font-medium transition-colors"
+            className="inline-flex items-center justify-center bg-accent text-white px-6 py-3 rounded-md hover:bg-accent-fort font-medium transition-colors"
           >
             Nouvelle prévision
           </Link>
@@ -253,7 +253,7 @@ export default function HistoriquePrevisions() {
 
       {/* Modal de détails */}
       {modalOuverte && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
           <div className="bg-surface rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
             <div className="px-6 py-4 border-b border-line flex justify-between items-center">
               <div>

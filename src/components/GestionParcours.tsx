@@ -49,7 +49,7 @@ export function GestionParcours({
         type="button"
         onClick={() => setOuvert((o) => !o)}
         aria-expanded={ouvert}
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+        className="flex min-h-12 w-full items-center justify-between gap-3 px-4 py-3 text-left"
       >
         <span className="min-w-0">
           <span className="text-sm font-medium text-ink">Mon parcours dans le magasin</span>

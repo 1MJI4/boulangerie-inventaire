@@ -219,8 +219,10 @@ export default function Comptage() {
 
   /* --------------------------------------------------------------- Affichage */
 
+  // Deux colonnes dès le téléphone : sur une page de 17 produits, ça fait
+  // 9 rangées au lieu de 17, donc environ deux fois moins de défilement.
   const classesGrille = {
-    auto: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
+    auto: 'grid-cols-2 lg:grid-cols-3',
     '1': 'grid-cols-1',
     '2': 'grid-cols-2',
   }[preferences.colonnes];
@@ -268,11 +270,21 @@ export default function Comptage() {
         }
       />
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex items-center gap-3">
+          {rechercheOuverte ? null : (
+            <button
+              type="button"
+              onClick={() => setRechercheOuverte(true)}
+              aria-label="Chercher un produit"
+              className="sans-impression flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-xs text-ink-2 hover:border-line-fort hover:text-ink"
+            >
+              Chercher
+            </button>
+          )}
           <Progression fait={saisie.nbRenseignes} total={saisie.produits.length} />
           {nonComptes > 0 && !saisie.chargement ? (
-            <span className="text-xs text-ink-3">
+            <span className="hidden text-xs text-ink-3 sm:inline">
               {nonComptes} pas encore compté{nonComptes > 1 ? 's' : ''}
             </span>
           ) : null}
@@ -289,7 +301,7 @@ export default function Comptage() {
       {/* La recherche réordonne toute la liste : elle reste repliée tant qu'on
           ne la demande pas, pour ne pas casser l'ordre pendant un comptage. */}
       {rechercheOuverte ? (
-        <div className="sans-impression mb-4 flex gap-2">
+        <div className="sans-impression mb-3 flex gap-2">
           <input
             type="search"
             value={recherche}
@@ -309,20 +321,10 @@ export default function Comptage() {
             Fermer
           </Bouton>
         </div>
-      ) : (
-        <div className="sans-impression mb-4">
-          <button
-            type="button"
-            onClick={() => setRechercheOuverte(true)}
-            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-sm text-ink-2 hover:border-line-fort hover:text-ink"
-          >
-            Chercher un produit
-          </button>
-        </div>
-      )}
+      ) : null}
 
       {ongletsVisibles ? (
-        <div className="mb-4">
+        <div className="mb-3">
           <BandeauOnglets ariaLabel={parPages ? 'Pages' : 'Zones du magasin'}>
             {sections.map((section, index) => {
               const { faits, total } = avancementSection(section.produits);

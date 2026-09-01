@@ -18,7 +18,7 @@ export function RappelsService({ comptageTermine }: { comptageTermine: boolean }
         type="button"
         onClick={() => setOuvertManuellement(!ouvert)}
         aria-expanded={ouvert}
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+        className="flex min-h-12 w-full items-center justify-between gap-3 px-4 py-3 text-left"
       >
         <span>
           <span className="text-sm font-medium text-ink">Avant de partir</span>

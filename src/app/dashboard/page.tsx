@@ -191,25 +191,25 @@ export default function DashboardInventaires() {
         <div className="bg-surface rounded-xl border border-line p-6 mb-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-ink">Dashboard Inventaires</h1>
-              <p className="text-ink-2">Aperçu des performances par date</p>
+              <h1 className="text-2xl sm:text-3xl font-bold text-ink">Tableau de bord</h1>
+              <p className="text-ink-2">Ventes et invendus, journée par journée</p>
             </div>
             <div className="flex gap-2">
               <Link 
                 href="/historique-previsions"
-                className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-xl transition-colors duration-200 text-sm font-medium"
+                className="bg-accent hover:bg-accent text-white px-4 py-2 rounded-xl transition-colors duration-200 text-sm font-medium"
               >
                 Historique
               </Link>
               <Link 
                 href="/planification-demain"
-                className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-xl transition-colors duration-200 text-sm font-medium"
+                className="bg-accent hover:bg-accent text-white px-4 py-2 rounded-xl transition-colors duration-200 text-sm font-medium"
               >
                 Planification
               </Link>
               <Link 
                 href="/"
-                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-xl transition-colors duration-200 text-sm font-medium"
+                className="bg-ink-3 hover:bg-ink-2 text-white px-4 py-2 rounded-xl transition-colors duration-200 text-sm font-medium"
               >
                 Retour
               </Link>
@@ -284,7 +284,7 @@ export default function DashboardInventaires() {
         <div className="mt-6 flex flex-col sm:flex-row gap-3">
           <Link
             href="/inventaire"
-            className="inline-flex items-center justify-center bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700 font-medium transition-colors"
+            className="inline-flex items-center justify-center bg-ok text-white px-6 py-3 rounded-md hover:bg-ok font-medium transition-colors"
           >
             Nouvelle saisie d'inventaire
           </Link>
@@ -299,7 +299,7 @@ export default function DashboardInventaires() {
 
       {/* Modal de détails */}
       {modalOuverte && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
           <div className="bg-surface rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
             <div className="px-6 py-4 border-b border-line flex justify-between items-center">
               <div>
@@ -326,7 +326,7 @@ export default function DashboardInventaires() {
                   placeholder="Rechercher un produit..."
                   value={filtreRecherche}
                   onChange={(e) => filtrerProduits(e.target.value)}
-                  className="w-full px-4 py-2 pl-10 border border-line rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-4 py-2 pl-10 border border-line rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-accent"
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg className="h-5 w-5 text-ink-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -355,7 +355,7 @@ export default function DashboardInventaires() {
                     <button
                       onClick={() => setSectionAffichee(Math.max(0, sectionAffichee - 1))}
                       disabled={sectionAffichee === 0}
-                      className="px-3 py-1 rounded bg-blue-500 hover:bg-accent text-white disabled:bg-gray-300 disabled:text-ink-3 text-sm font-medium transition-colors"
+                      className="px-3 py-1 rounded bg-accent hover:bg-accent text-white disabled:bg-ink-3 disabled:text-ink-3 text-sm font-medium transition-colors"
                     >
                       Précédent
                     </button>
@@ -365,7 +365,7 @@ export default function DashboardInventaires() {
                     <button
                       onClick={() => setSectionAffichee(Math.min(nombreSections - 1, sectionAffichee + 1))}
                       disabled={sectionAffichee === nombreSections - 1}
-                      className="px-3 py-1 rounded bg-blue-500 hover:bg-accent text-white disabled:bg-gray-300 disabled:text-ink-3 text-sm font-medium transition-colors"
+                      className="px-3 py-1 rounded bg-accent hover:bg-accent text-white disabled:bg-ink-3 disabled:text-ink-3 text-sm font-medium transition-colors"
                     >
                       Suivant 
                     </button>
@@ -450,14 +450,14 @@ export default function DashboardInventaires() {
                         <button
                           onClick={() => setSectionAffichee(0)}
                           disabled={sectionAffichee === 0}
-                          className="px-3 py-2 rounded bg-blue-500 hover:bg-accent text-white disabled:bg-gray-300 disabled:text-ink-3 text-sm font-medium transition-colors"
+                          className="px-3 py-2 rounded bg-accent hover:bg-accent text-white disabled:bg-ink-3 disabled:text-ink-3 text-sm font-medium transition-colors"
                         >
                           Début
                         </button>
                         <button
                           onClick={() => setSectionAffichee(Math.max(0, sectionAffichee - 1))}
                           disabled={sectionAffichee === 0}
-                          className="px-3 py-2 rounded bg-blue-500 hover:bg-accent text-white disabled:bg-gray-300 disabled:text-ink-3 text-sm font-medium transition-colors"
+                          className="px-3 py-2 rounded bg-accent hover:bg-accent text-white disabled:bg-ink-3 disabled:text-ink-3 text-sm font-medium transition-colors"
                         >
                           Précédent
                         </button>
@@ -467,14 +467,14 @@ export default function DashboardInventaires() {
                         <button
                           onClick={() => setSectionAffichee(Math.min(nombreSections - 1, sectionAffichee + 1))}
                           disabled={sectionAffichee === nombreSections - 1}
-                          className="px-3 py-2 rounded bg-blue-500 hover:bg-accent text-white disabled:bg-gray-300 disabled:text-ink-3 text-sm font-medium transition-colors"
+                          className="px-3 py-2 rounded bg-accent hover:bg-accent text-white disabled:bg-ink-3 disabled:text-ink-3 text-sm font-medium transition-colors"
                         >
                           Suivant 
                         </button>
                         <button
                           onClick={() => setSectionAffichee(nombreSections - 1)}
                           disabled={sectionAffichee === nombreSections - 1}
-                          className="px-3 py-2 rounded bg-blue-500 hover:bg-accent text-white disabled:bg-gray-300 disabled:text-ink-3 text-sm font-medium transition-colors"
+                          className="px-3 py-2 rounded bg-accent hover:bg-accent text-white disabled:bg-ink-3 disabled:text-ink-3 text-sm font-medium transition-colors"
                         >
                           Fin
                         </button>

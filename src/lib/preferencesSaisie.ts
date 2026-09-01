@@ -48,7 +48,7 @@ export const LIBELLES = {
     restants: 'À compter d’abord',
   },
   clavier: { natif: 'Clavier du téléphone', pave: 'Pavé de l’application' },
-  colonnes: { auto: 'Automatique', '1': 'Une colonne', '2': 'Deux colonnes' },
+  colonnes: { auto: 'Adaptatif', '1': 'Une colonne', '2': 'Deux colonnes' },
   decoupage: { pages: 'Pages', zones: 'Par zones' },
 } as const;
 
@@ -59,7 +59,7 @@ export const EXPLICATIONS = {
   tri: 'Mon parcours suit le trajet enregistré dans le magasin. À compter d’abord remonte ce qui n’a pas encore été saisi.',
   clavier: 'Le pavé de l’application reste sous le pouce et évite que le clavier recouvre la liste.',
   colonnes:
-    'Automatique s’adapte à la largeur de l’écran, comme avant. Une colonne donne les noms complets, deux en montrent plus d’un coup.',
+    'Adaptatif met deux colonnes au téléphone et trois sur grand écran. Une colonne affiche les noms entiers, sans troncature.',
   decoupage:
     'Pages découpe toute la liste en tranches égales, dans l’ordre choisi — un parcours reste suivi de bout en bout. Par zones cale les pages sur les rayons du magasin.',
 } as const;

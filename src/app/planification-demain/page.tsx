@@ -13,7 +13,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide, Progression, Puce } from '@/components/ui';
 import { SelecteurJournee } from '@/components/SelecteurJournee';
 import { formatDateLong, journeeProduction } from '@/lib/dateProduction';
+import { useProfil } from '@/components/ProfilAppareil';
 import { useMemoireLocale } from '@/lib/memoireLocale';
+import { DEFINITIONS } from '@/lib/profils';
 import { DESCRIPTION_POSTE, LIBELLE_POSTE, POSTES, estPoste, type Poste } from '@/lib/postes';
 
 type LigneFournil = {
@@ -29,11 +31,17 @@ const INTERVALLE_RAFRAICHISSEMENT_MS = 45_000;
 
 export default function Fournil() {
   const [date, setDate] = useState(() => journeeProduction());
+  const { profil } = useProfil();
   const [posteMemorise, setPosteMemorise] = useMemoireLocale<string>(
     'boulangerie:poste-fournil',
     'patissier'
   );
-  const poste: Poste = estPoste(posteMemorise) ? posteMemorise : 'patissier';
+
+  // Sur la tablette du pâtissier, le poste n'est pas un choix : il ne doit
+  // jamais tomber sur la liste du boulanger. Seul le manager garde les onglets.
+  const posteImpose = profil ? DEFINITIONS[profil].posteImpose : undefined;
+  const poste: Poste =
+    posteImpose ?? (estPoste(posteMemorise) ? posteMemorise : 'patissier');
 
   const [lignes, setLignes] = useState<LigneFournil[]>([]);
   const [chargement, setChargement] = useState(true);
@@ -168,22 +176,28 @@ export default function Fournil() {
 
       <div className="sans-impression mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <div role="tablist" aria-label="Poste" className="flex gap-1 rounded-lg border border-line bg-surface p-1">
-            {POSTES.map((p) => (
-              <button
-                key={p}
-                role="tab"
-                aria-selected={poste === p}
-                onClick={() => setPosteMemorise(p)}
-                className={`min-h-9 rounded-md px-3 text-sm font-medium transition-colors ${
-                  poste === p ? 'bg-accent-doux text-accent' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
-                }`}
-              >
-                {LIBELLE_POSTE[p]}
-              </button>
-            ))}
-          </div>
-          <span className="text-xs text-ink-3">{DESCRIPTION_POSTE[poste]}</span>
+          {posteImpose ? (
+            <span className="text-xs text-ink-3">{DESCRIPTION_POSTE[poste]}</span>
+          ) : (
+            <>
+              <div role="tablist" aria-label="Poste" className="flex gap-1 rounded-lg border border-line bg-surface p-1">
+                {POSTES.map((p) => (
+                  <button
+                    key={p}
+                    role="tab"
+                    aria-selected={poste === p}
+                    onClick={() => setPosteMemorise(p)}
+                    className={`min-h-9 rounded-md px-3 text-sm font-medium transition-colors ${
+                      poste === p ? 'bg-accent-doux text-accent' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
+                    }`}
+                  >
+                    {LIBELLE_POSTE[p]}
+                  </button>
+                ))}
+              </div>
+              <span className="text-xs text-ink-3">{DESCRIPTION_POSTE[poste]}</span>
+            </>
+          )}
         </div>
 
         <button
