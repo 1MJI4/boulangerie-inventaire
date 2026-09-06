@@ -36,6 +36,7 @@ model Inventaire {
   quantiteRestante Int?     // null = pas encore compte (a ne pas confondre avec 0)
   quantiteProduite Int?
   quantitePrevue   Int?     // Quantite demandee par le manager pour cette journee
+  quantiteCommande Int?     // Part « + » due aux commandes clients (feuille 1 + 11)
   faitLe           DateTime? // Horodatage du "c'est produit" coche au fournil
   rupturePremiereA DateTime? // Heure du premier zero constate dans la journee
 

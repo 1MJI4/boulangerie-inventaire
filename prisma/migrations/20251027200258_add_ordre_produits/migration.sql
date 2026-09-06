@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Produit" ADD COLUMN     "ordre" INTEGER NOT NULL DEFAULT 999;

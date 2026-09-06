@@ -46,14 +46,18 @@ next-env.d.ts
 
 # prisma
 /src/generated/prisma
-/prisma/migrations/
+# Les migrations sont versionnées : un clone / déploiement doit pouvoir
+# rejouer prisma migrate deploy. Ne pas réignorer ce dossier.
 *.db
 *.sqlite
 *.sqlite3
 
-# database
+# database (dumps / exports locaux)
 /data/
 *.sql
+!prisma/migrations/
+!prisma/migrations/**
+!setup-supabase.sql
 
 # logs
 logs

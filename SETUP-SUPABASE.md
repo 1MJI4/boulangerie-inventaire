@@ -28,8 +28,8 @@ Change sa valeur : elle était visible par quiconque a accès au dépôt.
 Deux chemins équivalents. Le premier ne demande rien d'installé.
 
 **Option A — une requête SQL.** Copie tout `setup-supabase.sql` dans
-**SQL Editor → New query → Run**. Le script crée les tables, insère les
-123 produits avec leur catégorie et leur poste, et enregistre les 4 migrations
+**SQL Editor → New query → Run**. Le script crée les tables (inventaire +
+commandes + gâteaux), insère les 123 produits, et enregistre les 12 migrations
 dans `_prisma_migrations`. Il est rejouable sans risque.
 
 **Option B — par Prisma**, dans un terminal Windows :
