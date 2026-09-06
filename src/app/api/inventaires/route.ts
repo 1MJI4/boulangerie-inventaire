@@ -13,7 +13,12 @@ import { diagnostiquer } from '@/lib/erreurBase';
 import { estUneRupture, journeeProduction } from '@/lib/dateProduction';
 import { estPoste } from '@/lib/postes';
 
-const CHAMPS_QUANTITE = ['quantiteRestante', 'quantiteProduite', 'quantitePrevue'] as const;
+const CHAMPS_QUANTITE = [
+  'quantiteRestante',
+  'quantiteProduite',
+  'quantitePrevue',
+  'quantiteCommande',
+] as const;
 type ChampQuantite = (typeof CHAMPS_QUANTITE)[number];
 
 type LigneEntrante = {

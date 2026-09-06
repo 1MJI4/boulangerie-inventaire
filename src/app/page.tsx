@@ -6,6 +6,7 @@ import { Carte } from '@/components/ui';
 import { useProfil } from '@/components/ProfilAppareil';
 import { dateDuJour, formatDateLong, journeeProduction } from '@/lib/dateProduction';
 import { DEFINITIONS, LIBELLES_ECRANS } from '@/lib/profils';
+import { CarteCommandes } from '@/components/CarteCommandes';
 
 const DESCRIPTIONS: Record<string, { description: string; moment?: string }> = {
   '/saisie-prevue': {
@@ -23,6 +24,9 @@ const DESCRIPTIONS: Record<string, { description: string; moment?: string }> = {
   '/saisie-vendeur': {
     description: 'Compter ce qu’il reste en rayon, zone par zone.',
     moment: 'en fin de journée',
+  },
+  '/commandes': {
+    description: 'Prendre une commande, l’imprimer, la retrouver au retrait.',
   },
   '/inventaire': { description: 'Demandé, produit, restant et vendu sur une journée.' },
   '/dashboard': { description: 'Tendances et taux d’invendu sur la durée.' },
@@ -47,7 +51,10 @@ export default function Accueil() {
 
   const definition = DEFINITIONS[profil];
   const deroule = definition.ecrans.filter((e) => DEROULE.includes(e));
-  const consultation = definition.ecrans.filter((e) => !DEROULE.includes(e));
+  const consultation = definition.ecrans.filter(
+    (e) => !DEROULE.includes(e) && e !== '/commandes'
+  );
+  const voitLesCommandes = definition.ecrans.includes('/commandes');
 
   return (
     <>
@@ -82,6 +89,8 @@ export default function Accueil() {
           </button>
         </p>
       </div>
+
+      {voitLesCommandes ? <CarteCommandes /> : null}
 
       {deroule.length > 0 ? (
         <>

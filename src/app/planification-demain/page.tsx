@@ -21,6 +21,7 @@ import { DESCRIPTION_POSTE, LIBELLE_POSTE, POSTES, estPoste, type Poste } from '
 type LigneFournil = {
   produitId: number;
   quantitePrevue: number | null;
+  quantiteCommande: number | null;
   quantiteProduite: number | null;
   faitLe: string | null;
   produit: { id: number; nom: string; categorie: string; poste: Poste; ordre: number };
@@ -322,12 +323,21 @@ export default function Fournil() {
                         </span>
                       ) : null}
 
+                      {/* « 12 + 5 » : ce qui sort normalement, et ce qu'une
+                          commande ajoute. Le total reste le chiffre à produire,
+                          mais le pâtissier voit d'où vient le surplus. */}
                       <span
-                        className={`chiffres shrink-0 text-3xl font-semibold tabular-nums ${
-                          fait ? 'text-ink-3' : 'text-ink'
-                        }`}
+                        className={`shrink-0 text-right ${fait ? 'text-ink-3' : 'text-ink'}`}
                       >
-                        {ligne.quantitePrevue}
+                        <span className="chiffres block text-3xl font-semibold tabular-nums leading-none">
+                          {ligne.quantitePrevue}
+                        </span>
+                        {ligne.quantiteCommande ? (
+                          <span className="chiffres mt-0.5 block text-xs font-medium text-accent">
+                            dont {ligne.quantiteCommande} commandé
+                            {ligne.quantiteCommande > 1 ? 's' : ''}
+                          </span>
+                        ) : null}
                       </span>
                     </li>
                   );

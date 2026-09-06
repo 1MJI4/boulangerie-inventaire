@@ -15,7 +15,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Poste } from './postes';
 
-export type ChampSaisie = 'quantiteRestante' | 'quantiteProduite' | 'quantitePrevue';
+export type ChampSaisie =
+  | 'quantiteRestante'
+  | 'quantiteProduite'
+  | 'quantitePrevue'
+  /** Part de la quantité prévue due à une commande client. */
+  | 'quantiteCommande';
 
 export type Produit = {
   id: number;
@@ -30,6 +35,7 @@ export type LigneInventaire = {
   quantiteRestante: number | null;
   quantiteProduite: number | null;
   quantitePrevue: number | null;
+  quantiteCommande: number | null;
   faitLe: string | null;
 };
 
@@ -42,6 +48,8 @@ export type StatutSauvegarde =
   | 'hors-ligne';
 
 const DELAI_AUTO_MS = 1500;
+/** Fréquence des nouvelles tentatives quand un envoi a échoué. */
+const INTERVALLE_REPRISE_MS = 30_000;
 const VERSION_BROUILLON = 1;
 
 type Brouillon = {
@@ -117,6 +125,7 @@ export function useSaisieJournee({
   const [nbEnAttente, setNbEnAttente] = useState(0);
   const minuteur = useRef<ReturnType<typeof setTimeout> | null>(null);
   const envoiEnCours = useRef(false);
+  const reprise = useRef(false);
 
   // Miroir des valeurs, écrit au chargement puis à chaque frappe. Il sert à
   // lire l'état le plus récent sans dépendre du cycle de rendu — indispensable
@@ -173,7 +182,13 @@ export function useSaisieJournee({
         for (const id of brouillon.modifies) {
           if (brouillon.valeurs[id] !== undefined) depuisServeur[id] = brouillon.valeurs[id];
         }
-        if (brouillon.modifies.length > 0) setStatut('brouillon');
+        if (brouillon.modifies.length > 0) {
+          setStatut('brouillon');
+          // Un brouillon retrouvé au chargement contient des saisies qui n'ont
+          // jamais atteint la base. Sans ce déclenchement, elles restaient
+          // affichées à l'écran en attendant une frappe qui ne venait pas.
+          reprise.current = true;
+        }
       }
 
       setProduits(listeProduits);
@@ -291,6 +306,24 @@ export function useSaisieJournee({
   }, [envoyer]);
 
   /* --------------------------------------------------------------- Filets */
+
+  // Un brouillon retrouvé au chargement part dès que les données sont prêtes.
+  useEffect(() => {
+    if (!reprise.current || chargement) return;
+    reprise.current = false;
+    void envoyer();
+  }, [chargement, envoyer]);
+
+  // Filet de dernier recours : tant qu'il reste des saisies non transmises, on
+  // réessaie régulièrement. Sans cela, un échec réseau survenu pendant que le
+  // vendeur comptait au comptoir restait bloqué jusqu'à sa prochaine frappe —
+  // et si le comptage était fini, plus rien ne repartait jamais.
+  useEffect(() => {
+    const tic = setInterval(() => {
+      if (modifies.current.size > 0 && !envoiEnCours.current) void envoyer();
+    }, INTERVALLE_REPRISE_MS);
+    return () => clearInterval(tic);
+  }, [envoyer]);
 
   // Retour du réseau : on repart aussitôt avec ce qui attendait.
   useEffect(() => {

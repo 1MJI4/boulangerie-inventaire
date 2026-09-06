@@ -32,7 +32,7 @@ export const DEFINITIONS: Record<Profil, DefinitionProfil> = {
     libelle: 'Vendeur',
     description: 'Compter ce qu’il reste en rayon',
     accueil: '/saisie-vendeur',
-    ecrans: ['/saisie-vendeur'],
+    ecrans: ['/saisie-vendeur', '/commandes'],
   },
   patissier: {
     libelle: 'Pâtissier',
@@ -53,6 +53,8 @@ export const DEFINITIONS: Record<Profil, DefinitionProfil> = {
     description: 'Tous les écrans, prévisions et statistiques',
     accueil: '/',
     ecrans: [
+      '/commandes',
+      '/commandes/reglages',
       '/saisie-prevue',
       '/planification-demain',
       '/saisie-production',
@@ -68,6 +70,9 @@ export const DEFINITIONS: Record<Profil, DefinitionProfil> = {
 
 export const LIBELLES_ECRANS: Record<string, string> = {
   '/': 'Accueil',
+  '/commandes': 'Commandes',
+  '/commandes/reglages': 'Réglages commandes',
+  '/commandes/nouvelle': 'Nouvelle commande',
   '/saisie-prevue': 'Prévisions',
   '/planification-demain': 'Fournil',
   '/saisie-production': 'Production',

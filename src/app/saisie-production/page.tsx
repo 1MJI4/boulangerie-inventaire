@@ -10,6 +10,7 @@ import { LigneSaisie } from '@/components/LigneSaisie';
 import { SelecteurJournee } from '@/components/SelecteurJournee';
 import { formatDateLong, journeeProduction } from '@/lib/dateProduction';
 import { useProfil } from '@/components/ProfilAppareil';
+import { verifierProduction } from '@/lib/coherence';
 import { LIBELLE_POSTE, POSTES, type Poste } from '@/lib/postes';
 import { DEFINITIONS } from '@/lib/profils';
 import { useSaisieJournee } from '@/lib/useSaisieJournee';
@@ -129,6 +130,13 @@ export default function SaisieProduction() {
                       prevue != null ? () => saisie.definir(produit.id, String(prevue)) : undefined
                     }
                     indice={prevue != null ? <>demandé&nbsp;: <span className="chiffres">{prevue}</span></> : null}
+                    anomalie={verifierProduction({
+                      produite:
+                        (saisie.valeurs[produit.id] ?? '') === ''
+                          ? null
+                          : Number(saisie.valeurs[produit.id]),
+                      demandee: prevue ?? null,
+                    })}
                   />
                 );
               })}

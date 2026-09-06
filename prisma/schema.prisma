@@ -61,3 +61,166 @@ model Releve {
   @@index([produitId, journee])
   @@index([journee])
 }
+
+// ============================================================================
+//  COMMANDES
+//  L'application saisit, imprime et rappelle ; le papier reste le bon de
+//  travail. Les montants sont en centimes : un entier ne derive jamais, la
+//  ou un flottant finit par afficher 78,99999.
+// ============================================================================
+
+// Grille tarifaire du magasin. Volontairement separee du catalogue
+// d'inventaire : elle aide le vendeur a saisir vite et juste, elle ne
+// pretend pas remplacer sa connaissance du magasin. Aucun rapprochement
+// n'est fait entre les deux listes.
+model Tarif {
+  id            Int      @id @default(autoincrement())
+  nom           String   @unique
+  categorie     String   @default("Autres")
+  prixCentimes  Int
+  poste         String?  // patissier | boulanger | traiteur | null (revente)
+  ordre         Int      @default(999)
+  actif         Boolean  @default(true)
+  creeAuComptoir Boolean @default(false) // saisi a la volee, a ranger par le manager
+  modifieLe     DateTime @updatedAt
+
+  lignes LigneCommande[]
+
+  @@index([actif])
+  @@index([categorie])
+}
+
+model Commande {
+  id       Int    @id @default(autoincrement())
+  numero   String @unique // 2026-0247, imprime et mis en communication du virement
+  annee    Int
+  sequence Int
+
+  // --- Personnes : effacees a l'anonymisation (30 jours apres le retrait) ---
+  client    String
+  telephone String
+  vendeur   String
+
+  priseLe      DateTime @default(now())
+  origine      String   @default("comptoir") // comptoir | telephone
+  retraitLe    DateTime @db.Date
+  retraitHeure String   // "11:00"
+
+  modePaiement    String    @default("especes") // especes | virement
+  acompteCentimes Int       @default(0)
+  acompteRecuLe   DateTime?
+  totalCentimes   Int       @default(0)
+
+  texteGateau   String? // ce qui sera ecrit sur le gateau, orthographe comprise
+  sansEcriture  Boolean @default(false) // choix explicite : rien a ecrire
+  photoWhatsapp Boolean @default(false) // photo modele envoyee par le client
+  photoImprimee Boolean @default(false) // photo a imprimer sur le gateau (+15 EUR)
+  gateauComplexe Boolean @default(false) // le vendeur juge la commande complexe : a confirmer
+  remarques     String?
+
+  statut     String    @default("a_imprimer") // a_imprimer | imprimee | remise | annulee
+  imprimeeLe DateTime?
+  remiseLe   DateTime?
+  annuleeLe  DateTime?
+  motif      String?
+
+  // Avertissements affiches puis passes outre, en JSON. Le jour ou une
+  // commande pose probleme, on sait si la regle avait ete signalee.
+  avertissements String?
+
+  archiveeLe   DateTime? // J+2 apres le retrait si aucun statut pose
+  anonymiseeLe DateTime?
+
+  lignes     LigneCommande[]
+  evenements EvenementCommande[]
+
+  @@unique([annee, sequence])
+  @@index([retraitLe])
+  @@index([statut])
+  @@index([anonymiseeLe])
+}
+
+model LigneCommande {
+  id           Int     @id @default(autoincrement())
+  libelle      String
+  quantite     Int
+  prixCentimes Int
+  poste        String?
+  precision    String?
+  ordre        Int     @default(0)
+
+  commandeId Int
+  commande   Commande @relation(fields: [commandeId], references: [id], onDelete: Cascade)
+
+  tarifId Int?
+  tarif   Tarif? @relation(fields: [tarifId], references: [id], onDelete: SetNull)
+
+  @@index([commandeId])
+}
+
+// Rien n'est jamais efface : modifier une commande ajoute une ligne ici.
+// Une commande retouchee cinq fois la veille, c'est un signal.
+model EvenementCommande {
+  id     Int      @id @default(autoincrement())
+  quand  DateTime @default(now())
+  auteur String
+  action String   // creation | modification | impression | remise | annulation | acompte
+  detail String?
+
+  commandeId Int
+  commande   Commande @relation(fields: [commandeId], references: [id], onDelete: Cascade)
+
+  @@index([commandeId])
+}
+
+// ---------------------------------------------------------------------------
+//  Composition d'un gateau sur mesure
+//  Familles, parfums et decorations vivent en base : le manager les modifie
+//  depuis l'ecran de reglages, sans attendre une mise a jour de l'application.
+// ---------------------------------------------------------------------------
+
+model FamilleGateau {
+  id                  Int      @id @default(autoincrement())
+  cle                 String   @unique
+  genre               String   @default("gateau") // gateau | sale
+  unite               String   @default("personne") // personne | piece
+  libelle             String
+  parPersonneCentimes Int
+  minimumParts        Int?
+  // Formats vendus au comptoir a prix fixe, en JSON : { "6": 2700, "8": 3100 }
+  formatsFixes        String?
+  // Paliers de prix par personne, en JSON :
+  //   [{ "aPartirDe": 1, "centimes": 600 }, { "aPartirDe": 20, "centimes": 500 }]
+  // Le palier applique est le dernier dont "aPartirDe" est atteint.
+  paliers             String?
+  note                String?
+  ordre               Int      @default(999)
+  actif               Boolean  @default(true)
+  modifieLe           DateTime @updatedAt
+
+  @@index([actif])
+}
+
+// Un parfum et une decoration ont la meme forme : un nom, un supplement
+// eventuel, un ordre. Une seule table, deux genres.
+model OptionGateau {
+  id                 Int      @id @default(autoincrement())
+  genre              String   // parfum | decoration
+  nom                String
+  supplementCentimes Int      @default(0)
+  ordre              Int      @default(999)
+  actif              Boolean  @default(true)
+  modifieLe          DateTime @updatedAt
+
+  @@unique([genre, nom])
+  @@index([genre, actif])
+}
+
+// Reglages de la boutique, en cle/valeur JSON. Une seule ligne par sujet :
+// c'est plus simple qu'une colonne par regle, et le manager peut en ajouter
+// sans migration.
+model Reglage {
+  cle       String   @id
+  valeur    String
+  modifieLe DateTime @updatedAt
+}

@@ -23,6 +23,7 @@ import { ReglagesSaisie } from '@/components/ReglagesSaisie';
 import { SelecteurJournee } from '@/components/SelecteurJournee';
 import { dateDuJour, formatDateLong } from '@/lib/dateProduction';
 import { decouperEnPages, libellePage } from '@/lib/pagination';
+import { verifierComptage } from '@/lib/coherence';
 import { classerSelonParcours, useParcours } from '@/lib/parcours';
 import { trierCategories } from '@/lib/postes';
 import { usePreferencesSaisie } from '@/lib/preferencesSaisie';
@@ -463,6 +464,13 @@ export default function Comptage() {
                 selectionne={modePave && produit.id === selectionne}
                 onSelectionner={() => setSelectionne(produit.id)}
                 variante={enGrille ? 'carte' : 'ligne'}
+                anomalie={verifierComptage({
+                  restante:
+                    (saisie.valeurs[produit.id] ?? '') === ''
+                      ? null
+                      : Number(saisie.valeurs[produit.id]),
+                  produite: saisie.inventaires.get(produit.id)?.quantiteProduite ?? null,
+                })}
               />
             ))}
           </div>

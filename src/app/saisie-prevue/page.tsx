@@ -12,6 +12,7 @@ import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide, Progression, Puce 
 import { IndicateurSauvegarde } from '@/components/IndicateurSauvegarde';
 import { LigneSaisie } from '@/components/LigneSaisie';
 import { SelecteurJournee } from '@/components/SelecteurJournee';
+import { BandeauCommandes } from '@/components/BandeauCommandes';
 import { formatDateLong, journeeProduction } from '@/lib/dateProduction';
 import { useMemoireLocale } from '@/lib/memoireLocale';
 import { LIBELLE_POSTE, trierCategories } from '@/lib/postes';
@@ -30,7 +31,31 @@ export default function SaisiePrevisions() {
   );
 
   const saisie = useSaisieJournee({ date, champ: 'quantitePrevue' });
+  // Le « 1 + 11 » des anciennes feuilles : ce qui sort normalement du four, et
+  // ce qu'une commande client ajoute. Le fournil produit la somme ; les
+  // statistiques pourront écarter la part commandée, qui ne se reproduira pas
+  // la semaine suivante.
+  const commande = useSaisieJournee({ date, champ: 'quantiteCommande' });
   const { reperes } = useHistoriqueProduit(date);
+
+  /**
+   * Le complément s'ajoute au total, il ne le remplace pas : le manager avait
+   * prévu 12, une commande de 5 arrive, il tape 5 dans le « + » et le fournil
+   * lit 17. Corriger le « + » corrige le total du même écart.
+   */
+  const ajusterCommande = (produitId: number, saisieBrute: string) => {
+    const lire = (v: string) => {
+      const n = Number(v.replace(/[^0-9]/g, ''));
+      return Number.isFinite(n) ? n : 0;
+    };
+    const ancien = lire(commande.valeurs[produitId] ?? '');
+    const nouveau = lire(saisieBrute);
+    const total = lire(saisie.valeurs[produitId] ?? '');
+    const suivant = Math.max(0, total - ancien + nouveau);
+
+    commande.definir(produitId, saisieBrute.replace(/[^0-9]/g, ''));
+    if (suivant !== total) saisie.definir(produitId, suivant === 0 ? '' : String(suivant));
+  };
 
   const enRecherche = recherche.trim().length > 0;
 
@@ -144,6 +169,8 @@ export default function SaisiePrevisions() {
           className="h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none sm:max-w-80"
         />
       </div>
+
+      <BandeauCommandes journee={date} />
 
       {saisie.erreurChargement ? (
         <Alerte>
@@ -264,6 +291,11 @@ export default function SaisiePrevisions() {
                                 </>
                               ) : null
                             }
+                            complement={{
+                              titre: `${produit.nom} : part due à une commande`,
+                              valeur: commande.valeurs[produit.id] ?? '',
+                              onChange: (v) => ajusterCommande(produit.id, v),
+                            }}
                           />
                         );
                       })}

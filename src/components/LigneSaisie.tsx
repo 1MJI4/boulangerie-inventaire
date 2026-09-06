@@ -33,6 +33,8 @@ export function LigneSaisie({
   selectionne = false,
   onSelectionner,
   variante = 'ligne',
+  anomalie,
+  complement,
 }: {
   nom: string;
   valeur: string;
@@ -47,6 +49,18 @@ export function LigneSaisie({
   selectionne?: boolean;
   onSelectionner?: () => void;
   variante?: 'ligne' | 'carte';
+  /** Message de cohérence : « Plus que les 12 produits », par exemple. */
+  anomalie?: string | null;
+  /**
+   * Un second champ, plus petit, à côté du premier. Sert à distinguer ce qui
+   * sort normalement du four de ce qu'une commande client ajoute — le « 1 + 11 »
+   * des anciennes feuilles.
+   */
+  complement?: {
+    valeur: string;
+    onChange: (valeur: string) => void;
+    titre: string;
+  };
 }) {
   const rempli = valeur !== '';
   const zero = valeur === '0';
@@ -86,7 +100,11 @@ export function LigneSaisie({
         >
           {nom}
         </div>
-        {indice && !compact ? <div className="mt-0.5 text-xs text-ink-3">{indice}</div> : null}
+        {anomalie ? (
+          <div className="mt-0.5 text-xs font-medium text-attention">{anomalie}</div>
+        ) : indice && !compact ? (
+          <div className="mt-0.5 text-xs text-ink-3">{indice}</div>
+        ) : null}
       </div>
 
       <div
@@ -145,6 +163,33 @@ export function LigneSaisie({
                 : 'border-line bg-surface-2 text-ink-2'
           }`}
         />
+
+        {complement ? (
+          <>
+            <span aria-hidden className="shrink-0 text-sm text-ink-3">
+              +
+            </span>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="off"
+              value={complement.valeur}
+              onChange={(e) => complement.onChange(e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
+              placeholder="0"
+              aria-label={complement.titre}
+              title={complement.titre}
+              className={`chiffres shrink-0 rounded-lg border text-center transition-colors placeholder:text-ink-3 focus:border-accent focus:outline-none ${hauteurChamp} ${
+                compact ? 'w-12 text-sm' : 'w-14 text-base'
+              } ${
+                complement.valeur !== '' && complement.valeur !== '0'
+                  ? 'border-accent bg-accent-doux font-medium text-accent'
+                  : 'border-dashed border-line bg-surface-2 text-ink-3'
+              }`}
+            />
+          </>
+        ) : null}
       </div>
     </div>
   );
