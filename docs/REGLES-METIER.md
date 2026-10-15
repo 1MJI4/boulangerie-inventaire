@@ -74,7 +74,7 @@ gâteau simple 48 h ouvrées · plateau salé 24 h ouvrées.
 
 | # | Règle | Niveau | Code | Confirmé |
 |---|---|---|---|---|
-| R28 | Qui peut modifier un tarif : gérant uniquement | 🔴 | `ERR_DROIT_INSUFFISANT` | **non** |
+| R28 | Qui peut modifier un tarif : gérant uniquement (code gérant, voir R35) | 🔴 | `ERR_DROIT_INSUFFISANT` | **oui — 15/10/2026** |
 | R29 | Qui peut descendre sous un plancher de prix : gérant, avec traçabilité nominative | 🔴 | `ERR_DROIT_INSUFFISANT` | **non** |
 | R30 | Qui peut clore un inventaire : responsable de dépôt | 🔴 | `ERR_DROIT_INSUFFISANT` | **non** |
 | R31 | Toute commande modifiée conserve ses versions antérieures (litige client) | 🔴 | — | oui |
@@ -85,6 +85,54 @@ gâteau simple 48 h ouvrées · plateau salé 24 h ouvrées.
 |---|---|---|---|---|
 | R32 | Allergènes (règlement UE 1169/2011) : les 14 allergènes déclarables par produit, affichés à la commande et imprimés sur le bon | 🔵 puis obligatoire | `INFO_ALLERGENES` | **non — à cadrer** |
 | R33 | Mentions légales sur le bon de commande : raison sociale, TVA, acompte, conditions d'annulation | — | — | **non** |
+
+## H. Accès et saisie — décisions du propriétaire du 15/10/2026
+
+| # | Règle | Niveau | Code | Confirmé |
+|---|---|---|---|---|
+| R34 | Chaque tablette reçoit un code **une seule fois**, à l'installation, et reste connectée plusieurs mois. L'employé choisit son nom dans une liste, sans code personnel | — | — | **oui — 15/10/2026** |
+| R35 | Le code gérant est demandé **uniquement** pour changer un prix ou un produit | 🔴 | `ERR_DROIT_INSUFFISANT` | **oui — 15/10/2026** |
+| R36 | L'inventaire a **ses propres produits**. Le catalogue de commande n'apparaît jamais dans l'inventaire, et l'inverse. Un produit inconnu de la liste d'inventaire est refusé au comptage | 🔴 | `ERR_PRODUIT_INCONNU` | **oui — 15/10/2026** |
+| R37 | Tous les chiffres de la prise de commande (quantité, parts, poids, prix par personne, acompte) se tapent sur le **pavé de l'application**, comme pour l'inventaire | — | — | **oui — 15/10/2026** |
+| R38 | Tous les minimums (R10 à R13) sont **bloquants**, vérifiés dès la saisie de la ligne, jamais à la fin. Chaque refus propose la sortie en un geste (« Passer à 20 parts », « Ajouter un 2e pain ») | 🔴 | `ERR_QUANTITE_MIN` | **oui — 15/10/2026** |
+
+## I. Contrôles de cohérence de la commande
+
+| # | Règle | Niveau | Code | Confirmé |
+|---|---|---|---|---|
+| R39 | Un acompte plus élevé que le total est refusé | 🔴 | `ERR_ACOMPTE_SUPERIEUR_TOTAL` | **oui — 15/10/2026** |
+| R40 | Une ligne sans produit choisi est refusée | 🔴 | `ERR_LIGNE_SANS_PRODUIT` | **oui — 15/10/2026** |
+| R41 | Une commande sans aucune ligne est refusée | 🔴 | `ERR_COMMANDE_VIDE` | **principe oui (15/10/2026), niveau à confirmer** |
+| R42 | Un chiffre impossible (négatif, illisible) est refusé, avec la valeur à corriger proposée | 🔴 | `ERR_SAISIE_INVALIDE` | **principe oui (15/10/2026), niveau à confirmer** |
+| R43 | Un champ obligatoire laissé vide est refusé | 🔴 | `ERR_CHAMP_OBLIGATOIRE` | **principe oui (15/10/2026), niveau à confirmer** |
+| R44 | Un total qui ne correspond pas à la somme des lignes est refusé | 🔴 | `ERR_TOTAL_INCOHERENT` | **principe oui (15/10/2026), niveau à confirmer** |
+| R45 | Un prix de ligne différent du tarif en vigueur est refusé (LOI N°1) | 🔴 | `ERR_TARIF_INCOHERENT` | oui (LOI N°1) |
+| R46 | Le même produit ajouté deux fois dans une commande : accepté, signalé | 🟠 | `AVERT_PRODUIT_EN_DOUBLE` | **principe oui (15/10/2026), niveau à confirmer** |
+| R47 | Une ligne ou une commande à 0 € est refusée | 🔴 | `ERR_MONTANT_NUL` | **non** — question 13 |
+| R48 | Une date de retrait déjà passée est refusée | 🔴 | — | **non** — question 41 |
+| R49 | Une commande « à imprimer » ne passe pas directement à « remise » | 🔴 | `ERR_STATUT_INCOHERENT` | **non** — question 45 |
+| R50 | Téléphone ni belge ni international : accepté, signalé | 🟠 | `AVERT_TELEPHONE_IMPROBABLE` | **non** — question 47 |
+| R51 | Ligne libre (« autre demande ») : prix fixé avec l'accord du gérant | 🔴 | `ERR_DROIT_INSUFFISANT` | **non** — question 42 |
+
+## J. Règlement intérieur — commandes et inventaire
+
+Ces règles viennent du règlement de la direction. Elles ne sont **pas encore toutes en place**
+dans l'application : la colonne « Code » reste vide tant que le message n'existe pas.
+
+| # | Règle | Niveau | Code | Confirmé |
+|---|---|---|---|---|
+| R52 | Acompte d'**au moins 50 %** du total pour valider une commande. Sous 50 % : refusé, avec le bouton « Mettre l'acompte à X € ». Exemple : commande de 90 € → acompte minimum 45 € | 🔴 | à créer | **oui — règlement intérieur 15/10/2026** |
+| R53 | Commande à retirer **le lendemain** : refusée sauf accord du responsable, donné avec le code gérant et enregistré | 🔴 | à créer | **oui — règlement intérieur 15/10/2026** |
+| R54 | Commande en pâtisserie : retrait possible **à partir de 9h en semaine, 12h le week-end**. Une heure plus tôt est refusée, avec la première heure possible proposée. Ces heures sont réglables, pas figées | 🔴 | à créer | **oui — règlement intérieur 15/10/2026** |
+| R55 | Commande inhabituelle (ingrédient particulier, moule spécial…) : acceptée mais signalée, avec la sortie « Appeler le responsable » ou « Passer par WhatsApp » | 🟠 | à créer | **oui — règlement intérieur 15/10/2026** |
+| R56 | Nom et téléphone du client **obligatoires**. La date et l'heure de prise de commande s'enregistrent toutes seules | 🔴 | `ERR_CHAMP_OBLIGATOIRE` | **oui — règlement intérieur 15/10/2026** |
+| R57 | Inventaire commencé **avant 20h00** (heure de fermeture, réglable) : accepté mais signalé | 🟠 | à créer | **oui — règlement intérieur 15/10/2026** |
+| R58 | À la remise de la commande : liste des articles à cocher **devant le client**, pour que rien ne soit oublié | — | — | **oui — règlement intérieur 15/10/2026** |
+
+Les autres points du règlement (tenue, hygiène, pauses, respect, avantages du personnel) ne
+bloquent jamais une saisie. Ils apparaissent sous forme de **petits rappels sympathiques**,
+pendant un chargement, après une commande validée ou après un inventaire terminé. Jamais
+visibles du client.
 
 ---
 
@@ -97,6 +145,14 @@ gâteau simple 48 h ouvrées · plateau salé 24 h ouvrées.
 - **Arrondi espèces** : reporté, probablement inutile (l'application n'encaisse pas).
 - **Prix de revient / valorisation du stock** : hors périmètre. Le tarif est dans
   l'application pour **fiabiliser la prise de commande**, pas pour valoriser le stock.
+- **Accès** : un code par tablette, le nom choisi dans la liste, le code gérant pour les
+  prix et les produits (R34, R35).
+- **Inventaire et catalogue de commande séparés** (R36).
+- **Pavé de l'application** pour tous les chiffres de la commande (R37).
+- **Contrôles de cohérence** de la commande (R39 à R46).
+- **Règlement intérieur** : acompte d'au moins 50 %, lendemain avec accord du responsable,
+  horaires de retrait pâtisserie, commande inhabituelle, nom et téléphone, inventaire à 20h00,
+  décompte à la remise (R52 à R58).
 
 ## Comportements par défaut appliqués en l'absence de réponse
 
@@ -104,4 +160,4 @@ Chacun est marqué `// HYPOTHÈSE À VALIDER` dans le code et visible à l'écra
 
 1. **Délais** → mariage 5 j ouvrés · gâteau simple 48 h ouvrées · salé 24 h ouvrées
 2. **Minimum 10/15 pièces** → par ligne de produit, pas par panier
-3. **Acompte** → aucun acompte exigé automatiquement, champ libre disponible
+3. ~~**Acompte** → aucun acompte exigé automatiquement~~ → **tranché** : au moins 50 % (R52)

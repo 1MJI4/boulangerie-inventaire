@@ -2,18 +2,23 @@
 // Types du module catalogue (propriétaire : agent `catalogue-prix`).
 // Module PUR : aucune dépendance React, Next ou Prisma.
 //
-// Correspondance avec le schéma Prisma du lot 1 (agent `base-donnees`,
-// migration 20261015110000) :
-//   Produit.id                → Produit.cleCatalogue
-//   Produit.produit           → Produit.nom      (⚠ @unique côté base : incompatible,
-//                                                 « Baguette » existe en 4 sous-catégories)
-//   LignePrix.prixCentimes    → PrixProduit.prixCentimes
+// Correspondance avec la base (agent `base-donnees`). Règle du propriétaire
+// du 15/10/2026 : le catalogue de commande vit dans « ProduitCatalogue »,
+// JAMAIS dans « Produit » (inventaire). Colonnes reprises de la
+// migration 20261015110000 :
+//   Produit.id                → ProduitCatalogue.cleCatalogue (unique)
+//   Produit.produit / categorie / sousCategorie
+//                             → ProduitCatalogue.nom / categorie / sousCategorie ("" → NULL)
+//   Produit.unite / regimePrix / estFavori → mêmes colonnes
+//   LignePrix.prixCentimes / basePrix → PrixProduit.prixCentimes / basePrix
 //   VersionTarif.valideDu/Au  → PrixProduit.valideDu/valideAu (une ligne par produit)
-//   VersionTarif.source       → PrixProduit.source
+//   VersionTarif.code/source  → PrixProduit.versionCode / source
 //   LignePrix.minQuantite / minParSymbole / maxParUnite.valeur
-//                             → Produit.minimum / minimumParSymbole / maximum
-//                               (⚠ non versionnés côté base)
-//   Produit.tauxTva           → PrixProduit.tauxTvaPourMille (⚠ un seul taux côté base)
+//                             → PrixProduit.minimum / minimumParSymbole / maximum
+//   Produit.tauxTva           → PrixProduit.tauxTvaEmporterPb / tauxTvaSurPlacePb
+//   NON STOCKÉS en base (voir lectureBase.ts) : grille, famille (reconstruite
+//   depuis la catégorie, voir familles.ts), variantes, variantesFermees,
+//   prixEstPlancher, maxParUnite.objet, etages, rapprochementComptoir.
 //
 // Champs du module :
 //
@@ -21,6 +26,8 @@
 //                         slugifié. Ne change JAMAIS quand un prix change.
 //   Produit.regimePrix    "A" | "B" | "C" — explicite, jamais déduit du nom (LOI 6)
 //   Produit.estFavori     booléen ; « Favoris » n'est pas une catégorie (LOI 4)
+//   Produit.famille       famille de vente, tirée du RAYON du fichier (familles.ts),
+//                         jamais du nom du produit — ex. horaires pâtisserie (LOI 11)
 //   Produit.unite         "piece" | "kg" — unité de comptage (LOI 2)
 //   Produit.tauxTva       null tant que le comptable n'a pas tranché
 //   LignePrix.prixCentimes   entier, centimes, TTC (LOI 1)
@@ -43,6 +50,16 @@ export type Unite = "piece" | "kg";
  * - forfait  : ajouté une fois par gâteau, jamais par personne (suppléments)
  */
 export type BasePrix = "piece" | "kg" | "personne" | "forfait";
+
+/**
+ * Famille de vente, donnée explicite du catalogue (src/catalogue/familles.ts) :
+ * tirée du rayon du fichier source, jamais du nom du produit.
+ * `patisserie` : commandes disponibles à partir de 9h en semaine / 12h le
+ * week-end (règlement intérieur, LOI 11 — règle appliquée par `regles-metier`).
+ * `supplement` : supplément au forfait (Photo, Écriture), jamais un gâteau
+ * (liste explicite PRODUITS_SUPPLEMENT de familles.ts, basePrix « forfait »).
+ */
+export type Famille = "patisserie" | "viennoiserie" | "boulangerie" | "sale" | "boisson" | "supplement";
 
 /** Chaque grille a sa propre suite de versions datées. */
 export type Grille = "comptoir" | "sur-commande";
@@ -81,6 +98,8 @@ export interface Produit {
   unite: Unite;
   /** Valeur de la version la plus récente ; la valeur datée est dans LignePrix. */
   estFavori: boolean;
+  /** Famille de vente, tirée du rayon (jamais du nom). */
+  famille: Famille;
   tauxTva: TauxTva | null;
   /** Variantes telles qu'écrites sur l'affiche (groupes séparés par « · »). */
   variantes: readonly string[];
@@ -133,15 +152,6 @@ export interface Catalogue {
   versions: readonly VersionTarif[];
 }
 
-/**
- * Résultat retourné par l'API, au format de la LOI 9.
- * DÉPENDANCE `gestion-erreurs` : à remplacer par le type `Resultat` de
- * src/domaine/resultat.ts dès qu'il est publié (même forme attendue).
- */
-export type ResultatCatalogue<T> =
-  | { ok: true; valeur: T }
-  | { ok: false; niveau: "bloquant"; code: string; message: string; champ?: string };
-
 /** Prix en vigueur d'un produit à une date donnée. */
 export interface PrixEnVigueur extends LignePrix {
   produitId: string;
@@ -166,4 +176,34 @@ export interface ResultatImport {
   version: VersionTarif | null;
   produits: Produit[];
   signalements: Signalement[];
+}
+
+// ------------------------------------------------------------ Côté serveur
+// Mêmes types que l'API pure, enrichis des identifiants de la base. Lus par
+// src/catalogue/serveur.ts (tables ProduitCatalogue / PrixProduit).
+
+export interface ProduitServeur extends Produit {
+  /** ProduitCatalogue.id (clé technique Prisma). */
+  idBase: number;
+  /** false = produit archivé (retiré du tarif), lisible dans l'historique. */
+  actif: boolean;
+}
+
+export interface PrixEnVigueurServeur extends PrixEnVigueur {
+  /** PrixProduit.id : la version appliquée, à poser sur LigneCommande.prixProduitId. */
+  prixProduitId: number;
+  /** ProduitCatalogue.id (clé technique Prisma). */
+  produitIdBase: number;
+  /** TVA portée par la version ; null tant que le comptable n'a pas tranché. */
+  tauxTva: TauxTva | null;
+}
+
+export interface ProduitAuTarifServeur {
+  produit: ProduitServeur;
+  prix: PrixEnVigueurServeur;
+}
+
+export interface RayonAuTarifServeur {
+  categorie: string;
+  produits: ProduitAuTarifServeur[];
 }

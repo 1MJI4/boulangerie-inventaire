@@ -27,6 +27,35 @@
   --attention-doux: #f7efdc;
   --alerte: #a33a2f;
   --alerte-doux: #f8e7e4;
+
+  /* --- Signalements (LOI 8) — propriétaire : design-ux ----------------
+     Trois niveaux, jamais distingués par la couleur seule : chacun a aussi
+     sa forme d'icône (octogone / triangle / cercle) et son libellé texte.
+     Le bloquant est cramoisi, PAS le rouge-orangé de l'accent : le rouge
+     de l'enseigne est réservé aux prix, un refus ne doit pas s'y confondre.
+     Ratios vérifiés (WCAG) : texte sur fond doux >= 7:1 (AAA). */
+  --bloquant: #8a1736;          /* texte, icône, trait — 8,0:1 sur doux */
+  --bloquant-doux: #fbe9ee;
+  --bloquant-plein: #8a1736;    /* pastille pleine, texte blanc 9,3:1 */
+  --bloquant-plein-texte: #ffffff;
+  --avertissement: #6b4300;     /* 7,8:1 sur doux */
+  --avertissement-doux: #fff3d6;
+  --avertissement-plein: #ffd76a; /* pastille pleine, texte encre 12,7:1 */
+  --avertissement-trait: #b07a00;
+  --information: #1f4e8c;       /* 7,2:1 sur doux */
+  --information-doux: #e8f0fb;
+  --information-trait: #8fb0dc;
+
+  /* Bouton de sortie (« Passer à 20 parts ») : vert d'action, distinct de
+     l'erreur ET de l'accent. C'est lui qui sauve la vente. */
+  --sortie: #185c3b;            /* texte blanc 8,0:1 */
+  --sortie-texte: #ffffff;
+  --sortie-fort: #114a2f;
+  --sortie-doux: #e3f1e9;
+
+  /* Jour fermé dans le sélecteur de date : hachures neutres. */
+  --ferme-fond: #ebe8e3;
+  --ferme-hachure: #d9d4cc;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -51,6 +80,24 @@
     --attention-doux: #2c2415;
     --alerte: #e58275;
     --alerte-doux: #2f1c19;
+
+    --bloquant: #ff8fa8;
+    --bloquant-doux: #2f1520;
+    --bloquant-plein: #ff8fa8;
+    --bloquant-plein-texte: #1a1917;
+    --avertissement: #f2c46b;
+    --avertissement-doux: #2c2415;
+    --avertissement-plein: #f2c46b;
+    --avertissement-trait: #a07a2c;
+    --information: #8fb8f0;
+    --information-doux: #162232;
+    --information-trait: #3d5f8f;
+    --sortie: #7fd1a5;
+    --sortie-texte: #0f1f17;
+    --sortie-fort: #9fe0bc;
+    --sortie-doux: #16281f;
+    --ferme-fond: #26241f;
+    --ferme-hachure: #322f2b;
   }
 }
 
@@ -72,6 +119,22 @@
   --color-attention-doux: var(--attention-doux);
   --color-alerte: var(--alerte);
   --color-alerte-doux: var(--alerte-doux);
+  --color-bloquant: var(--bloquant);
+  --color-bloquant-doux: var(--bloquant-doux);
+  --color-bloquant-plein: var(--bloquant-plein);
+  --color-bloquant-plein-texte: var(--bloquant-plein-texte);
+  --color-avertissement: var(--avertissement);
+  --color-avertissement-doux: var(--avertissement-doux);
+  --color-avertissement-plein: var(--avertissement-plein);
+  --color-avertissement-trait: var(--avertissement-trait);
+  --color-information: var(--information);
+  --color-information-doux: var(--information-doux);
+  --color-information-trait: var(--information-trait);
+  --color-sortie: var(--sortie);
+  --color-sortie-texte: var(--sortie-texte);
+  --color-sortie-fort: var(--sortie-fort);
+  --color-sortie-doux: var(--sortie-doux);
+  --color-ferme-fond: var(--ferme-fond);
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
@@ -113,6 +176,17 @@ input[type="number"]::-webkit-inner-spin-button {
 input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
+}
+
+/* Jour fermé (sélecteur de date) : hachures = « indisponible » lisible
+   même sur un écran délavé, en plus du libellé « Fermé ». */
+.jour-ferme {
+  background-color: var(--ferme-fond);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0 8px,
+    var(--ferme-hachure) 8px 10px
+  );
 }
 
 @media (prefers-reduced-motion: reduce) {

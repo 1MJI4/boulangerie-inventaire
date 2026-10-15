@@ -8,11 +8,10 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --no-warnings --test \"src/**/*.test.ts\"",
+    "invariants": "node scripts/verifier-invariants.mjs",
+    "invariants:rapport": "node scripts/verifier-invariants.mjs --rapport",
     "postinstall": "prisma generate",
-    "db:seed": "node prisma/seed.mjs",
-    "db:seed-tarifs": "node prisma/seed-tarifs.mjs",
-    "db:seed-gateaux": "node prisma/seed-gateaux.mjs",
-    "db:formats-gateaux": "node scripts/maj-formats-gateaux.mjs"
+    "db:seed": "node prisma/seed.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.18.0",

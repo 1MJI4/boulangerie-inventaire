@@ -2,6 +2,10 @@
 
 // Ce qui sort du four. Le mode addition permet d'enregistrer une deuxième
 // fournée sans effacer la première.
+//
+// LOI 2 : un produit au kilo se saisit au pavé décimal (grammes). Les
+// contrôles de vraisemblance viennent du domaine (verifierProduction) et
+// s'affichent avec <Signalement>, sans bloquer.
 
 import { useMemo, useState } from 'react';
 import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide, Progression, Puce } from '@/components/ui';
@@ -10,7 +14,11 @@ import { LigneSaisie } from '@/components/LigneSaisie';
 import { SelecteurJournee } from '@/components/SelecteurJournee';
 import { formatDateLong, journeeProduction } from '@/lib/dateProduction';
 import { useProfil } from '@/components/ProfilAppareil';
-import { verifierProduction } from '@/lib/coherence';
+import { controlesProduction, type SignalementLigne } from '@/lib/inventaire/controles';
+import { PaveSaisieProduit } from '@/components/inventaire/PaveSaisieProduit';
+import { SignalementsLigne } from '@/components/inventaire/SignalementsLigne';
+import { RappelChargement } from '@/components/rappels';
+import { formaterQuantite } from '@/domaine/unites';
 import { LIBELLE_POSTE, POSTES, type Poste } from '@/lib/postes';
 import { DEFINITIONS } from '@/lib/profils';
 import { useSaisieJournee } from '@/lib/useSaisieJournee';
@@ -23,6 +31,8 @@ export default function SaisieProduction() {
   // Le boulanger ne saisit que sa propre production.
   const poste: Poste = posteImpose ?? posteChoisi;
   const [recherche, setRecherche] = useState('');
+  /** Produit au kilo en cours de pesée (pavé décimal ouvert). */
+  const [pesee, setPesee] = useState<number | null>(null);
 
   const saisie = useSaisieJournee({ date, champ: 'quantiteProduite', poste });
 
@@ -31,6 +41,21 @@ export default function SaisieProduction() {
     if (!terme) return saisie.produits;
     return saisie.produits.filter((p) => p.nom.toLowerCase().includes(terme));
   }, [saisie.produits, recherche]);
+
+  const produitPese = pesee === null ? null : (saisie.produits.find((p) => p.id === pesee) ?? null);
+
+  const signalementsDe = (produit: (typeof saisie.produits)[number]): SignalementLigne[] => {
+    const refus = saisie.refus.get(produit.id);
+    return [
+      ...(refus ? [refus] : []),
+      ...controlesProduction(
+        produit,
+        saisie.valeurs[produit.id],
+        saisie.inventaires.get(produit.id)?.quantitePrevue
+      ),
+      ...(saisie.avertissementsServeur.get(produit.id) ?? []),
+    ];
+  };
 
   const parCategorie = useMemo(() => {
     const groupes = new Map<string, typeof produitsVisibles>();
@@ -43,7 +68,7 @@ export default function SaisieProduction() {
   }, [produitsVisibles]);
 
   return (
-    <>
+    <div className={produitPese ? 'pb-[30rem]' : ''}>
       <Entete
         titre="Production réalisée"
         sousTitre={
@@ -105,7 +130,10 @@ export default function SaisieProduction() {
       ) : null}
 
       {saisie.chargement ? (
-        <Chargement />
+        <>
+          <Chargement />
+          <RappelChargement className="mx-auto max-w-md" />
+        </>
       ) : produitsVisibles.length === 0 ? (
         <Carte>
           <EtatVide titre="Aucun produit à afficher" />
@@ -119,24 +147,38 @@ export default function SaisieProduction() {
               </h2>
               {produits.map((produit) => {
                 const prevue = saisie.inventaires.get(produit.id)?.quantitePrevue;
+                const signalements = signalementsDe(produit);
                 return (
                   <LigneSaisie
                     key={produit.id}
                     nom={produit.nom}
+                    unite={produit.unite}
+                    selectionne={pesee === produit.id}
+                    onSelectionner={produit.unite === 'kg' ? () => setPesee(produit.id) : undefined}
                     valeur={saisie.valeurs[produit.id] ?? ''}
                     onChange={(v) => saisie.definir(produit.id, v)}
-                    suggestion={prevue ?? null}
+                    suggestion={produit.unite === 'kg' ? null : (prevue ?? null)}
                     onAppliquerSuggestion={
                       prevue != null ? () => saisie.definir(produit.id, String(prevue)) : undefined
                     }
-                    indice={prevue != null ? <>demandé&nbsp;: <span className="chiffres">{prevue}</span></> : null}
-                    anomalie={verifierProduction({
-                      produite:
-                        (saisie.valeurs[produit.id] ?? '') === ''
-                          ? null
-                          : Number(saisie.valeurs[produit.id]),
-                      demandee: prevue ?? null,
-                    })}
+                    indice={
+                      prevue != null ? (
+                        <>
+                          demandé&nbsp;:{' '}
+                          <span className="chiffres">
+                            {produit.unite === 'kg' ? formaterQuantite('kg', prevue) : prevue}
+                          </span>
+                        </>
+                      ) : null
+                    }
+                    signalements={
+                      signalements.length > 0 ? (
+                        <SignalementsLigne
+                          signalements={signalements}
+                          onEffacer={() => saisie.definir(produit.id, '')}
+                        />
+                      ) : undefined
+                    }
                   />
                 );
               })}
@@ -157,6 +199,15 @@ export default function SaisieProduction() {
           {saisie.statut === 'envoi' ? 'Enregistrement…' : 'Enregistrer maintenant'}
         </Bouton>
       </div>
-    </>
+
+      {produitPese ? (
+        <PaveSaisieProduit
+          produit={produitPese}
+          valeur={saisie.valeurs[produitPese.id] ?? ''}
+          onChange={(v) => saisie.definir(produitPese.id, v)}
+          onFermer={() => setPesee(null)}
+        />
+      ) : null}
+    </div>
   );
 }

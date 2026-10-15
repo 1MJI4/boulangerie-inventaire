@@ -149,3 +149,31 @@ test('nouvelleReference : 7 caractères lisibles au téléphone', () => {
     assert.match(nouvelleReference(), /^[2-9A-HJKMNP-Z]{3}-[2-9A-HJKMNP-Z]{3}$/);
   }
 });
+
+test('trace de pile : chemins et versions de paquets conservés, vraies adresses toujours masquées', () => {
+  const e = new Error('échec');
+  e.stack = [
+    'Error: échec',
+    '    at f (/var/task/node_modules/.pnpm/next@16.0.11_react-dom@19.2.8_react@19.2.8/node_modules/next/dist/server/base-server.js:12:3)',
+    '    at g (/app/node_modules/.pnpm/@prisma+client@6.18.0_prisma@6.18.0/node_modules/@prisma/client/runtime/library.js:1:2)',
+    '    at h (file:///C:/projet/src/lib/x.ts:4:5)',
+    '    at i (/home/jean.dupont@exemple.be/app.js:1:1)',
+  ].join('\n');
+  const r = nettoyer(e) as { pile: string[] };
+  assert.match(r.pile[0], /next@16\.0\.11_react-dom@19\.2\.8.*base-server\.js:12:3/);
+  assert.match(r.pile[1], /@prisma\+client@6\.18\.0.*library\.js/);
+  assert.match(r.pile[2], /file:\/\/\/C:\/projet\/src\/lib\/x\.ts:4:5/);
+  assert.ok(!r.pile.slice(0, 3).join(' ').includes('masqué'), r.pile.join('\n'));
+  // Une vraie adresse reste masquée, même dans un chemin.
+  assert.ok(!r.pile[3].includes('jean.dupont'), r.pile[3]);
+  assert.match(r.pile[3], /\[e-mail masqué\]/);
+});
+
+test('e-mails : formes variées toujours masquées (pas d’affaiblissement)', () => {
+  for (const adresse of ['jean.dupont@exemple.be', 'J.Dupont+commande@mail.exemple.co.uk', 'a_b-c@x-y.org', 'client@exemple.be.']) {
+    const t = nettoyerTexte(`contact ${adresse} fin`);
+    assert.ok(!t.includes('@'), `${adresse} → ${t}`);
+  }
+  // Les chaînes de connexion restent masquées (seul file:// est exempté).
+  assert.ok(!nettoyerTexte('postgresql://u:secret@h:5432/b').includes('secret'));
+});

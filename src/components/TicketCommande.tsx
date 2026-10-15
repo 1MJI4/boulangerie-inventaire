@@ -17,6 +17,12 @@
 // destination, parce que c'est ce qui se lit à un mètre sur une porte.
 
 import { formaterEuros, type Commande } from '@/lib/commandes';
+import {
+  MENTION_LIGNE_LIBRE,
+  demandeAConfirmer,
+  formaterLigneTicket,
+  mentionHeureRetrait,
+} from '@/lib/ticketCanvas';
 
 export const DESTINATIONS = ['CLIENT', 'BUREAU', 'MAGASIN', 'ATELIER'] as const;
 export type Destination = (typeof DESTINATIONS)[number];
@@ -34,9 +40,11 @@ export function Ticket({
 }) {
   const pourLeClient = destination === 'CLIENT';
   const reste = commande.totalCentimes - commande.acompteCentimes;
+  const heure = mentionHeureRetrait(commande.retraitHeure);
+  const avecKg = commande.lignes.some((l) => l.unite === 'kg');
 
   return (
-    <div className={`ticket tk-p${rang}`}>
+    <div className={`ticket tk-p${rang}${avecKg ? ' tk-avec-kg' : ''}`}>
       <div className="tk-entete">
         <div className="tk-marque">PAin PAtisserie</div>
         <div className="tk-coord">
@@ -70,20 +78,19 @@ export function Ticket({
       <div className="tk-retrait">
         <span>Pour le</span>
         <b>{formaterDateCourte(commande.retraitLe)}</b>
-        <i>à {commande.retraitHeure}</i>
+        {heure ? <i>{heure}</i> : null}
       </div>
 
       <div className="tk-titre">Produits commandés</div>
-      {commande.lignes.map((ligne, index) => (
+      {commande.lignes.map((l) => formaterLigneTicket(l, destination)).map((ligne, index) => (
         <div className="tk-ligne" key={index}>
-          <span className="q">{ligne.quantite} ×</span>
+          <span className="q">{ligne.quantite}</span>
           <span className="n">
             {ligne.libelle}
             {ligne.precision ? <em>{ligne.precision}</em> : null}
+            {ligne.aConfirmer ? <strong>{MENTION_LIGNE_LIBRE}</strong> : null}
           </span>
-          <span className="p">
-            {((ligne.quantite * ligne.prixCentimes) / 100).toFixed(2).replace('.', ',')}
-          </span>
+          <span className="p">{ligne.prix}</span>
         </div>
       ))}
 
@@ -99,9 +106,9 @@ export function Ticket({
         </div>
       ) : null}
 
-      {commande.gateauComplexe ? (
+      {demandeAConfirmer(commande, destination) ? (
         <div className="tk-mention">
-          <span>Complexe</span>
+          <span>Demande inhabituelle</span>
           <b>À CONFIRMER — PRIX ET FAISABILITÉ</b>
         </div>
       ) : null}
@@ -237,8 +244,10 @@ export const CSS_TICKET = `
 .tk-retrait i { display: block; font-style: normal; font-size: 13pt; font-weight: 700; }
 
 .tk-titre { font-size: 7pt; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; border-bottom: .4mm solid #000; padding-bottom: .6mm; margin-top: 3mm; }
-.tk-ligne { display: grid; grid-template-columns: 9mm 1fr 13mm; gap: 1mm; font-size: 9pt; padding: .8mm 0; align-items: baseline; border-bottom: .15mm dotted #999; }
-.tk-ligne .q { font-weight: 700; }
+.tk-ligne { display: grid; grid-template-columns: 9mm 1fr 17mm; gap: 1mm; font-size: 9pt; padding: .8mm 0; align-items: baseline; border-bottom: .15mm dotted #999; }
+.tk-avec-kg .tk-ligne { grid-template-columns: 15mm 1fr 17mm; }
+.tk-ligne .q { font-weight: 700; white-space: nowrap; }
+.tk-ligne .n strong { display: block; font-size: 7.5pt; font-weight: 700; text-transform: uppercase; }
 .tk-ligne .n em { display: block; font-style: normal; font-size: 7.5pt; }
 .tk-ligne .p { text-align: right; font-variant-numeric: tabular-nums; }
 

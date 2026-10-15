@@ -7,6 +7,9 @@
 > jamais directement dans le code.
 >
 > **À traiter en premier : « Accès et comptes » et « Prix sur commande ».**
+>
+> Les numéros ne changent jamais : une question ajoutée prend le numéro suivant, même si
+> elle est rangée plus haut dans la liste.
 
 ## Déjà tranché — 15/10/2026
 
@@ -23,6 +26,13 @@
   liste, sans code personnel. Le code gérant n'est demandé que pour changer les prix ou les
   produits. *→ Les questions sur le code personnel, la déconnexion automatique et la
   coupure d'accès d'un employé qui part n'ont donc plus lieu d'être.*
+- ✅ **L'inventaire a ses propres produits** : le catalogue de commande n'apparaît jamais
+  dans l'inventaire.
+- ✅ **Tous les chiffres de la prise de commande se tapent sur le pavé de l'application**,
+  comme pour l'inventaire.
+- ✅ **Acompte obligatoire : au moins 50 % du total**, pour toute commande (règlement
+  intérieur). Sous 50 %, l'application refuse et propose le bon montant. Un acompte plus
+  élevé que le total reste refusé. *(ancienne question 25)*
 
 ## Urgent — bloque le développement
 
@@ -59,7 +69,9 @@
     *(en attendant, l'application fait : l'affiche fait foi.)*
 
 9. Un Bavarois 6 parts **commandé** coûte-t-il le prix du comptoir (31 €) ou 6 × 4,50 =
-    27 € ?
+    27 € ? Un client paie donc 4 € de moins en commandant qu'en vitrine : est-ce voulu ?
+    *(en attendant, l'application fait : 6 × 4,50 = 27 €, prix modifiable vers le haut par
+    le pâtissier.)*
 
 10. Massepain (6 €, puis 5 € dès 20 parts), Ferrero (5,50 €), crème au beurre (4,50 €),
     tarte et cake (2,50 €), décorations (+5 €) : absents de l'affiche, sont-ils toujours
@@ -77,6 +89,26 @@
     vous seul, le pâtissier aussi, ou personne ?
     *(en attendant, l'application fait : refusé, sauf autorisation du gérant, avec son nom
     enregistré.)*
+    **À savoir** : pour cette autorisation, l'application vérifie le code gérant, mais pas le
+    nom tapé à côté. Quelqu'un qui connaît le code peut écrire n'importe quel nom. Est-ce
+    suffisant ?
+
+57. Un accord sous le prix « à partir de » donné pour **20 parts** vaut-il encore si la
+    commande passe ensuite à **30 parts** ?
+    *(en attendant, l'application fait : non, le code gérant est redemandé.)*
+
+42. Une « autre demande » (une ligne libre, hors catalogue) : le vendeur peut-il en fixer
+    le prix seul ?
+    *(en attendant, l'application fait : il faut l'accord du gérant.)*
+
+43. Un client peut-il convenir d'un prix total **au-dessus** du tarif ?
+    *(en attendant, l'application fait : non. Pour monter le prix, on augmente le prix par
+    personne. Exemple : 20 parts × 5,00 € = 100 € au lieu de 20 × 4,50 € = 90 €.)*
+
+53. **Commande du personnel** : votre règlement prévoit 10 % de réduction sur les commandes
+    pour soi (point 40). Aujourd'hui, l'application refuse tout prix sous le tarif sans le
+    code gérant. Faut-il une case « commande personnel » qui applique les 10 % ?
+    *(en attendant, l'application fait : il faut le code gérant.)*
 
 ### Jours de fermeture et délais
 
@@ -94,6 +126,42 @@
     gâteau simple ? · plateau salé ?
     *(en attendant, l'application fait : 5 jours / 48 h / 24 h.)*
 
+40. Un produit du **comptoir commandé à l'avance** (par exemple 30 baguettes) : combien de
+    jours à l'avance faut-il le commander ?
+    *(en attendant, l'application fait : 1 jour ouvré.)*
+
+41. Une date de retrait **déjà passée** doit-elle être refusée ?
+    *(en attendant, l'application fait : refusée.)*
+
+49. Une commande pour **le lendemain** : votre règlement dit « contacter le responsable ».
+    Le délai de 2 jours ouvrés supposé pour les gâteaux (question 17) est-il donc faux ?
+    Le responsable peut-il accepter un gâteau pour le lendemain ?
+    Aujourd'hui, même avec l'accord du responsable, le délai de 2 jours ouvrés l'emporte :
+    le gâteau pour le lendemain reste refusé. Le responsable peut-il lever les deux ?
+    *(en attendant, l'application fait : lendemain refusé sauf code gérant ; pour un gâteau,
+    le délai de 2 jours ouvrés s'applique en plus, sans exception.)*
+
+50. Les horaires de retrait **pâtisserie (9h en semaine / 12h le week-end)** valent-ils aussi
+    pour les plateaux salés et les produits du comptoir commandés ?
+    *(en attendant, l'application fait : uniquement pour la pâtisserie.)*
+
+51. L'heure de fermeture est-elle **20h00 tous les jours ouverts**, week-end compris ?
+    C'est elle qui décide quand l'inventaire peut commencer.
+    *(en attendant, l'application fait : 20h00 tous les jours ; un inventaire commencé avant
+    est signalé, pas refusé.)*
+
+52. Le **week-end**, c'est bien samedi et dimanche ? Un jour férié ouvert compte-t-il comme
+    un week-end (retrait pâtisserie à partir de 12h) ?
+    *(proposition en attendant : samedi, dimanche et férié ouvert à partir de 12h — le cas
+    le plus prudent.)*
+
+54. **Inventaire avant 20h00** : votre règlement dit « jamais avant ». L'application, elle,
+    prévient seulement. Faut-il le refuser, sauf code gérant ?
+    *(en attendant, l'application fait : un message prévient, l'inventaire continue.)*
+
+56. Une **heure de retrait après la fermeture** (par exemple 21h00) doit-elle être refusée ?
+    *(en attendant, l'application fait : l'heure n'est pas contrôlée.)*
+
 ## Important — change le comportement de l'application
 
 ### Minimums
@@ -107,8 +175,25 @@
 20. « Mini morceau pâtisserie » correspond à quel produit de l'affiche : minimum 10 ou 15 ?
 
 21. Number Cake : comment compte-t-on les symboles ? « 18+ », est-ce 3 symboles (45 parts) ?
+    *(en attendant, l'application fait : chaque caractère visible compte. « 18+ » =
+    3 symboles × 15 = 45 parts minimum.)*
 
 22. Le grand pain surprise à 20 € comprend-il les sandwichs, ou se paient-ils en plus ?
+
+60. Suppléments Photo / Écriture « une fois par gâteau » : qu'est-ce qui compte comme un
+    gâteau ? *(en attendant, l'application fait : un gâteau sur commande = un gâteau, quel
+    que soit le nombre de parts ; un plateau de minis sur commande = un gâteau ; au
+    comptoir, chaque pièce du rayon pâtisserie = un gâteau. Plus de photos que de gâteaux,
+    ou une photo sans gâteau : refusé.)*
+
+55. **Gâteaux simples** : quel est le nombre minimum de parts ? L'ancien supplément « moins
+    de 6 personnes » laissait penser que c'était 6.
+    *(en attendant, l'application fait : aucun minimum.)*
+
+59. **Grand pain surprise au-delà de 20 sandwichs** : faut-il seulement prévenir, ou
+    refuser ?
+    *(en attendant, l'application fait : elle prévient et propose d'ajouter un 2e pain,
+    sans bloquer.)*
 
 ### Prix et dates
 
@@ -119,7 +204,10 @@
     affiches sont-elles en vigueur ?
     *(en attendant, l'application fait : affiches en vigueur depuis le 15/10/2026.)*
 
-25. **Acompte** : exigé à partir de quel montant, et combien ? Différent pour un mariage ?
+44. Une erreur dans un tarif découverte après coup : faut-il pouvoir corriger le tarif
+    « depuis le début » ? Si oui, qui, et comment ?
+    *(en attendant, l'application fait : un nouveau tarif ne compte qu'à partir
+    d'aujourd'hui. Les commandes déjà prises gardent leur prix.)*
 
 26. **Périodes de pointe** (fin d'année, Ramadan/Aïd, communions, fête des mères) : vos
     délais s'allongent-ils ? De combien ?
@@ -140,6 +228,19 @@
 30. L'imprimante Star sera-t-elle branchée sur le réseau du magasin, et peut-on limiter
     son accès à ce seul réseau ?
 
+47. Numéro de téléphone du client : l'application accepte sans remarque les numéros belges
+    (02 123 45 67, 0470 12 34 56) et internationaux (+33…, +212…). Pour tout autre format,
+    elle prévient mais laisse passer. Est-ce suffisant ?
+
+### Suivi des commandes
+
+58. Les **commandes prises avant la mise à jour** de l'application : leur modification
+    doit-elle être réservée au gérant ?
+
+45. Une commande « à imprimer » peut-elle passer directement à « remise au client », sans
+    avoir été imprimée ?
+    *(en attendant, l'application fait : non, il faut d'abord l'imprimer.)*
+
 ### Catalogue et libellés
 
 31. **TVA** : faut-il deux taux par produit (6 % à emporter / 12 % sur place) ? À confirmer
@@ -155,6 +256,10 @@
 34. Dans votre Excel, « Piccolo blanc » apparaît deux fois dans les favoris, et « CRABE |
     SURIMI » contient des caractères invisibles : peut-on nettoyer le fichier ?
     *(en attendant, l'application fait : les noms sont repris tels quels, à la lettre.)*
+
+48. Les produits sur commande doivent-ils s'afficher dans un ordre à vous (les plus vendus
+    en premier, par exemple) ?
+    *(en attendant, l'application fait : même ordre que votre fichier Excel.)*
 
 35. **Allergènes** : disposez-vous déjà des fiches par produit ? La réglementation
     européenne impose de pouvoir les communiquer, et l'application peut les porter sur les
@@ -182,3 +287,8 @@
     de les intégrer à un plateau, au lieu de les perdre.
     **La question** : est-ce que ça vaut le geste supplémentaire au comptage, et sur quels
     rayons ? *(Proposition : uniquement Frigo-S, pas sur le pain ni la viennoiserie.)*
+
+46. **Quantités étonnantes au comptage.** L'application prévient (sans bloquer) quand un
+    employé tape plus de 2000 pièces, ou plus de 4 fois ce qu'on compte d'habitude pour ce
+    produit. Exemple : 400 croissants alors qu'on en compte 80 d'habitude → « Vérifiez ».
+    Ces seuils vous conviennent-ils ?

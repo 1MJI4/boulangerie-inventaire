@@ -8,7 +8,10 @@
 // Un nouveau tarif n'écrase jamais l'ancien : il ferme la version précédente
 // (valideAu = veille de sa date d'effet) et s'ajoute à côté.
 
+import { signaler } from "../domaine/messages.ts";
+import { succes, type Resultat } from "../domaine/resultat.ts";
 import { dateEnTexte, estDateISO, veille } from "./normaliser.ts";
+import { entreeRapport, libelleProduit, type CodeRapport, type ParametresRapport } from "./rapport.ts";
 import type {
   Catalogue,
   DateISO,
@@ -19,7 +22,6 @@ import type {
   ProduitAuTarif,
   RayonAuTarif,
   RegimePrix,
-  ResultatCatalogue,
   Signalement,
   VersionTarif,
 } from "./types.ts";
@@ -53,29 +55,24 @@ export function ajouterVersion(
   produits: readonly Produit[],
 ): ResultatAjoutVersion {
   const signalements: Signalement[] = [];
-  const bloque = (code: string, message: string, produitId?: string) =>
-    signalements.push({ niveau: "bloquant", code, message, produitId });
+  // Textes : catalogue unique des messages (via ./rapport.ts).
+  const signale = (code: CodeRapport, params: ParametresRapport, produitId?: string) =>
+    signalements.push(entreeRapport(code, params, { produitId }));
+  const tarif = `Tarif ${version.code}`;
   const refus = (): ResultatAjoutVersion => ({ ok: false, catalogue, signalements });
 
   if (!estDateISO(version.valideDu) || (version.valideAu !== null && !estDateISO(version.valideAu))) {
-    bloque("ERR_DATE_EFFET_INVALIDE", `Version ${version.code} : dates d'effet invalides.`);
+    signale("ERR_DATE_EFFET_INVALIDE", { ou: tarif, precision: `du « ${version.valideDu} » au « ${version.valideAu ?? ""} »` });
     return refus();
   }
 
   const existante = catalogue.versions.find((v) => v.code === version.code);
   if (existante) {
     if (existante.grille === version.grille && existante.valideDu === version.valideDu && memesLignes(existante.lignes, version.lignes)) {
-      signalements.push({
-        niveau: "information",
-        code: "INFO_DEJA_IMPORTE",
-        message: `Le tarif ${version.code} est déjà importé à l'identique : rien n'a changé.`,
-      });
+      signale("INFO_DEJA_IMPORTE", { ou: tarif });
       return { ok: true, catalogue, signalements };
     }
-    bloque(
-      "ERR_VERSION_DEJA_IMPORTEE_DIFFERENTE",
-      `Un tarif ${version.code} existe déjà avec un contenu différent. Un tarif importé ne se modifie pas : créer une nouvelle version datée.`,
-    );
+    signale("ERR_VERSION_DEJA_IMPORTEE_DIFFERENTE", { ou: tarif });
     return refus();
   }
 
@@ -84,21 +81,21 @@ export function ajouterVersion(
   if (derniere && version.valideDu <= derniere.valideDu) {
     // HYPOTHÈSE À VALIDER : un tarif rétroactif (antérieur au dernier importé)
     // est refusé — il réécrirait les prix de commandes et d'inventaires passés.
-    bloque(
-      "ERR_VERSION_ANTERIEURE",
-      `Le tarif ${version.code} (au ${dateEnTexte(version.valideDu)}) n'est pas postérieur au tarif ${derniere.code} (au ${dateEnTexte(derniere.valideDu)}).`,
-    );
+    signale("ERR_VERSION_ANTERIEURE", {
+      ou: tarif,
+      precision: `au ${dateEnTexte(version.valideDu)}, dernier tarif ${derniere.code} au ${dateEnTexte(derniere.valideDu)}`,
+    });
     return refus();
   }
   if (derniere && derniere.valideAu !== null && derniere.valideAu >= version.valideDu) {
-    bloque("ERR_CHEVAUCHEMENT_TARIFS", `Le tarif ${version.code} chevauche le tarif ${derniere.code}.`);
+    signale("ERR_CHEVAUCHEMENT_TARIFS", { ou: tarif, precision: `tarif ${derniere.code}` });
     return refus();
   }
 
   const nouveauxProduits = new Map(catalogue.produits);
   for (const p of produits) {
     if (!version.lignes.has(p.id)) {
-      bloque("ERR_PRODUIT_SANS_PRIX", `« ${p.produit} » est fourni sans prix dans ${version.code}.`, p.id);
+      signale("ERR_PRODUIT_SANS_PRIX", { ou: `${tarif}, ${libelleProduit(p)}` }, p.id);
       continue;
     }
     const ancien = catalogue.produits.get(p.id);
@@ -107,33 +104,24 @@ export function ajouterVersion(
       continue;
     }
     if (ancien.grille !== p.grille) {
-      bloque("ERR_IDENTIFIANT_DEJA_PRIS", `L'identifiant ${p.id} appartient déjà à la grille ${ancien.grille}.`, p.id);
+      signale("ERR_IDENTIFIANT_DEJA_PRIS", { ou: `${tarif}, ${libelleProduit(p)}`, precision: `« ${p.id} », grille ${ancien.grille}` }, p.id);
       continue;
     }
     if (ancien.unite !== p.unite) {
-      bloque(
-        "ERR_CHANGEMENT_UNITE",
-        `« ${p.produit} » passe de « ${ancien.unite} » à « ${p.unite} ». Un changement d'unité fausserait tous les comptages passés : à confirmer avec le gérant.`,
-        p.id,
-      );
+      signale("ERR_CHANGEMENT_UNITE", { ou: `${tarif}, ${libelleProduit(p)}`, precision: `« ${ancien.unite} » → « ${p.unite} »` }, p.id);
       continue;
     }
     if (ancien.regimePrix !== p.regimePrix) {
-      bloque("ERR_CHANGEMENT_REGIME", `« ${p.produit} » change de régime de prix (${ancien.regimePrix} → ${p.regimePrix}).`, p.id);
+      signale("ERR_CHANGEMENT_REGIME", { ou: `${tarif}, ${libelleProduit(p)}`, precision: `${ancien.regimePrix} → ${p.regimePrix}` }, p.id);
       continue;
     }
     if (ancien.produit !== p.produit || ancien.sousCategorie !== p.sousCategorie || ancien.categorie !== p.categorie) {
-      signalements.push({
-        niveau: "avertissement",
-        code: "AVERT_LIBELLE_MODIFIE",
-        message: `Libellé modifié : « ${ancien.produit} ${ancien.sousCategorie} » → « ${p.produit} ${p.sousCategorie} ». Même produit, historique conservé.`,
-        produitId: p.id,
-      });
+      signale("AVERT_LIBELLE_MODIFIE", { ou: tarif, precision: `${libelleProduit(ancien)} → ${libelleProduit(p)}` }, p.id);
     }
     nouveauxProduits.set(p.id, { ...p, tauxTva: ancien.tauxTva ?? p.tauxTva });
   }
   for (const id of version.lignes.keys()) {
-    if (!nouveauxProduits.has(id)) bloque("ERR_PRIX_SANS_PRODUIT", `Prix sans fiche produit : ${id}.`, id);
+    if (!nouveauxProduits.has(id)) signale("ERR_PRIX_SANS_PRODUIT", { ou: tarif, precision: `« ${id} »` }, id);
   }
   if (signalements.some((s) => s.niveau === "bloquant")) return refus();
 
@@ -146,8 +134,22 @@ export function ajouterVersion(
 
 // ------------------------------------------------------------------ Lecture
 
-function erreur<T>(code: string, message: string, champ?: string): ResultatCatalogue<T> {
-  return { ok: false, niveau: "bloquant", code, message, champ };
+// Messages : catalogue unique de `gestion-erreurs` (src/domaine/messages.ts).
+// Ce module décide QUAND la lecture échoue, jamais COMMENT c'est dit.
+
+/** Date illisible (pas au format AAAA-MM-JJ ou jour inexistant). */
+export function echecDateIllisible() {
+  return signaler("ERR_SAISIE_INVALIDE", { champLibelle: "date" }, { champ: "date" });
+}
+
+/** Identifiant absent du catalogue. */
+export function echecProduitInconnu() {
+  return signaler("ERR_PRODUIT_INCONNU", {}, { champ: "produitId" });
+}
+
+/** Aucun prix pour ce produit à cette date (aucun tarif, ou produit retiré du tarif). */
+export function echecTarifAbsent(libelleProduit: string, date: DateISO, champ: "date" | "produitId") {
+  return signaler("ERR_TARIF_ABSENT", { produit: libelleProduit, date: dateEnTexte(date) }, { champ });
 }
 
 /** Version d'une grille en vigueur à une date (bornes incluses), ou undefined. */
@@ -157,42 +159,26 @@ export function versionEnVigueur(catalogue: Catalogue, grille: Grille, date: Dat
   );
 }
 
-export function getProduit(catalogue: Catalogue, produitId: string): ResultatCatalogue<Produit> {
+export function getProduit(catalogue: Catalogue, produitId: string): Resultat<Produit> {
   const p = catalogue.produits.get(produitId);
-  if (!p) {
-    return erreur("ERR_PRODUIT_INCONNU", "Ce produit est introuvable dans le catalogue — choisissez-le dans la liste ou prévenez le gérant.", "produitId");
-  }
-  return { ok: true, valeur: p };
+  if (!p) return echecProduitInconnu();
+  return succes(p);
 }
 
-export function getPrix(catalogue: Catalogue, produitId: string, date: DateISO): ResultatCatalogue<PrixEnVigueur> {
-  if (!estDateISO(date)) {
-    return erreur("ERR_DATE_INVALIDE", "Date illisible — choisissez la date dans le calendrier.", "date");
-  }
+/**
+ * Prix en vigueur à une date. Échecs (tous ERR_*, bloquants) :
+ *   ERR_SAISIE_INVALIDE (date illisible) · ERR_PRODUIT_INCONNU ·
+ *   ERR_TARIF_ABSENT (aucun tarif à cette date, ou produit retiré du tarif).
+ */
+export function getPrix(catalogue: Catalogue, produitId: string, date: DateISO): Resultat<PrixEnVigueur> {
+  if (!estDateISO(date)) return echecDateIllisible();
   const produit = catalogue.produits.get(produitId);
-  if (!produit) {
-    return erreur("ERR_PRODUIT_INCONNU", "Ce produit est introuvable dans le catalogue — choisissez-le dans la liste ou prévenez le gérant.", "produitId");
-  }
+  if (!produit) return echecProduitInconnu();
   const version = versionEnVigueur(catalogue, produit.grille, date);
-  if (!version) {
-    return erreur(
-      "ERR_AUCUN_TARIF_A_CETTE_DATE",
-      `Aucun tarif en vigueur le ${dateEnTexte(date)} — prévenez le gérant avant de continuer.`,
-      "date",
-    );
-  }
+  if (!version) return echecTarifAbsent(produit.produit, date, "date");
   const ligne = version.lignes.get(produitId);
-  if (!ligne) {
-    return erreur(
-      "ERR_PRODUIT_ABSENT_DU_TARIF",
-      `« ${produit.produit} » ne figure pas au tarif du ${dateEnTexte(date)} — choisissez un autre produit ou prévenez le gérant.`,
-      "produitId",
-    );
-  }
-  return {
-    ok: true,
-    valeur: { ...ligne, produitId, versionCode: version.code, valideDu: version.valideDu, valideAu: version.valideAu },
-  };
+  if (!ligne) return echecTarifAbsent(produit.produit, date, "produitId");
+  return succes({ ...ligne, produitId, versionCode: version.code, valideDu: version.valideDu, valideAu: version.valideAu });
 }
 
 export interface OptionsListe {
@@ -214,7 +200,7 @@ export function listerParCategorie(catalogue: Catalogue, date: DateISO, options:
     const prix = getPrix(catalogue, produit.id, date);
     if (!prix.ok) continue;
     const liste = rayons.get(produit.categorie) ?? [];
-    liste.push({ produit, prix: prix.valeur });
+    liste.push({ produit, prix: prix.donnees });
     rayons.set(produit.categorie, liste);
   }
   return [...rayons].map(([categorie, produits]) => ({ categorie, produits }));
@@ -228,8 +214,8 @@ export function listerFavoris(catalogue: Catalogue, date: DateISO): ProduitAuTar
 }
 
 export interface ApiCatalogue {
-  getPrix(produitId: string, date: DateISO): ResultatCatalogue<PrixEnVigueur>;
-  getProduit(produitId: string): ResultatCatalogue<Produit>;
+  getPrix(produitId: string, date: DateISO): Resultat<PrixEnVigueur>;
+  getProduit(produitId: string): Resultat<Produit>;
   listerParCategorie(date: DateISO, options?: OptionsListe): RayonAuTarif[];
   listerFavoris(date: DateISO): ProduitAuTarif[];
 }

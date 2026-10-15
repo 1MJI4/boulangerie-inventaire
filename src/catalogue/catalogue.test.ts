@@ -75,7 +75,7 @@ test("chacune des 351 lignes retrouve exactement son prix_cents via getPrix", ()
         : identifiantProduit(categorie, produit, sous);
     const prix = getPrix(cat, id, "2026-09-15");
     assert.ok(prix.ok, `${categorie} / ${produit} / ${sous}`);
-    assert.equal(prix.valeur.prixCentimes, Number.parseInt(prixCentimes, 10));
+    assert.equal(prix.donnees.prixCentimes, Number.parseInt(prixCentimes, 10));
   }
 });
 
@@ -118,7 +118,7 @@ test("exactement 4 produits au kilo, tous Oriental", () => {
   assert.ok(kg.every((p) => p.categorie === "Oriental"));
   for (const p of kg) {
     const prix = getPrix(cat, p.id, "2026-09-15");
-    assert.ok(prix.ok && prix.valeur.basePrix === "kg");
+    assert.ok(prix.ok && prix.donnees.basePrix === "kg");
   }
 });
 
@@ -240,11 +240,11 @@ test("getPrix de part et d'autre d'un changement de tarif", () => {
   const avant = getPrix(cat, id, "2026-10-31");
   const apres = getPrix(cat, id, "2026-11-01");
   assert.ok(avant.ok && apres.ok);
-  assert.equal(avant.valeur.prixCentimes, ancien);
-  assert.equal(avant.valeur.versionCode, "tarif_2026-09");
-  assert.equal(avant.valeur.valideAu, "2026-10-31");
-  assert.equal(apres.valeur.prixCentimes, nouveau);
-  assert.equal(apres.valeur.versionCode, "tarif_2026-11");
+  assert.equal(avant.donnees.prixCentimes, ancien);
+  assert.equal(avant.donnees.versionCode, "tarif_2026-09");
+  assert.equal(avant.donnees.valideAu, "2026-10-31");
+  assert.equal(apres.donnees.prixCentimes, nouveau);
+  assert.equal(apres.donnees.versionCode, "tarif_2026-11");
 });
 
 test("un nouveau tarif n'écrase jamais l'ancien", () => {
@@ -258,7 +258,7 @@ test("aucun tarif avant la première date d'effet → refus explicite", () => {
   const cat = charger();
   const r = getPrix(cat, [...cat.produits.keys()][0], "2026-08-31");
   assert.equal(r.ok, false);
-  assert.equal(!r.ok && r.code, "ERR_AUCUN_TARIF_A_CETTE_DATE");
+  assert.equal(!r.ok && r.code, "ERR_TARIF_ABSENT");
 });
 
 test("produit disparu : fiche conservée, plus de prix au nouveau tarif", () => {
@@ -271,7 +271,7 @@ test("produit disparu : fiche conservée, plus de prix au nouveau tarif", () => 
   assert.ok(getProduit(r.catalogue, id).ok);
   assert.ok(getPrix(r.catalogue, id, "2026-10-15").ok);
   const apres = getPrix(r.catalogue, id, "2026-11-02");
-  assert.equal(!apres.ok && apres.code, "ERR_PRODUIT_ABSENT_DU_TARIF");
+  assert.equal(!apres.ok && apres.code, "ERR_TARIF_ABSENT");
   const diff = comparerVersions(r.catalogue.versions[0], r.catalogue.versions[1]);
   assert.deepEqual(diff.disparus, [id]);
   assert.match(formaterRapportDiff(diff, r.catalogue), /1 disparus/);
@@ -311,4 +311,12 @@ test("API liée : getPrix / getProduit / listerParCategorie", () => {
   const premier = api.listerParCategorie("2026-09-15")[0].produits[0];
   assert.ok(api.getProduit(premier.produit.id).ok);
   assert.equal(api.getPrix("x", "2026-13-45").ok, false);
+});
+
+test("constat : aucun des 4 produits au kilo n'est un favori dans le CSV (Halwa arbia comprise)", () => {
+  const cat = charger();
+  const auKilo = [...cat.produits.values()].filter((p) => p.unite === "kg");
+  assert.equal(auKilo.length, 4);
+  assert.ok(auKilo.every((p) => !p.estFavori));
+  assert.ok(!lignesCsv.some((l) => l[0] === "Favoris" && l[1] === "Halwa arbia"), "aucune ligne Favoris « Halwa arbia »");
 });

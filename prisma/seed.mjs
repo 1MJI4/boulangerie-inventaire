@@ -2,6 +2,12 @@
 // Remplit la table Produit avec tous les articles de la feuille d'inventaire.
 // Chaque variante est un produit distinct (Grand / Petit, blanc / gris, etc.)
 // Idempotent : peut être relancé sans créer de doublons (upsert sur "nom").
+//
+// LOI 10 — "Produit" est la liste d'INVENTAIRE, et elle seule : le catalogue
+// de commande vit dans "ProduitCatalogue" (import de catalogue-prix), qui
+// n'est jamais lu ni écrit ici. Le nom est unique dans la liste
+// d'inventaire (index "Produit_nom_key").
+// Aucun prix ici : les prix sont ceux du catalogue de commande (PrixProduit).
 // Usage : npm run db:seed
 
 import { PrismaClient } from '@prisma/client';
@@ -26,7 +32,7 @@ async function main() {
     const { nom, categorie, poste } = CATALOGUE[i];
     const ordre = (i + 1) * 10; // pas de 10 pour pouvoir intercaler plus tard
 
-    const existant = await prisma.produit.findUnique({ where: { nom } });
+    const existant = await prisma.produit.findUnique({ where: { nom }, select: { id: true } });
 
     await prisma.produit.upsert({
       where: { nom },

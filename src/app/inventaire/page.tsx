@@ -3,29 +3,41 @@
 // Vue complète d'une journée : demandé, produit, restant, vendu.
 // C'est le filet de sécurité mentionné par le client — tout est là,
 // sur un seul écran, en lecture et en correction.
+//
+// LOI 2 : un produit au kilo a ses quantités en grammes, affichées en kg, et
+// n'entre jamais dans les totaux en pièces (on n'additionne pas des grammes
+// et des pièces). LOI 10 : seuls les produits de la liste d'inventaire.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alerte, Carte, Chargement, Entete, EtatVide, Puce } from '@/components/ui';
 import { SelecteurJournee } from '@/components/SelecteurJournee';
 import { dateDuJour, formatDateLong } from '@/lib/dateProduction';
 import { trierCategories } from '@/lib/postes';
+import { RappelChargement } from '@/components/rappels';
+import { formaterQuantite } from '@/domaine/unites';
+import type { Unite } from '@/domaine/types';
 
 type Ligne = {
   produitId: number;
   quantitePrevue: number | null;
   quantiteProduite: number | null;
   quantiteRestante: number | null;
-  produit: { id: number; nom: string; categorie: string; ordre: number };
+  produit: { id: number; nom: string; categorie: string; ordre: number; unite?: Unite };
 };
 
-const afficher = (v: number | null) =>
-  v === null ? <span className="text-ink-3">—</span> : <span className="chiffres">{v}</span>;
+const afficher = (v: number | null, unite: Unite = 'piece') =>
+  v === null ? (
+    <span className="text-ink-3">—</span>
+  ) : (
+    <span className="chiffres">{unite === 'kg' ? formaterQuantite('kg', v) : v}</span>
+  );
 
 export default function InventaireComplet() {
   const [date, setDate] = useState(() => dateDuJour());
   const [lignes, setLignes] = useState<Ligne[]>([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
+  const auPoids = lignes.some((l) => l.produit.unite === 'kg');
 
   const charger = useCallback(async () => {
     setChargement(true);
@@ -60,6 +72,7 @@ export default function InventaireComplet() {
     let restant = 0;
     let vendu = 0;
     for (const l of lignes) {
+      if (l.produit.unite === 'kg') continue; // totaux en pièces uniquement
       produit += l.quantiteProduite ?? 0;
       restant += l.quantiteRestante ?? 0;
       if (l.quantiteProduite != null && l.quantiteRestante != null) {
@@ -87,7 +100,10 @@ export default function InventaireComplet() {
       ) : null}
 
       {chargement ? (
-        <Chargement />
+        <>
+          <Chargement />
+          <RappelChargement className="mx-auto max-w-md" />
+        </>
       ) : lignes.length === 0 ? (
         <Carte>
           <EtatVide
@@ -104,7 +120,10 @@ export default function InventaireComplet() {
               { libelle: 'Restant', valeur: totaux.restant },
             ].map(({ libelle, valeur, accent }) => (
               <Carte key={libelle} className="px-4 py-3">
-                <div className="text-xs uppercase tracking-wide text-ink-3">{libelle}</div>
+                <div className="text-xs uppercase tracking-wide text-ink-3">
+                  {libelle}
+                  {auPoids ? <span className="normal-case"> · pièces</span> : null}
+                </div>
                 <div
                   className={`chiffres mt-1 text-2xl font-semibold ${accent ? 'text-accent' : 'text-ink'}`}
                 >
@@ -150,18 +169,18 @@ export default function InventaireComplet() {
                               {ligne.produit.nom}
                             </td>
                             <td className="px-3 py-2 text-right text-ink-2">
-                              {afficher(ligne.quantitePrevue)}
+                              {afficher(ligne.quantitePrevue, ligne.produit.unite)}
                             </td>
                             <td className="px-3 py-2 text-right text-ink-2">
-                              {afficher(ligne.quantiteProduite)}
+                              {afficher(ligne.quantiteProduite, ligne.produit.unite)}
                             </td>
                             <td
                               className={`px-3 py-2 text-right ${invenduFort ? 'text-attention' : 'text-ink-2'}`}
                             >
-                              {afficher(ligne.quantiteRestante)}
+                              {afficher(ligne.quantiteRestante, ligne.produit.unite)}
                             </td>
                             <td className="px-4 py-2 text-right font-medium text-ink">
-                              {afficher(vendu)}
+                              {afficher(vendu, ligne.produit.unite)}
                             </td>
                           </tr>
                         );

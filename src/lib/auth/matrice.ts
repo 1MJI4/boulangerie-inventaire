@@ -25,6 +25,9 @@ export const MATRICE_ACCES: Record<string, Partial<Record<Methode, EntreeMatrice
     // commandes, idempotent. Une tablette installée suffit.
     PUT: { role: 'tablette', action: 'ranger les commandes passées' },
   },
+  'src/app/api/calendrier/route.ts': {
+    GET: { role: 'tablette', action: 'consulter le calendrier' },
+  },
   'src/app/api/inventaires/route.ts': {
     GET: { role: 'tablette', action: 'consulter un inventaire' },
     POST: { role: 'tablette', action: 'saisir un inventaire' },

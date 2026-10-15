@@ -6,6 +6,9 @@
 // En pratique il ne planifie presque que la viennoiserie. C'est donc le seul
 // rayon ouvert à l'arrivée ; les autres sont là, repliés, pour les fois où il
 // en a besoin — et s'ouvrent d'eux-mêmes s'ils contiennent déjà des quantités.
+//
+// LOI 2 : un produit au kilo se planifie en poids (grammes), au pavé décimal ;
+// le « + commande » (1 + 11) reste réservé aux produits à la pièce.
 
 import { useEffect, useMemo, useState } from 'react';
 import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide, Progression, Puce } from '@/components/ui';
@@ -18,6 +21,10 @@ import { useMemoireLocale } from '@/lib/memoireLocale';
 import { LIBELLE_POSTE, trierCategories } from '@/lib/postes';
 import { formatHeure, useHistoriqueProduit } from '@/lib/useHistoriqueProduit';
 import { useSaisieJournee, type Produit } from '@/lib/useSaisieJournee';
+import { PaveSaisieProduit } from '@/components/inventaire/PaveSaisieProduit';
+import { SignalementsLigne } from '@/components/inventaire/SignalementsLigne';
+import { RappelChargement } from '@/components/rappels';
+import { formaterQuantite } from '@/domaine/unites';
 
 /** Le rayon que le manager planifie tous les jours. */
 const RAYON_PRINCIPAL = 'Viennoiserie';
@@ -37,6 +44,11 @@ export default function SaisiePrevisions() {
   // la semaine suivante.
   const commande = useSaisieJournee({ date, champ: 'quantiteCommande' });
   const { reperes } = useHistoriqueProduit(date);
+  /** Produit au kilo en cours de saisie (pavé décimal ouvert). */
+  const [pesee, setPesee] = useState<number | null>(null);
+  const produitPese = pesee === null ? null : (saisie.produits.find((p) => p.id === pesee) ?? null);
+  const afficher = (produit: Produit, n: number) =>
+    produit.unite === 'kg' ? formaterQuantite('kg', n) : String(n);
 
   /**
    * Le complément s'ajoute au total, il ne le remplace pas : le manager avait
@@ -129,7 +141,7 @@ export default function SaisiePrevisions() {
   }, [saisie.produits, saisie.valeurs]);
 
   return (
-    <>
+    <div className={produitPese ? 'pb-[30rem]' : ''}>
       <Entete
         titre="Prévisions de production"
         sousTitre={
@@ -182,7 +194,10 @@ export default function SaisiePrevisions() {
       ) : null}
 
       {saisie.chargement ? (
-        <Chargement libelle="Chargement du catalogue…" />
+        <>
+          <Chargement libelle="Chargement de la liste des produits…" />
+          <RappelChargement className="mx-auto max-w-md" />
+        </>
       ) : rayons.length === 0 ? (
         <Carte>
           <EtatVide titre="Aucun produit ne correspond" detail="Essayez un autre mot." />
@@ -246,13 +261,26 @@ export default function SaisiePrevisions() {
                     <div className="border-t border-line">
                       {produits.map((produit) => {
                         const repere = reperes.get(produit.id);
+                        const auPoids = produit.unite === 'kg';
+                        const refus = saisie.refus.get(produit.id) ?? commande.refus.get(produit.id);
                         return (
                           <LigneSaisie
                             key={produit.id}
                             nom={produit.nom}
+                            unite={produit.unite}
+                            selectionne={pesee === produit.id}
+                            onSelectionner={auPoids ? () => setPesee(produit.id) : undefined}
                             valeur={saisie.valeurs[produit.id] ?? ''}
                             onChange={(v) => saisie.definir(produit.id, v)}
-                            suggestion={repere?.moyenneProduite ?? null}
+                            signalements={
+                              refus ? (
+                                <SignalementsLigne
+                                  signalements={[refus]}
+                                  onEffacer={() => saisie.definir(produit.id, '')}
+                                />
+                              ) : undefined
+                            }
+                            suggestion={auPoids ? null : (repere?.moyenneProduite ?? null)}
                             onAppliquerSuggestion={
                               repere?.moyenneProduite != null
                                 ? () => saisie.definir(produit.id, String(repere.moyenneProduite))
@@ -262,7 +290,11 @@ export default function SaisiePrevisions() {
                               repere?.dernier?.produite != null ? (
                                 <>
                                   semaine passée :{' '}
-                                  <span className="chiffres">{repere.dernier.produite} produits</span>
+                                  <span className="chiffres">
+                                    {auPoids
+                                      ? afficher(produit, repere.dernier.produite)
+                                      : `${repere.dernier.produite} produits`}
+                                  </span>
                                   {repere.dernier.restante != null ? (
                                     <>
                                       ,{' '}
@@ -273,7 +305,7 @@ export default function SaisiePrevisions() {
                                             : ''
                                         }`}
                                       >
-                                        {repere.dernier.restante} invendus
+                                        {afficher(produit, repere.dernier.restante)} invendus
                                       </span>
                                     </>
                                   ) : null}
@@ -291,11 +323,15 @@ export default function SaisiePrevisions() {
                                 </>
                               ) : null
                             }
-                            complement={{
-                              titre: `${produit.nom} : part due à une commande`,
-                              valeur: commande.valeurs[produit.id] ?? '',
-                              onChange: (v) => ajusterCommande(produit.id, v),
-                            }}
+                            complement={
+                              auPoids
+                                ? undefined
+                                : {
+                                    titre: `${produit.nom} : part due à une commande`,
+                                    valeur: commande.valeurs[produit.id] ?? '',
+                                    onChange: (v) => ajusterCommande(produit.id, v),
+                                  }
+                            }
                           />
                         );
                       })}
@@ -336,6 +372,15 @@ export default function SaisiePrevisions() {
           {saisie.statut === 'envoi' ? 'Enregistrement…' : 'Enregistrer maintenant'}
         </Bouton>
       </div>
-    </>
+
+      {produitPese ? (
+        <PaveSaisieProduit
+          produit={produitPese}
+          valeur={saisie.valeurs[produitPese.id] ?? ''}
+          onChange={(v) => saisie.definir(produitPese.id, v)}
+          onFermer={() => setPesee(null)}
+        />
+      ) : null}
+    </div>
   );
 }

@@ -18,7 +18,7 @@ const JOUR = "2026-10-20";
 function ligne(id: string) {
   const r = getPrix(cat, id, JOUR);
   assert.ok(r.ok, id);
-  return r.valeur;
+  return r.donnees;
 }
 
 test("le dossier data/ se charge sans blocage (comptoir + sur commande)", () => {
@@ -71,7 +71,7 @@ test("le Bavarois comptoir (A) et le Bavarois sur commande (C) restent deux prod
 
 test("avant la date d'effet des affiches, aucun prix sur commande n'est servi", () => {
   const r = getPrix(cat, "gateaux-sur-commande/layer-cake", "2026-10-14");
-  assert.equal(!r.ok && r.code, "ERR_AUCUN_TARIF_A_CETTE_DATE");
+  assert.equal(!r.ok && r.code, "ERR_TARIF_ABSENT");
 });
 
 test("rapport d'écarts affiche / Excel : prix concordants, orthographe Bastella/Bestella signalée", () => {
@@ -94,4 +94,92 @@ test("régime absent, minimum en « majoration » ou plancher en régime B → i
     assert.equal(imp.ok, false, code);
     assert.ok(imp.signalements.some((s) => s.code === code), code);
   }
+});
+
+// ------------------------------------------------------------ Famille (LOI 11)
+
+test("famille explicite : affiche des gâteaux = pâtisserie, affiche traiteur = salé (jamais déduite du nom)", () => {
+  for (const affiche of JSON_AFFICHES.affiches as { titre: string; produits: { id: string; basePrix: string }[] }[]) {
+    for (const { id, basePrix } of affiche.produits) {
+      const attendue = basePrix === "forfait" ? "supplement" : affiche.titre === "Sur commande" ? "sale" : "patisserie";
+      assert.equal(cat.produits.get(id)?.famille, attendue, id);
+    }
+  }
+});
+
+// ------------------------------------------------------------ Suppléments (R7)
+
+const SUPPLEMENTS_ATTENDUS = [
+  "gateaux-et-tartes/supplement/photo",
+  "gateaux-et-tartes/supplement/ecriture",
+  "gateaux-sur-commande/supplement-photo",
+  "gateaux-sur-commande/supplement-ecriture-simple",
+];
+
+test("suppléments : exactement 4, au forfait, famille « supplement », libellés intacts", () => {
+  const derniere = (id: string) => [...cat.versions].reverse().find((v) => v.lignes.has(id))!.lignes.get(id)!;
+  const supplements = [...cat.produits.values()].filter((p) => p.famille === "supplement").map((p) => p.id);
+  assert.deepEqual(supplements.sort(), [...SUPPLEMENTS_ATTENDUS].sort());
+  for (const id of SUPPLEMENTS_ATTENDUS) {
+    assert.equal(derniere(id).basePrix, "forfait", id);
+    assert.equal(cat.produits.get(id)!.produit, "Supplément", `${id} : libellé à la lettre (LOI 5)`);
+  }
+  // Seuls les suppléments sont au forfait, dans toutes les versions.
+  for (const v of cat.versions) for (const [id, l] of v.lignes) assert.equal(l.basePrix === "forfait", SUPPLEMENTS_ATTENDUS.includes(id), id);
+  // « Supplément (oeuf) » (sandwichs) n'est pas listé : reste à la pièce.
+  const oeuf = [...cat.produits.values()].find((p) => p.produit === "Supplément (oeuf)")!;
+  assert.equal(oeuf.famille, "sale");
+});
+
+test("affiche : supplément hors forfait, ou forfait hors supplément → bloquant", () => {
+  const a = structuredClone(JSON_AFFICHES);
+  const gateaux = a.affiches.find((x: { titre: string }) => x.titre !== "Sur commande");
+  const photo = gateaux.produits.find((p: { id: string }) => p.id === "gateaux-sur-commande/supplement-photo");
+  photo.basePrix = "piece";
+  photo.prixEstPlancher = true;
+  const imp1 = importerTarifsSurCommande(a, OPTS);
+  assert.equal(imp1.ok, false);
+  assert.ok(imp1.signalements.some((s) => s.code === "ERR_REGIME_INCOHERENT" && s.produitId === photo.id));
+
+  const b = structuredClone(JSON_AFFICHES);
+  const g2 = b.affiches.find((x: { titre: string }) => x.titre !== "Sur commande");
+  const layer = g2.produits.find((p: { id: string }) => p.id === "gateaux-sur-commande/layer-cake");
+  layer.basePrix = "forfait";
+  layer.prixEstPlancher = false;
+  const imp2 = importerTarifsSurCommande(b, OPTS);
+  assert.equal(imp2.ok, false);
+  assert.ok(imp2.signalements.some((s) => s.code === "ERR_REGIME_INCOHERENT" && s.produitId === layer.id));
+});
+
+test("famille du comptoir : tirée du rayon, chaque produit en a une", () => {
+  const parRayon = new Map<string, Set<string>>();
+  for (const p of cat.produits.values()) {
+    assert.ok(["patisserie", "viennoiserie", "boulangerie", "sale", "boisson", "supplement"].includes(p.famille), p.id);
+    if (p.famille === "supplement") continue; // supplément : liste explicite, pas le rayon (testé plus haut)
+    parRayon.set(p.categorie, (parRayon.get(p.categorie) ?? new Set()).add(p.famille));
+  }
+  for (const [rayon, familles] of parRayon) assert.equal(familles.size, 1, `une seule famille par rayon : ${rayon}`);
+  assert.deepEqual([...parRayon.get("Gâteaux et tartes")!], ["patisserie"]);
+  assert.deepEqual([...parRayon.get("Boulangerie")!], ["boulangerie"]);
+  assert.deepEqual([...parRayon.get("Sandwichs Froids")!], ["sale"]);
+});
+
+test("rayon inconnu : classé pâtisserie (le plus prudent) et signalé en hypothèse", () => {
+  const copie = structuredClone(JSON_AFFICHES);
+  copie.affiches[0].titre = "Nouvelle affiche";
+  const imp = importerTarifsSurCommande(copie, OPTS);
+  assert.ok(imp.ok);
+  assert.ok(imp.produits.filter((p) => p.categorie === "Nouvelle affiche").every((p) => p.famille === "patisserie"));
+  assert.ok(imp.signalements.some((s) => s.code === "INFO_HYPOTHESE" && s.message.includes("Nouvelle affiche")));
+});
+
+test("rapport d'import : textes du catalogue des messages, jamais de code ni d'« undefined »", () => {
+  const copie = structuredClone(JSON_AFFICHES);
+  delete copie.affiches[1].produits[0].regimePrix;
+  const imp = importerTarifsSurCommande(copie, OPTS);
+  const s = imp.signalements.find((x) => x.code === "ERR_REGIME_ABSENT")!;
+  assert.equal(s.niveau, "bloquant");
+  assert.ok(s.message.startsWith("« "), "commence par le repère (« produit » (affiche))");
+  assert.ok(!/ERR_|undefined/.test(s.message), s.message);
+  for (const r of charge.rapports) for (const x of r.signalements) assert.ok(!/ERR_|AVERT_|INFO_|undefined/.test(x.message), x.message);
 });

@@ -14,7 +14,7 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { signaler } from '@/domaine/messages';
-import { bloquant, type Echec } from '@/domaine/resultat';
+import type { Echec } from '@/domaine/resultat';
 import { corpsClient } from '@/lib/erreurBase';
 import { CHEMIN_CONNEXION, estCheminApi, estCheminPublic } from '@/lib/auth/chemins';
 import { NOM_COOKIE_GERANT, NOM_COOKIE_TABLETTE, lireConfiguration, optionsCookie } from '@/lib/auth/config';
@@ -74,14 +74,7 @@ export function proxy(requete: NextRequest) {
   }
 
   if (api && origineEtrangere(requete)) {
-    // Message local en attendant le code ERR_ORIGINE_REFUSEE dans src/domaine/messages.ts.
-    return refusApi(
-      bloquant(
-        'ERR_ORIGINE_REFUSEE',
-        'Cette demande ne vient pas de l’application. Rouvrez l’application et recommencez.'
-      ),
-      403
-    );
+    return refusApi(signaler('ERR_ORIGINE_REFUSEE', {}), 403);
   }
 
   const reponse = NextResponse.next();

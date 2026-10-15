@@ -10,12 +10,9 @@ import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { Alerte, Chargement } from '@/components/ui';
 import { FormulaireCommande } from '@/components/FormulaireCommande';
-import type { Commande } from '@/lib/commandes';
-
-type CommandeApi = Omit<Commande, 'retraitLe' | 'avertissements'> & {
-  retraitLe: string;
-  avertissements: string | null;
-};
+import { depuisApi, type Commande, type CommandeApi } from '@/lib/commandes';
+import { RappelChargement } from '@/components/rappels';
+import { echecReseau, lireReponse } from '@/components/commande/modele';
 
 export default function ModifierCommande() {
   const params = useParams<{ id: string }>();
@@ -24,25 +21,34 @@ export default function ModifierCommande() {
 
   const charger = useCallback(async () => {
     try {
-      const reponse = await fetch(`/api/commandes?id=${params.id}`);
-      const donnees: CommandeApi = await reponse.json();
-      if (!reponse.ok) throw new Error('Commande introuvable.');
-      setCommande({
-        ...donnees,
-        retraitLe: donnees.retraitLe.slice(0, 10),
-        avertissements: donnees.avertissements ? JSON.parse(donnees.avertissements) : [],
-      });
-    } catch (e) {
-      setErreur(e instanceof Error ? e.message : 'Commande introuvable.');
+      const r = await lireReponse<CommandeApi>(await fetch(`/api/commandes?id=${params.id}`));
+      if (r.ok) setCommande(depuisApi(r.donnees));
+      else setErreur(r.message);
+    } catch {
+      const e = echecReseau();
+      if (!e.ok) setErreur(e.message);
     }
   }, [params.id]);
 
   useEffect(() => {
-    void charger();
+    let annule = false;
+    (async () => {
+      await Promise.resolve();
+      if (!annule) await charger();
+    })();
+    return () => {
+      annule = true;
+    };
   }, [charger]);
 
   if (erreur) return <Alerte>{erreur}</Alerte>;
-  if (!commande) return <Chargement libelle="Ouverture de la commande…" />;
+  if (!commande)
+    return (
+      <>
+        <Chargement libelle="Ouverture de la commande…" />
+        <RappelChargement />
+      </>
+    );
 
   if (commande.statut === 'annulee') {
     return (

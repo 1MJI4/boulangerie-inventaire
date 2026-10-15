@@ -9,26 +9,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide, LienBouton, Puce } from '@/components/ui';
 import { useEquipe } from '@/lib/vendeurs';
-import {
-  attendUnVirement,
-  formaterEuros,
-  LIBELLE_STATUT,
-  type Commande,
-} from '@/lib/commandes';
+import { attendUnVirement, depuisApi, LIBELLE_STATUT, type Commande, type CommandeApi } from '@/lib/commandes';
 import { dateDuJour, formatDateRelative } from '@/lib/dateProduction';
-
-type CommandeApi = Omit<Commande, 'retraitLe' | 'avertissements'> & {
-  retraitLe: string;
-  avertissements: string | null;
-};
-
-function normaliser(c: CommandeApi): Commande {
-  return {
-    ...c,
-    retraitLe: c.retraitLe.slice(0, 10),
-    avertissements: c.avertissements ? JSON.parse(c.avertissements) : [],
-  };
-}
+import { formaterEuros, resteDu } from '@/domaine/argent';
+import { formaterQuantite } from '@/domaine/unites';
+import { validerTransitionStatut } from '@/domaine/coherence';
+import type { Echec } from '@/domaine/resultat';
+import { RappelChargement } from '@/components/rappels';
+import { ListeSignalements } from '@/components/signalement';
+import { echecReseau, lireReponse } from '@/components/commande/modele';
+import { sortieDe } from '@/components/commande/sorties';
 
 export default function EcranCommandes() {
   const { equipe, vendeur, prete, definirVendeur, ajouter } = useEquipe();
@@ -45,19 +35,31 @@ export default function EcranCommandes() {
       // tous les jours, cela suffit.
       void fetch('/api/commandes', { method: 'PUT' }).catch(() => {});
 
-      const reponse = await fetch('/api/commandes?statut=en_cours');
-      if (!reponse.ok) throw new Error((await reponse.json()).error ?? 'Erreur');
-      const donnees: CommandeApi[] = await reponse.json();
-      setCommandes(donnees.map(normaliser));
+      const r = await lireReponse<CommandeApi[]>(await fetch('/api/commandes?statut=en_cours'));
+      if (!r.ok) {
+        setErreur(r.message);
+        setCommandes([]);
+        return;
+      }
+      setCommandes(r.donnees.map(depuisApi));
       setErreur(null);
-    } catch (e) {
-      setErreur(e instanceof Error ? e.message : 'Impossible de charger les commandes.');
+    } catch {
+      const e = echecReseau();
+      setErreur(e.ok ? null : e.message);
       setCommandes([]);
     }
   }, []);
 
   useEffect(() => {
-    if (vendeur) void charger();
+    if (!vendeur) return;
+    let annule = false;
+    (async () => {
+      await Promise.resolve();
+      if (!annule) await charger();
+    })();
+    return () => {
+      annule = true;
+    };
   }, [vendeur, charger]);
 
   const groupes = useMemo(() => {
@@ -83,7 +85,13 @@ export default function EcranCommandes() {
 
   /* ----------------------------------------- Qui prend la commande ? */
 
-  if (!prete) return <Chargement />;
+  if (!prete)
+    return (
+      <>
+        <Chargement />
+        <RappelChargement />
+      </>
+    );
 
   if (!vendeur) {
     return (
@@ -174,7 +182,10 @@ export default function EcranCommandes() {
       </div>
 
       {commandes === null ? (
-        <Chargement />
+        <>
+          <Chargement />
+          <RappelChargement />
+        </>
       ) : commandes.length === 0 ? (
         <Carte>
           <EtatVide
@@ -240,22 +251,47 @@ function LigneCommandeCarte({
   onChange: () => void;
 }) {
   const [occupe, setOccupe] = useState(false);
+  const [refus, setRefus] = useState<Echec | null>(null);
+  // R58 : décompte des articles devant le client avant de passer à « remise ».
+  const [decompte, setDecompte] = useState<Record<string, boolean> | null>(null);
 
-  const agir = async (action: string) => {
+  const agir = async (action: string, enPlus: Record<string, unknown> = {}) => {
     setOccupe(true);
+    setRefus(null);
     try {
-      await fetch('/api/commandes', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: commande.id, action, auteur: vendeur }),
-      });
+      const r = await lireReponse(
+        await fetch('/api/commandes', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: commande.id, action, auteur: vendeur, ...enPlus }),
+        }),
+      );
+      if (!r.ok) {
+        setRefus(r);
+        return;
+      }
+      setDecompte(null);
       onChange();
+    } catch {
+      const e = echecReseau();
+      if (!e.ok) setRefus(e);
     } finally {
       setOccupe(false);
     }
   };
 
-  const reste = commande.totalCentimes - commande.acompteCentimes;
+  const articles = commande.lignes.map((l, k) => ({ id: String(l.id ?? k), remis: decompte?.[String(l.id ?? k)] === true }));
+  const validerRemise = () => {
+    // Même règle que le serveur (validerTransitionStatut → validerRemise) : refus immédiat.
+    const r = validerTransitionStatut(commande.statut, 'remise', { articles });
+    if (!r.ok) {
+      setRefus(r);
+      return;
+    }
+    void agir('remise', { articles });
+  };
+
+  const reste = resteDu(commande.totalCentimes, commande.acompteCentimes);
 
   return (
     <Carte className="p-3.5">
@@ -268,7 +304,7 @@ function LigneCommandeCarte({
           </div>
           <p className="mt-1 text-sm text-ink-2">
             {formatDateRelative(commande.retraitLe)} à{' '}
-            <span className="chiffres">{commande.retraitHeure}</span> · {commande.lignes.length}{' '}
+            <span className="chiffres">{commande.retraitHeure ?? '—'}</span> · {commande.lignes.length}{' '}
             ligne{commande.lignes.length > 1 ? 's' : ''} ·{' '}
             <span className="chiffres">{formaterEuros(commande.totalCentimes)}</span>
             {reste > 0 ? (
@@ -304,12 +340,57 @@ function LigneCommandeCarte({
             </Bouton>
           ) : null}
           {commande.statut === 'imprimee' ? (
-            <Bouton variante="principal" disabled={occupe} onClick={() => agir('remise')}>
+            <Bouton variante="principal" disabled={occupe} onClick={() => setDecompte(decompte ? null : {})}>
               Remise
             </Bouton>
           ) : null}
         </div>
       </div>
+
+      {decompte ? (
+        <div className="mt-3 rounded-xl border-2 border-accent p-3">
+          <p className="mb-2 text-base font-semibold text-ink">Cochez chaque article devant le client</p>
+          <ul className="grid gap-1">
+            {commande.lignes.map((l, k) => {
+              const cle = String(l.id ?? k);
+              return (
+                <li key={cle}>
+                  <label className="flex min-h-12 items-center gap-3 text-base text-ink">
+                    <input
+                      type="checkbox"
+                      checked={decompte[cle] === true}
+                      onChange={(e) => setDecompte({ ...decompte, [cle]: e.target.checked })}
+                      className="h-6 w-6 shrink-0 accent-[var(--accent)]"
+                    />
+                    <span className="chiffres">{formaterQuantite(l.unite === 'kg' ? 'kg' : 'piece', l.quantite)} ×</span>
+                    <span>{l.libelle}</span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Bouton variante="principal" disabled={occupe} onClick={validerRemise}>
+              Valider la remise
+            </Bouton>
+            <Bouton onClick={() => setDecompte(null)}>Annuler</Bouton>
+          </div>
+        </div>
+      ) : null}
+
+      {refus ? (
+        <ListeSignalements
+          className="mt-3"
+          signalements={[refus]}
+          autreSortiePour={(sig) => {
+            const so = sortieDe(sig);
+            const libelle = so.libelle ?? so.autre;
+            return libelle ? (
+              <span className="inline-flex min-h-14 items-center rounded-xl border-2 border-line-fort px-4 text-base text-ink">{libelle}</span>
+            ) : undefined;
+          }}
+        />
+      ) : null}
     </Carte>
   );
 }

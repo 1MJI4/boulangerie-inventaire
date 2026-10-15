@@ -5,6 +5,16 @@ const { execSync } = require('child_process');
 // Load environment variables
 require('dotenv').config();
 
+// Invariants de CLAUDE.md (prix, jours, centimes, dépendances, data/) :
+// bloquants — un build qui les viole ne part pas en production.
+try {
+  console.log('🔄 Vérification des invariants...');
+  execSync('node scripts/verifier-invariants.mjs', { stdio: 'inherit' });
+} catch (error) {
+  console.error('❌ Invariants non respectés — voir la liste ci-dessus (npm run invariants)');
+  process.exit(1);
+}
+
 try {
   console.log('🔄 Generating Prisma Client...');
   

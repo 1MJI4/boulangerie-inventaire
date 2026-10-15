@@ -14,7 +14,9 @@
 // Tout est en noir pur, sans gris : une tête thermique ne connaît que deux
 // états, et un gris tramé sort baveux.
 
-import { formaterEuros, type Commande } from './commandes';
+import type { Commande, LigneCommande } from './commandes';
+import { formaterEuros } from '../domaine/argent.ts';
+import { formaterQuantite, totalLigne } from '../domaine/unites.ts';
 
 export const DESTINATIONS = ['CLIENT', 'BUREAU', 'MAGASIN', 'ATELIER'] as const;
 export type Destination = (typeof DESTINATIONS)[number];
@@ -32,6 +34,67 @@ const SANS = 'Arial, Helvetica, sans-serif';
 
 type Contexte = CanvasRenderingContext2D;
 
+/* ------------------------------------------- Formatage pur (testé seul) */
+
+/** Une ligne de produit prête à imprimer, sans aucun calcul côté gabarit. */
+export type LigneTicket = {
+  /** « 12 × » à la pièce, « 0,750 kg » au kilo (LOI 2). */
+  quantite: string;
+  libelle: string;
+  precision: string | null;
+  /** Total formaté par le domaine, ou « à confirmer » si le total ne peut pas être calculé. */
+  prix: string;
+  /** Ligne libre (hors catalogue) : son prix doit être validé par le pâtissier.
+      Mention interne : toujours false sur l'exemplaire CLIENT. */
+  aConfirmer: boolean;
+};
+
+export const MENTION_LIGNE_LIBRE = 'à confirmer par le pâtissier';
+
+/**
+ * Formate une ligne : le total passe par `totalLigne` (domaine), jamais par
+ * une multiplication locale — au kilo, la quantité est en grammes et le prix
+ * au kilo ; une multiplication nue imprimerait mille fois le bon montant.
+ */
+export function formaterLigneTicket(ligne: LigneCommande, destination: Destination): LigneTicket {
+  // Les lignes antérieures au lot 2 n'ont pas d'unité : elles étaient toutes
+  // à la pièce (même défaut qu'en base).
+  const unite = ligne.unite ?? 'piece';
+  const total = totalLigne(unite, ligne.quantite, ligne.prixCentimes);
+  return {
+    quantite: unite === 'kg' ? formaterQuantite(unite, ligne.quantite) : `${formaterQuantite(unite, ligne.quantite)} ×`,
+    libelle: ligne.libelle,
+    precision: ligne.precision || null,
+    // Un total incalculable ne s'imprime jamais comme un montant : on préfère
+    // un trou visible à un chiffre faux sur un bon remis au client.
+    prix: total.ok ? formaterEuros(total.donnees) : 'à confirmer',
+    aConfirmer: Boolean(ligne.ligneLibreAutoriseePar) && estExemplaireInterne(destination),
+  };
+}
+
+/** « à 14h30 », ou null si l'heure de retrait n'a pas été fixée (facultative). */
+export function mentionHeureRetrait(heure: string | null | undefined): string | null {
+  const propre = (heure ?? '').trim();
+  return propre ? `à ${propre}` : null;
+}
+
+/**
+ * Les mentions « à confirmer » sont internes : le client qui vient de verser
+ * un acompte n'a pas à lire que sa commande n'est pas sûre. Règle unique pour
+ * le ticket réseau (canvas) et le ticket navigateur (TicketCommande).
+ */
+export function estExemplaireInterne(destination: Destination): boolean {
+  return destination !== 'CLIENT';
+}
+
+/** Demande à confirmer (exemplaires internes seulement) : champ du lot 2, ou ancien drapeau en repli. */
+export function demandeAConfirmer(
+  commande: Pick<Commande, 'demandeInhabituelle' | 'gateauComplexe'>,
+  destination: Destination
+): boolean {
+  return Boolean(commande.demandeInhabituelle || commande.gateauComplexe) && estExemplaireInterne(destination);
+}
+
 /* --------------------------------------------------------------- Outils */
 
 /**
@@ -43,10 +106,14 @@ type Contexte = CanvasRenderingContext2D;
  */
 class Plume {
   y = MARGE;
-  constructor(
-    readonly ctx: Contexte | null,
-    public largeur = LARGEUR
-  ) {}
+  // Propriétés déclarées à la main (pas de « parameter properties ») : le
+  // module doit se charger sous `node --test`, qui ne fait que retirer les types.
+  readonly ctx: Contexte | null;
+  largeur: number;
+  constructor(ctx: Contexte | null, largeur = LARGEUR) {
+    this.ctx = ctx;
+    this.largeur = largeur;
+  }
 
   private avec(police: string, action: (ctx: Contexte) => void) {
     if (!this.ctx) return;
@@ -222,7 +289,8 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
     align: 'centre',
     interligne: 40,
   });
-  plume.texte(`à ${commande.retraitHeure}`, { taille: 34, gras: true, align: 'centre', interligne: 40 });
+  const heure = mentionHeureRetrait(commande.retraitHeure);
+  if (heure) plume.texte(heure, { taille: 34, gras: true, align: 'centre', interligne: 40 });
   plume.espace(10);
   plume.cadre(hautRetrait, plume.y, 4);
   plume.espace(16);
@@ -231,8 +299,12 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
   plume.espace(2);
   plume.trait(3);
   plume.espace(6);
-  for (const ligne of commande.lignes) {
-    produit(plume, ligne);
+  // Une quantité au kilo (« 0,750 kg ») est plus large que « 12 × » : la
+  // colonne s'élargit pour tout le ticket, pour garder les libellés alignés.
+  const lignes = commande.lignes.map((l) => formaterLigneTicket(l, destination));
+  const colQuantite = commande.lignes.some((l) => l.unite === 'kg') ? 112 : 64;
+  for (const ligne of lignes) {
+    produit(plume, ligne, colQuantite);
   }
   plume.espace(8);
 
@@ -244,10 +316,9 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
   if (commande.photoImprimee) {
     mention(plume, 'Photo', 'À IMPRIMER SUR LE GÂTEAU');
   }
-  // « À confirmer » n'a de sens qu'en interne : le client qui vient de verser
-  // un acompte n'a pas à lire que sa commande n'est pas sûre.
-  if (commande.gateauComplexe && !pourLeClient) {
-    mention(plume, 'Complexe', 'À CONFIRMER — PRIX ET FAISABILITÉ');
+  // « À confirmer » n'a de sens qu'en interne (voir estExemplaireInterne).
+  if (demandeAConfirmer(commande, destination)) {
+    mention(plume, 'Demande inhabituelle', 'À CONFIRMER — PRIX ET FAISABILITÉ');
   }
   if (commande.photoWhatsapp && !pourLeClient) {
     mention(plume, 'Modèle', 'Photo d’exemple sur WhatsApp — à réclamer au manager', true);
@@ -300,14 +371,12 @@ function champ(plume: Plume, etiquette: string, valeur: string) {
   plume.espace(8);
 }
 
-function produit(plume: Plume, ligne: Commande['lignes'][number]) {
-  const prix = ((ligne.quantite * ligne.prixCentimes) / 100).toFixed(2).replace('.', ',');
-  const colQuantite = 64;
-  const colPrix = 96;
+function produit(plume: Plume, ligne: LigneTicket, colQuantite: number) {
+  const colPrix = 124;
   const colNom = UTILE - colQuantite - colPrix - 12;
   const haut = plume.y;
 
-  plume.texte(`${ligne.quantite} ×`, { taille: 22, gras: true, interligne: 0 });
+  plume.texte(ligne.quantite, { taille: 22, gras: true, interligne: 0 });
   const apresQuantite = plume.y;
   plume.y = haut;
   plume.texte(ligne.libelle, {
@@ -324,9 +393,18 @@ function produit(plume: Plume, ligne: Commande['lignes'][number]) {
       interligne: 21,
     });
   }
+  if (ligne.aConfirmer) {
+    plume.texte(MENTION_LIGNE_LIBRE.toUpperCase(), {
+      taille: 17,
+      gras: true,
+      x: MARGE + colQuantite,
+      largeurMax: colNom,
+      interligne: 21,
+    });
+  }
   const bas = plume.y;
   plume.y = haut;
-  plume.texte(prix, { taille: 22, align: 'droite', interligne: 0 });
+  plume.texte(ligne.prix, { taille: 22, align: 'droite', interligne: 0 });
   plume.y = Math.max(bas, apresQuantite + 27);
   plume.espace(3);
   plume.trait(1, true);

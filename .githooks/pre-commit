@@ -1,0 +1,5 @@
+#!/bin/sh
+# Pré-commit : invariants de CLAUDE.md (prix, jours, centimes, dépendances, data/).
+# Activation (une fois par clone) :  git config core.hooksPath .githooks
+# Ne vérifie que le contenu INDEXÉ (ce qui va réellement être commité).
+exec node scripts/verifier-invariants.mjs --indexe

@@ -1,4 +1,8 @@
 // src/app/api/produits/route.ts
+//
+// LOI 10 : cette route ne lit et n'écrit QUE la table "Produit" — la liste
+// d'INVENTAIRE. Le catalogue de commande (sa propre table, son propre
+// module) n'apparaît jamais ici, ni dans aucun écran d'inventaire.
 
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
@@ -26,7 +30,8 @@ export async function GET(request: Request) {
     const produits = await prisma.produit.findMany({
       where,
       orderBy: [{ ordre: 'asc' }, { nom: 'asc' }],
-      select: { id: true, nom: true, ordre: true, categorie: true, poste: true, actif: true },
+      // unite : LOI 2 — l'écran choisit le pavé (pièces ou poids) selon le produit.
+      select: { id: true, nom: true, ordre: true, categorie: true, poste: true, actif: true, unite: true },
     });
 
     return NextResponse.json(produits);

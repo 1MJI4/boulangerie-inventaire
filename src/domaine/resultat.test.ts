@@ -16,7 +16,7 @@ import {
   type Echec,
   type Resultat,
 } from './resultat.ts';
-import { CATALOGUE, libelleCorrection, messagePour, signaler } from './messages.ts';
+import { libelleCorrection, messagePour, signaler } from './messages.ts';
 
 test('bloquant : format exact de la LOI 9', () => {
   const r = bloquant('ERR_JOUR_FERME', 'Fermé le mardi — choisissez un autre jour de retrait.', {
@@ -127,48 +127,7 @@ test('signaler choisit le niveau d’après le catalogue', () => {
   assert.equal(messagePour('INFO_EN_ATTENTE_ENVOI', { nombre: 1 }).startsWith('1 ligne en attente'), true);
 });
 
-test('tous les messages : français, sans « ! », sans jargon, niveau cohérent avec le préfixe', () => {
-  const exemples: Record<string, unknown> = {
-    ERR_JOUR_FERME: { jour: 'mardi' },
-    ERR_QUANTITE_MIN: { produit: 'P', minimum: 10, unite: 'pièces' },
-    ERR_SOUS_PLANCHER: { produit: 'P', plancherFormate: 'X €' },
-    ERR_DROIT_INSUFFISANT: { action: 'modifier un tarif', role: 'gérant' },
-    ERR_DELAI_TROP_COURT: { delaiJoursOuvres: 2, premiereDate: 'jeudi 23 octobre' },
-    AVERT_PAIN_SUPPLEMENTAIRE: { maximum: 20, demande: 21 },
-    AVERT_DOUBLE_SCAN: { produit: 'P' },
-    AVERT_DLC_PROCHE: { produit: 'P', date: '17/10' },
-    INFO_TARIF_EN_VIGUEUR: { dateEffet: '01/09/2026' },
-    INFO_EN_ATTENTE_ENVOI: { nombre: 3 },
-    ERR_TARIF_ABSENT: { produit: 'P', date: '15/10/2026' },
-    ERR_PRODUIT_INCONNU: {},
-    ERR_SAISIE_INVALIDE: { champLibelle: 'Téléphone' },
-    ERR_SERVEUR_INDISPONIBLE: { reference: 'ABC-DEF' },
-    ERR_CONFIGURATION_SERVEUR: { reference: 'ABC-DEF' },
-    ERR_DONNEE_INTROUVABLE: { reference: 'ABC-DEF' },
-    ERR_DEJA_ENREGISTRE: { reference: 'ABC-DEF' },
-    ERR_SESSION_EXPIREE: {},
-    ERR_INATTENDUE: { reference: 'ABC-DEF' },
-    // Refus levés par la base (KO-1) — sans paramètre, ou paramètre facultatif absent
-    ERR_PERIODE_CONGES: {},
-    ERR_UNITE_INCOHERENTE: {},
-    ERR_UNITE_FIGEE: {},
-    ERR_REGIME_FIGE: {},
-    ERR_TARIF_IMMUABLE: {},
-    ERR_TARIF_PASSE: {},
-    ERR_TARIF_CHEVAUCHEMENT: {},
-    ERR_TARIF_INCOHERENT: {},
-    ERR_PRODUIT_EN_DOUBLE: {},
-  };
-  assert.deepEqual(Object.keys(exemples).sort(), Object.keys(CATALOGUE).sort(), 'chaque code a un exemple');
-  for (const [code, entree] of Object.entries(CATALOGUE)) {
-    const m = (entree.message as (p: unknown) => string)(exemples[code]);
-    assert.ok(m.length > 10, code);
-    assert.ok(!m.includes('!'), `${code} : pas de point d’exclamation`);
-    assert.ok(/[.]$/.test(m), `${code} : phrase terminée`);
-    assert.doesNotMatch(m, /prisma|database|http|\b[45]\d\d\b|undefined|null|NaN|error|failed|\btu\b|\bton\b/i, code);
-    assert.equal(entree.niveau, niveauDuCode(code as `ERR_${string}`), `${code} : niveau = préfixe`);
-  }
-});
+// Le contrôle de TOUS les messages (exemple par code, style, sortie) est dans messages.test.ts.
 
 test('paramètres facultatifs (refus venus de la base) : message complet, sans trou ni montant/jour en dur', () => {
   const variantes = [

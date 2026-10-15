@@ -1,19 +1,28 @@
 -- =====================================================================
--- Lot 1 — Catalogue versionne (LOI 1), unites (LOI 2), regimes (LOI 6),
--- favoris (LOI 4), seuils en donnees (LOI 7).
+-- Lot 1/2 — Catalogue de COMMANDE versionne (LOI 1), unites (LOI 2),
+-- regimes (LOI 6), favoris (LOI 4), seuils en donnees (LOI 7), et
+-- separation inventaire / catalogue (LOI 10, decision du 15/10/2026).
 --
--- NON DESTRUCTIF : uniquement des ajouts (types, colonnes, table, index,
--- contraintes, declencheurs). Aucune colonne ni ligne supprimee.
--- La table "Tarif" (prix ecrases sur place) est conservee telle quelle et
--- devient OBSOLETE ; son retrait se fera en deux temps, a un lot ulterieur.
+-- Reecrite au lot 2 : cette migration n'avait ete appliquee NULLE PART
+-- (ni production ni recette). Le lot 1 greffait le catalogue sur "Produit" ;
+-- la LOI 10 impose deux listes separees :
+--   "Produit"          liste d'INVENTAIRE  <- "Inventaire", "Releve"
+--   "ProduitCatalogue" catalogue de COMMANDE <- "PrixProduit", "LigneCommande"
+-- Aucune cle etrangere ne croise les deux mondes (garantie mecanique).
+--
+-- NON DESTRUCTIF : uniquement des ajouts (types, colonnes, tables, index,
+-- contraintes, declencheurs). Aucune colonne ni ligne supprimee ; l'index
+-- unique "Produit_nom_key" est conserve. La table "Tarif" (prix ecrases sur
+-- place) est conservee telle quelle et devient OBSOLETE ; son retrait se
+-- fera en deux temps, a un lot ulterieur.
 --
 -- Codes d'erreur leves par les declencheurs (MESSAGE = code, DETAIL =
 -- precision lisible, HINT = 'champ=<nom>') — traduits en message humain par
 -- `gestion-erreurs`, jamais montres bruts a un employe (LOI 9) :
 --   ERR_TARIF_IMMUABLE, ERR_TARIF_PASSE, ERR_TARIF_CHEVAUCHEMENT,
 --   ERR_UNITE_INCOHERENTE, ERR_UNITE_FIGEE, ERR_REGIME_FIGE,
---   ERR_TARIF_INCOHERENT, ERR_SOUS_PLANCHER, ERR_DROIT_INSUFFISANT,
---   ERR_PRODUIT_EN_DOUBLE (SQLSTATE 23505)
+--   ERR_TARIF_INCOHERENT, ERR_SOUS_PLANCHER
+-- Doublon de nom d'inventaire : index unique "Produit_nom_key" (23505/P2002).
 -- =====================================================================
 
 -- CreateEnum
@@ -25,69 +34,140 @@ CREATE TYPE "RegimePrix" AS ENUM ('A', 'B', 'C');
 -- CreateEnum
 CREATE TYPE "BasePrix" AS ENUM ('piece', 'kg', 'personne', 'forfait');
 
--- ---------------------------------------------------------------------
--- Produit : identite STABLE. Son id ne change jamais quand un prix change.
--- Reprise des donnees : les produits existants sont tous comptes a la piece
--- (aucun des 4 produits au kilo n'existe dans "Produit" au 15/10/2026) ->
--- unite = 'piece' par defaut est exact. regimePrix reste NULL (= non
--- renseigne, invendable) : le regime ne se devine pas, il est pose par
--- l'import du catalogue (`catalogue-prix`).
--- ---------------------------------------------------------------------
+-- Date « du jour » du magasin (Belgique), pas celle du serveur (UTC).
+CREATE OR REPLACE FUNCTION "date_du_jour_magasin"() RETURNS date
+LANGUAGE sql STABLE
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT (now() AT TIME ZONE 'Europe/Brussels')::date
+$fn$;
 
--- LOI 5 — le libelle n'est plus unique : « Baguette » existe en plusieurs
--- sous-categories dans le CSV, et un meme nom peut exister en regime A et C.
--- L'identite du catalogue devient "cleCatalogue" (unique). L'unicite par nom
--- est conservee, par declencheur, pour les produits hors catalogue (voir
--- plus bas) : aucune protection existante n'est perdue.
--- DropIndex
-DROP INDEX "Produit_nom_key";
+-- =====================================================================
+-- 1. INVENTAIRE — "Produit", "Inventaire", "Releve"
+-- =====================================================================
 
--- CreateIndex
-CREATE INDEX "Produit_nom_idx" ON "Produit"("nom");
+-- LOI 2 — un produit d'inventaire peut se compter au poids (balance).
+-- Reprise des donnees : tous les produits d'inventaire existants sont
+-- comptes a la piece -> DEFAULT 'piece' exact. "Produit_nom_key" (unique)
+-- est conserve : le nom identifie un produit dans la liste d'inventaire.
+-- AlterTable
+ALTER TABLE "Produit" ADD COLUMN     "unite" "Unite" NOT NULL DEFAULT 'piece';
 
 -- AlterTable
-ALTER TABLE "Produit" ADD COLUMN     "cleCatalogue" TEXT,
-ADD COLUMN     "estFavori" BOOLEAN NOT NULL DEFAULT false,
-ADD COLUMN     "regimePrix" "RegimePrix",
-ADD COLUMN     "sousCategorie" TEXT,
-ADD COLUMN     "unite" "Unite" NOT NULL DEFAULT 'piece';
+ALTER TABLE "Inventaire" ADD COLUMN     "unite" "Unite" NOT NULL DEFAULT 'piece';
 
--- CreateIndex
-CREATE UNIQUE INDEX "Produit_cleCatalogue_key" ON "Produit"("cleCatalogue");
+-- AlterTable
+ALTER TABLE "Releve" ADD COLUMN     "unite" "Unite" NOT NULL DEFAULT 'piece';
 
--- CreateIndex
-CREATE INDEX "Produit_regimePrix_actif_idx" ON "Produit"("regimePrix", "actif");
+-- Quantites jamais negatives. NOT VALID : s'applique a toute nouvelle
+-- ecriture sans bloquer la migration sur d'eventuelles lignes anciennes
+-- (a controler avec la requete de verification, puis VALIDATE CONSTRAINT).
+ALTER TABLE "Inventaire" ADD CONSTRAINT "Inventaire_quantites_positives" CHECK (
+      ("quantiteRestante" IS NULL OR "quantiteRestante" >= 0)
+  AND ("quantiteProduite" IS NULL OR "quantiteProduite" >= 0)
+  AND ("quantitePrevue"   IS NULL OR "quantitePrevue"   >= 0)
+  AND ("quantiteCommande" IS NULL OR "quantiteCommande" >= 0)
+) NOT VALID;
 
--- Un produit hors catalogue (cleCatalogue NULL, saisi avant le lot 1 ou par
--- l'ecran de gestion des produits) reste unique par nom, comme avant.
--- SQLSTATE 23505 (unique_violation) : meme erreur qu'avec l'ancien index.
-CREATE OR REPLACE FUNCTION "produit_nom_unique_hors_catalogue"() RETURNS trigger
+ALTER TABLE "Releve" ADD CONSTRAINT "Releve_quantite_positive"
+  CHECK ("quantiteRestante" >= 0) NOT VALID;
+
+-- LOI 2 — la ligne d'inventaire doit etre dans l'unite du produit
+-- d'INVENTAIRE. Un ecran qui compterait a la piece un produit pese est
+-- REFUSE, pas accepte en silence. Un id inconnu de "Produit" est refuse par
+-- la cle etrangere existante (LOI 10), avant meme ce controle.
+CREATE OR REPLACE FUNCTION "unite_inventaire_controler"() RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = public, pg_temp
 AS $fn$
+DECLARE
+  unite_produit "Unite";
 BEGIN
-  IF NEW."cleCatalogue" IS NULL AND EXISTS (
-    SELECT 1 FROM "Produit" p
-    WHERE p."nom" = NEW."nom" AND p."cleCatalogue" IS NULL AND p."id" <> NEW."id"
-  ) THEN
-    RAISE EXCEPTION USING ERRCODE = '23505', MESSAGE = 'ERR_PRODUIT_EN_DOUBLE',
-      DETAIL = format('Un produit nomme « %s » existe deja.', NEW."nom"),
-      HINT = 'champ=nom';
+  SELECT "unite" INTO unite_produit FROM "Produit" WHERE "id" = NEW."produitId";
+  IF unite_produit IS NOT NULL AND NEW."unite" <> unite_produit THEN
+    RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'ERR_UNITE_INCOHERENTE',
+      DETAIL = format('Quantite saisie en %s, produit compte en %s.', NEW."unite", unite_produit),
+      HINT = 'champ=unite';
   END IF;
   RETURN NEW;
 END
 $fn$;
 
-CREATE TRIGGER "Produit_nom_unique_hors_catalogue"
-  BEFORE INSERT OR UPDATE OF "nom", "cleCatalogue" ON "Produit"
-  FOR EACH ROW EXECUTE FUNCTION "produit_nom_unique_hors_catalogue"();
+CREATE TRIGGER "Inventaire_unite_controler"
+  BEFORE INSERT OR UPDATE OF "unite", "produitId" ON "Inventaire"
+  FOR EACH ROW EXECUTE FUNCTION "unite_inventaire_controler"();
 
--- ---------------------------------------------------------------------
--- PrixProduit : une ligne par periode de validite [valideDu ; valideAu]
--- (bornes INCLUSES, valideAu NULL = en cours). Porte aussi la TVA et les
--- seuils (LOI 7), versionnes avec le tarif.
--- ---------------------------------------------------------------------
+CREATE TRIGGER "Releve_unite_controler"
+  BEFORE INSERT OR UPDATE OF "unite", "produitId" ON "Releve"
+  FOR EACH ROW EXECUTE FUNCTION "unite_inventaire_controler"();
 
+-- LOI 2 — l'unite d'un produit d'inventaire est figee des qu'il a ete
+-- compte : la changer reinterpreterait les quantites (pieces <-> grammes).
+-- Sortie : creer un nouveau produit et archiver l'ancien (actif = false).
+CREATE OR REPLACE FUNCTION "produit_controler"() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $fn$
+BEGIN
+  IF NEW."unite" IS DISTINCT FROM OLD."unite" AND (
+       EXISTS (SELECT 1 FROM "Inventaire" WHERE "produitId" = OLD."id")
+    OR EXISTS (SELECT 1 FROM "Releve"     WHERE "produitId" = OLD."id")) THEN
+    RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'ERR_UNITE_FIGEE',
+      DETAIL = 'Ce produit a deja ete compte : creer un nouveau produit plutot que changer son unite.',
+      HINT = 'champ=unite';
+  END IF;
+  RETURN NEW;
+END
+$fn$;
+
+CREATE TRIGGER "Produit_controler"
+  BEFORE UPDATE OF "unite" ON "Produit"
+  FOR EACH ROW EXECUTE FUNCTION "produit_controler"();
+
+-- =====================================================================
+-- 2. CATALOGUE DE COMMANDE — "ProduitCatalogue", "PrixProduit"
+-- =====================================================================
+
+-- Identite STABLE du produit vendu : son id ne change jamais quand un prix
+-- change. Alimente uniquement par l'import du catalogue (`catalogue-prix`).
+-- Table neuve : aucune reprise de donnees (pas de rapprochement avec
+-- "Produit" ni avec "Tarif" — LOI 10).
+-- CreateTable
+CREATE TABLE "ProduitCatalogue" (
+    "id" SERIAL NOT NULL,
+    "cleCatalogue" TEXT NOT NULL,
+    "nom" TEXT NOT NULL,
+    "categorie" TEXT NOT NULL,
+    "sousCategorie" TEXT,
+    "unite" "Unite" NOT NULL DEFAULT 'piece',
+    "regimePrix" "RegimePrix" NOT NULL,
+    "estFavori" BOOLEAN NOT NULL DEFAULT false,
+    "actif" BOOLEAN NOT NULL DEFAULT true,
+    "creeLe" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "modifieLe" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ProduitCatalogue_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ProduitCatalogue_cleCatalogue_key" ON "ProduitCatalogue"("cleCatalogue");
+
+-- CreateIndex
+CREATE INDEX "ProduitCatalogue_nom_idx" ON "ProduitCatalogue"("nom");
+
+-- CreateIndex
+CREATE INDEX "ProduitCatalogue_regimePrix_actif_idx" ON "ProduitCatalogue"("regimePrix", "actif");
+
+-- LOI 5 — cle et libelles jamais vides (le libelle reste a la lettre).
+ALTER TABLE "ProduitCatalogue" ADD CONSTRAINT "ProduitCatalogue_textes_non_vides" CHECK (
+      length(btrim("cleCatalogue")) > 0
+  AND length(btrim("nom")) > 0
+  AND length(btrim("categorie")) > 0
+);
+
+-- LOI 1 — une ligne par periode de validite [valideDu ; valideAu] (bornes
+-- INCLUSES, valideAu NULL = en cours). Porte aussi la TVA et les seuils
+-- (LOI 7), versionnes avec le tarif.
 -- CreateTable
 CREATE TABLE "PrixProduit" (
     "id" SERIAL NOT NULL,
@@ -115,8 +195,10 @@ CREATE INDEX "PrixProduit_valideDu_idx" ON "PrixProduit"("valideDu");
 -- CreateIndex
 CREATE UNIQUE INDEX "PrixProduit_produitId_valideDu_key" ON "PrixProduit"("produitId", "valideDu");
 
--- AddForeignKey (RESTRICT : un produit qui a un tarif ne se supprime jamais)
-ALTER TABLE "PrixProduit" ADD CONSTRAINT "PrixProduit_produitId_fkey" FOREIGN KEY ("produitId") REFERENCES "Produit"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+-- LOI 10 — un prix appartient au catalogue de COMMANDE, jamais a l'inventaire.
+-- RESTRICT : un produit qui a un tarif ne se supprime jamais.
+-- AddForeignKey
+ALTER TABLE "PrixProduit" ADD CONSTRAINT "PrixProduit_produitId_fkey" FOREIGN KEY ("produitId") REFERENCES "ProduitCatalogue"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- Auteur du tarif : nom declare, texte trace (decision du 15/10/2026 :
 -- pas de comptes par employe, donc pas de cle vers une table d'identites).
@@ -143,28 +225,14 @@ ALTER TABLE "PrixProduit" ADD CONSTRAINT "PrixProduit_seuils_positifs" CHECK (
   AND ("minimum" IS NULL OR "maximum" IS NULL OR "maximum" >= "minimum")
 );
 
--- Reprise des donnees : AUCUNE copie automatique depuis "Tarif".
--- HYPOTHÈSE À VALIDER : "Tarif" et "Produit" n'ont jamais ete rapproches
--- (schema : « aucun rapprochement ») et les prix de "Tarif" ont pu etre
--- ecrases sur place ; les recopier inventerait une date d'effet. Les
--- versions de prix sont creees par l'import du CSV (`catalogue-prix`).
-
--- Date « du jour » du magasin (Belgique), pas celle du serveur (UTC).
-CREATE OR REPLACE FUNCTION "date_du_jour_magasin"() RETURNS date
-LANGUAGE sql STABLE
-SET search_path = public, pg_temp
-AS $fn$
-  SELECT (now() AT TIME ZONE 'Europe/Brussels')::date
-$fn$;
-
 -- LOI 1 — un nouveau tarif n'ecrase jamais l'ancien.
 --  * insertion / modification : pas de chevauchement de periodes pour un
---    meme produit (serialise par un verrou sur la ligne Produit) ;
+--    meme produit (serialise par un verrou sur la ligne ProduitCatalogue) ;
 --  * basePrix 'kg' si et seulement si le produit est au kilo (LOI 2) ;
 --  * version deja en vigueur (valideDu <= aujourd'hui) : prix, base, seuils,
---    produit et date de debut figes ; TVA modifiable seulement de NULL vers une valeur
---    (completion d'une donnee « a confirmer ») ; date de fin modifiable,
---    mais jamais dans le passe (au plus tot : hier) ;
+--    produit et date de debut figes ; TVA modifiable seulement de NULL vers
+--    une valeur (completion d'une donnee « a confirmer ») ; date de fin
+--    modifiable, mais jamais dans le passe (au plus tot : hier) ;
 --  * suppression : seulement d'une version pas encore entree en vigueur.
 -- Procedure de changement de prix (dans une transaction) :
 --   1. UPDATE version courante SET valideAu = <nouvelle date> - 1
@@ -214,13 +282,13 @@ BEGIN
   END IF;
 
   -- Pas de chevauchement. Le verrou NO KEY UPDATE serialise les ecritures de
-  -- tarif d'un meme produit sans bloquer les inventaires (FOR KEY SHARE).
-  SELECT "unite" INTO unite_produit FROM "Produit" WHERE "id" = NEW."produitId" FOR NO KEY UPDATE;
+  -- tarif d'un meme produit sans bloquer les lignes de commande (FOR KEY SHARE).
+  SELECT "unite" INTO unite_produit FROM "ProduitCatalogue" WHERE "id" = NEW."produitId" FOR NO KEY UPDATE;
 
   -- LOI 2 — un prix au kilo pour un produit au kilo, et seulement lui.
   IF (NEW."basePrix" = 'kg') IS DISTINCT FROM (unite_produit = 'kg') THEN
     RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'ERR_UNITE_INCOHERENTE',
-      DETAIL = format('Prix exprime par %s, produit compte en %s.', NEW."basePrix", unite_produit),
+      DETAIL = format('Prix exprime par %s, produit vendu en %s.', NEW."basePrix", unite_produit),
       HINT = 'champ=basePrix';
   END IF;
 
@@ -243,31 +311,26 @@ CREATE TRIGGER "PrixProduit_controler"
   BEFORE INSERT OR UPDATE OR DELETE ON "PrixProduit"
   FOR EACH ROW EXECUTE FUNCTION "prix_produit_controler"();
 
--- ---------------------------------------------------------------------
--- LOI 2 / LOI 6 — l'unite et le regime d'un produit sont figes des qu'il a
--- un historique : les changer reinterpreterait les quantites (pieces <->
--- grammes) et les prix (prix fixe <-> plancher) deja enregistres.
--- Passer de NULL a un regime reste permis (premiere affectation).
+-- LOI 2 / LOI 6 — l'unite et le regime d'un produit du catalogue sont figes
+-- des qu'il a un historique (prix ou lignes de commande) : les changer
+-- reinterpreterait les quantites (pieces <-> grammes) et les prix (prix fixe
+-- <-> plancher) deja enregistres.
 -- Sortie : creer un nouveau produit et archiver l'ancien (actif = false).
--- ---------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION "produit_controler"() RETURNS trigger
+CREATE OR REPLACE FUNCTION "produit_catalogue_controler"() RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = public, pg_temp
 AS $fn$
+DECLARE
+  historique boolean;
 BEGIN
-  IF NEW."unite" IS DISTINCT FROM OLD."unite" AND (
-       EXISTS (SELECT 1 FROM "PrixProduit"   WHERE "produitId" = OLD."id")
-    OR EXISTS (SELECT 1 FROM "Inventaire"    WHERE "produitId" = OLD."id")
-    OR EXISTS (SELECT 1 FROM "Releve"        WHERE "produitId" = OLD."id")
-    OR EXISTS (SELECT 1 FROM "LigneCommande" WHERE "produitId" = OLD."id")) THEN
+  historique := EXISTS (SELECT 1 FROM "PrixProduit"   WHERE "produitId" = OLD."id")
+             OR EXISTS (SELECT 1 FROM "LigneCommande" WHERE "produitCatalogueId" = OLD."id");
+  IF NEW."unite" IS DISTINCT FROM OLD."unite" AND historique THEN
     RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'ERR_UNITE_FIGEE',
-      DETAIL = 'Ce produit a deja un historique : creer un nouveau produit plutot que changer son unite.',
+      DETAIL = 'Ce produit a deja des prix ou des commandes : creer un nouveau produit plutot que changer son unite.',
       HINT = 'champ=unite';
   END IF;
-  IF OLD."regimePrix" IS NOT NULL
-     AND NEW."regimePrix" IS DISTINCT FROM OLD."regimePrix"
-     AND (EXISTS (SELECT 1 FROM "PrixProduit"   WHERE "produitId" = OLD."id")
-       OR EXISTS (SELECT 1 FROM "LigneCommande" WHERE "produitId" = OLD."id")) THEN
+  IF NEW."regimePrix" IS DISTINCT FROM OLD."regimePrix" AND historique THEN
     RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'ERR_REGIME_FIGE',
       DETAIL = 'Ce produit a deja des prix ou des commandes : creer un nouveau produit plutot que changer son regime.',
       HINT = 'champ=regimePrix';
@@ -276,93 +339,39 @@ BEGIN
 END
 $fn$;
 
-CREATE TRIGGER "Produit_controler"
-  BEFORE UPDATE OF "unite", "regimePrix" ON "Produit"
-  FOR EACH ROW EXECUTE FUNCTION "produit_controler"();
+CREATE TRIGGER "ProduitCatalogue_controler"
+  BEFORE UPDATE OF "unite", "regimePrix" ON "ProduitCatalogue"
+  FOR EACH ROW EXECUTE FUNCTION "produit_catalogue_controler"();
 
--- ---------------------------------------------------------------------
--- Inventaire / Releve — unite figee sur chaque ligne (pieces ou GRAMMES).
--- Reprise des donnees : toutes les lignes existantes sont a la piece
--- (aucun produit au kilo en inventaire) -> DEFAULT 'piece' exact.
--- ---------------------------------------------------------------------
-
--- AlterTable
-ALTER TABLE "Inventaire" ADD COLUMN     "unite" "Unite" NOT NULL DEFAULT 'piece';
-
--- AlterTable
-ALTER TABLE "Releve" ADD COLUMN     "unite" "Unite" NOT NULL DEFAULT 'piece';
-
--- Quantites jamais negatives. NOT VALID : s'applique a toute nouvelle
--- ecriture sans bloquer la migration sur d'eventuelles lignes anciennes
--- (a controler avec la requete de verification, puis VALIDATE CONSTRAINT).
-ALTER TABLE "Inventaire" ADD CONSTRAINT "Inventaire_quantites_positives" CHECK (
-      ("quantiteRestante" IS NULL OR "quantiteRestante" >= 0)
-  AND ("quantiteProduite" IS NULL OR "quantiteProduite" >= 0)
-  AND ("quantitePrevue"   IS NULL OR "quantitePrevue"   >= 0)
-  AND ("quantiteCommande" IS NULL OR "quantiteCommande" >= 0)
-) NOT VALID;
-
-ALTER TABLE "Releve" ADD CONSTRAINT "Releve_quantite_positive"
-  CHECK ("quantiteRestante" >= 0) NOT VALID;
-
--- LOI 2 — la ligne doit etre dans l'unite du produit. Un ancien ecran qui
--- compterait a la piece un produit au kilo est REFUSE, pas accepte en silence.
-CREATE OR REPLACE FUNCTION "unite_ligne_controler"() RETURNS trigger
-LANGUAGE plpgsql
-SET search_path = public, pg_temp
-AS $fn$
-DECLARE
-  unite_produit "Unite";
-BEGIN
-  IF NEW."produitId" IS NULL THEN
-    RETURN NEW;
-  END IF;
-  SELECT "unite" INTO unite_produit FROM "Produit" WHERE "id" = NEW."produitId";
-  IF unite_produit IS NOT NULL AND NEW."unite" <> unite_produit THEN
-    RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'ERR_UNITE_INCOHERENTE',
-      DETAIL = format('Quantite saisie en %s, produit vendu en %s.', NEW."unite", unite_produit),
-      HINT = 'champ=unite';
-  END IF;
-  RETURN NEW;
-END
-$fn$;
-
-CREATE TRIGGER "Inventaire_unite_controler"
-  BEFORE INSERT OR UPDATE OF "unite", "produitId" ON "Inventaire"
-  FOR EACH ROW EXECUTE FUNCTION "unite_ligne_controler"();
-
-CREATE TRIGGER "Releve_unite_controler"
-  BEFORE INSERT OR UPDATE OF "unite", "produitId" ON "Releve"
-  FOR EACH ROW EXECUTE FUNCTION "unite_ligne_controler"();
-
--- ---------------------------------------------------------------------
--- LigneCommande — produit stable + version de tarif appliquee (R4) + unite.
+-- =====================================================================
+-- 3. COMMANDES — "LigneCommande" -> catalogue de COMMANDE uniquement
 -- Reprise des donnees : les lignes existantes gardent tarifId et
--- prixCentimes (prix deja fige a la prise de commande). produitId et
--- prixProduitId restent NULL : pas de rapprochement Tarif -> Produit sans
--- le catalogue (ce serait deviner l'identite d'apres le nom).
+-- prixCentimes (prix deja fige a la prise de commande).
+-- produitCatalogueId et prixProduitId restent NULL : pas de rapprochement
+-- Tarif -> ProduitCatalogue (ce serait deviner l'identite d'apres le nom).
 -- unite = 'piece' pour l'existant : la saisie decimale etait impossible.
 -- HYPOTHÈSE À VALIDER : d'anciennes lignes « (au kg) » peuvent porter un
 -- nombre de kilos entier ou de pieces ; elles ne sont PAS converties en
 -- grammes (sens inconnu) — voir la requete de verification du rapport.
--- ---------------------------------------------------------------------
+-- =====================================================================
 
 -- AlterTable
 ALTER TABLE "LigneCommande" ADD COLUMN     "nbSymboles" INTEGER,
 ADD COLUMN     "prixProduitId" INTEGER,
-ADD COLUMN     "produitId" INTEGER,
+ADD COLUMN     "produitCatalogueId" INTEGER,
 ADD COLUMN     "sousPlancherAutoriseLe" TIMESTAMP(3),
 ADD COLUMN     "sousPlancherAutorisePar" TEXT,
 ADD COLUMN     "unite" "Unite" NOT NULL DEFAULT 'piece';
 
 -- CreateIndex
-CREATE INDEX "LigneCommande_produitId_idx" ON "LigneCommande"("produitId");
+CREATE INDEX "LigneCommande_produitCatalogueId_idx" ON "LigneCommande"("produitCatalogueId");
 
 -- CreateIndex
 CREATE INDEX "LigneCommande_prixProduitId_idx" ON "LigneCommande"("prixProduitId");
 
+-- LOI 10 — une ligne de commande ne reference JAMAIS "Produit" (inventaire).
 -- AddForeignKey
-ALTER TABLE "LigneCommande" ADD CONSTRAINT "LigneCommande_produitId_fkey" FOREIGN KEY ("produitId") REFERENCES "Produit"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "LigneCommande" ADD CONSTRAINT "LigneCommande_produitCatalogueId_fkey" FOREIGN KEY ("produitCatalogueId") REFERENCES "ProduitCatalogue"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "LigneCommande" ADD CONSTRAINT "LigneCommande_prixProduitId_fkey" FOREIGN KEY ("prixProduitId") REFERENCES "PrixProduit"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -386,13 +395,13 @@ ALTER TABLE "Commande" ADD CONSTRAINT "Commande_montants_positifs"
   CHECK ("totalCentimes" >= 0 AND "acompteCentimes" >= 0) NOT VALID;
 
 -- LOI 2 + LOI 6 — controles de la ligne de commande :
---  * unite = unite du produit ;
---  * la version de tarif appartient bien au produit ;
+--  * unite = unite du produit du CATALOGUE ;
+--  * la version de tarif appartient bien a ce produit ;
 --  * regime C : prix/personne < plancher de la version -> refus
 --    (ERR_SOUS_PLANCHER), sauf deverrouillage trace : nom declare
 --    (sousPlancherAutorisePar) ET horodatage (sousPlancherAutoriseLe).
 -- Decision du 15/10/2026 : pas de comptes par employe. La base ne peut
--- donc plus verifier qu'une personne est gerant ; elle exige seulement la
+-- donc pas verifier qu'une personne est gerant ; elle exige seulement la
 -- trace. Le serveur ne doit renseigner ces deux champs qu'apres
 -- verification du code gerant (dependance securite / regles-metier).
 -- HYPOTHÈSE À VALIDER : déverrouillage tracé par nom déclaré, vérifié par le code gérant côté serveur
@@ -408,9 +417,9 @@ DECLARE
   produit_version integer;
   plancher        integer;
 BEGIN
-  IF NEW."produitId" IS NOT NULL THEN
+  IF NEW."produitCatalogueId" IS NOT NULL THEN
     SELECT "unite", "regimePrix" INTO unite_produit, regime_produit
-      FROM "Produit" WHERE "id" = NEW."produitId";
+      FROM "ProduitCatalogue" WHERE "id" = NEW."produitCatalogueId";
     IF NEW."unite" <> unite_produit THEN
       RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'ERR_UNITE_INCOHERENTE',
         DETAIL = format('Quantite saisie en %s, produit vendu en %s.', NEW."unite", unite_produit),
@@ -421,7 +430,7 @@ BEGIN
   IF NEW."prixProduitId" IS NOT NULL THEN
     SELECT "produitId", "prixCentimes" INTO produit_version, plancher
       FROM "PrixProduit" WHERE "id" = NEW."prixProduitId";
-    IF NEW."produitId" IS DISTINCT FROM produit_version THEN
+    IF NEW."produitCatalogueId" IS DISTINCT FROM produit_version THEN
       RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'ERR_TARIF_INCOHERENT',
         DETAIL = 'La version de prix ne correspond pas au produit de la ligne.',
         HINT = 'champ=prixProduitId';
@@ -442,6 +451,6 @@ END
 $fn$;
 
 CREATE TRIGGER "LigneCommande_controler"
-  BEFORE INSERT OR UPDATE OF "produitId", "prixProduitId", "prixCentimes", "unite", "sousPlancherAutorisePar", "sousPlancherAutoriseLe"
+  BEFORE INSERT OR UPDATE OF "produitCatalogueId", "prixProduitId", "prixCentimes", "unite", "sousPlancherAutorisePar", "sousPlancherAutoriseLe"
   ON "LigneCommande"
   FOR EACH ROW EXECUTE FUNCTION "ligne_commande_controler"();

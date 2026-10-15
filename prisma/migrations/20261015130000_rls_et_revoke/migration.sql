@@ -27,7 +27,7 @@
 -- =====================================================================
 
 -- 1. RLS sur chaque table de `public` (y compris _prisma_migrations et les
---    tables du lot 1 : PrixProduit, JourFerme).
+--    tables du lot 1 : ProduitCatalogue, PrixProduit, JourFerme).
 DO $rls$
 DECLARE
   t record;

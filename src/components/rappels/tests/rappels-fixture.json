@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "rappels": [
+    { "id": "test-a", "regle": [1], "moments": ["chargement"], "titre": "Rappel A", "texte": "Texte de test A.", "emoji": "🥐" },
+    { "id": "test-b", "regle": [2], "moments": ["chargement", "apres_commande"], "titre": "Rappel B", "texte": "Texte de test B.", "emoji": "🎂" },
+    { "id": "test-c", "regle": [3, 4], "moments": ["chargement"], "titre": "Rappel C", "texte": "Texte de test C.", "emoji": "🧁" },
+    { "id": "test-d", "regle": [5], "moments": ["apres_inventaire"], "titre": "Rappel D", "texte": "Texte de test D.", "emoji": "📋" }
+  ]
+}

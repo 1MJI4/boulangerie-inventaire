@@ -54,7 +54,14 @@ next-env.d.ts
 *.sqlite3
 
 # database (dumps / exports locaux)
-/data/
+# data/ contient aussi les SOURCES DE VÉRITÉ (catalogue, tarifs, registre des
+# versions, rappels importés au build) : elles sont suivies, le reste du
+# dossier (dumps, exports) reste ignoré. Contrôle : npm run invariants [DATA].
+/data/*
+!/data/catalogue_prix_*.csv
+!/data/tarifs-sur-commande_*.json
+!/data/versions-tarifs.json
+!/data/rappels-equipe.json
 *.sql
 !prisma/migrations/
 !prisma/migrations/**

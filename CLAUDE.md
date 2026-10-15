@@ -187,6 +187,45 @@ Format de retour de toute validation :
   champ: "dateRetrait", valeurProposee: "2026-10-21" }
 ```
 
+## LOI N°10 — L'inventaire a ses propres produits
+
+**Décision du propriétaire (15/10/2026).** Les produits d'inventaire (dépôt/magasin, liste
+propre au comptage) et les produits du catalogue de commande (CSV comptoir + affiches sur
+commande) sont **deux listes séparées**.
+
+→ Un produit du catalogue de commande n'apparaît **jamais** dans un écran d'inventaire, et
+  un produit d'inventaire n'apparaît jamais dans une commande.
+→ Les deux listes vivent dans des tables distinctes ; aucun import du catalogue n'écrit dans
+  la liste d'inventaire. Ne pas les « rapprocher » ni les fusionner pour simplifier.
+→ Une saisie d'inventaire sur un identifiant inconnu de la liste d'inventaire est refusée.
+  Cas de test obligatoire.
+→ La LOI 4 (favoris) concerne le catalogue de commande. En inventaire, la règle équivalente
+  est : un même produit d'inventaire n'est jamais compté deux fois.
+
+## LOI N°11 — Règlement intérieur : règles de commande et d'inventaire
+
+Source : `docs/REGLEMENT-INTERIEUR.md` (règlement de la direction, transmis le 15/10/2026).
+Ces points ont un effet direct sur l'application :
+
+| Point du règlement | Règle appliquée |
+|---|---|
+| Acompte de **minimum 50 %** pour valider toute commande | Bloquant sous 50 % du total, sortie « Mettre l'acompte à X € » |
+| Commande pour **le lendemain** : contacter le responsable au préalable | Bloquant sauf code gérant, tracé |
+| Commandes pâtisserie disponibles à partir de **9h en semaine, 12h le week-end** | Heure de retrait plus tôt refusée — horaires = **donnée**, jamais en dur |
+| Commande inhabituelle (ingrédients, moules spéciaux…) : demander d'abord au responsable | Avertissement avec sortie « Appeler le responsable / passer par WhatsApp » |
+| Toujours indiquer nom, numéro, date et heure de prise de commande | Nom et téléphone obligatoires ; date/heure de prise enregistrées automatiquement |
+| Inventaire à **20h00, jamais avant** | Avertissement si un inventaire est commencé avant l'heure de fermeture (donnée) |
+| Vérifier devant le client que tous les produits sont remis | Liste à cocher au moment de la remise de la commande |
+
+Les autres points (tenue, hygiène, pauses, respect…) ne sont pas des règles de saisie : ils
+sont **rappelés aux vendeurs** de façon légère (voir « Rappels équipe »), jamais en bloquant.
+
+**Rappels équipe.** Pendant un chargement qui existe déjà, après une commande validée ou un
+inventaire terminé, l'application peut afficher un rappel court et sympathique tiré du
+règlement. Contraintes : **aucun temps d'attente ajouté** (pas de chargement créé pour
+afficher un rappel, textes embarqués dans l'app, fermeture d'un geste), ton bienveillant,
+jamais de reproche ni d'allusion à des manquements, jamais visible du client.
+
 ## Architecture imposée
 
 - Toutes les règles vivent dans `src/domaine/` : **fonctions pures**, zéro dépendance UI,

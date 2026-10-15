@@ -58,46 +58,77 @@ enum NatureFermeture {
 }
 
 // ============================================================================
-//  CATALOGUE — identite stable du produit
-//  `Produit.id` ne change JAMAIS quand un prix change : les prix vivent dans
-//  `PrixProduit` (une ligne par periode de validite). Un produit n'est jamais
-//  supprime : `actif = false`.
+//  LOI 10 — DEUX LISTES DE PRODUITS SEPAREES (decision du 15/10/2026)
+//
+//   Produit           liste d'INVENTAIRE (depot / magasin, feuille de comptage)
+//                     <- Inventaire, Releve
+//   ProduitCatalogue  catalogue de COMMANDE (CSV comptoir + affiches)
+//                     <- PrixProduit, LigneCommande
+//
+//  Separation garantie MECANIQUEMENT par les cles etrangeres : Inventaire et
+//  Releve ne referencent QUE "Produit" ; PrixProduit et LigneCommande ne
+//  referencent QUE "ProduitCatalogue". Aucune cle ne croise les deux mondes :
+//  un inventaire sur un id inconnu de "Produit" est refuse par la base
+//  (violation de cle etrangere), meme si cet id existe dans ProduitCatalogue.
+//  Ne pas rapprocher ni fusionner ces deux tables.
 // ============================================================================
+
+// Liste d'INVENTAIRE. Identite stable : `id` ne change jamais. Un produit
+// n'est jamais supprime : `actif = false`.
 model Produit {
   id        Int     @id @default(autoincrement())
-  // LOI 5 — libelle du catalogue, a la lettre (colonne « produit » du CSV).
-  // PAS unique depuis le lot 1 : « Baguette » existe en plusieurs
-  // sous-categories, et un meme nom peut exister en regime A et en regime C.
-  // L'identite d'un produit du catalogue est `cleCatalogue`. Les produits
-  // anterieurs au lot 1 (cleCatalogue NULL) restent uniques par nom
-  // (declencheur Produit_nom_unique_hors_catalogue).
-  nom       String
+  // Libelle de la feuille d'inventaire, UNIQUE dans la liste d'inventaire
+  // (le seed s'appuie dessus). Doublon -> SQLSTATE 23505 / P2002, traduit en
+  // ERR_PRODUIT_EN_DOUBLE par gestion-erreurs.
+  nom       String  @unique
   ordre     Int     @default(999) // Ordre d'affichage (plus petit = affiche en premier)
   categorie String  @default("Autres") // Zone du magasin : sert au decoupage en pages
   poste     String  @default("boulanger") // patissier | boulanger | traiteur
-  actif     Boolean @default(true) // Un produit retire du catalogue garde son historique
-
-  // --- Catalogue versionne (lot 1) ---
-  // Identifiant stable du catalogue = `Produit.id` du module src/catalogue/
-  // (slug « categorie/produit/sous_categorie »). Ne change jamais.
-  // NULL pour les produits saisis avant le lot 1.
-  cleCatalogue  String?     @unique
-  sousCategorie String? // colonne sous_categorie du CSV, a la lettre (NULL = vide)
-  unite         Unite       @default(piece) // LOI 2 — 4 produits seulement en kg
-  // LOI 6 — NULL = regime non renseigne : le produit ne peut PAS etre vendu
-  // (getPrix doit refuser). Jamais de valeur par defaut devinee.
-  regimePrix    RegimePrix?
-  // LOI 4 — un favori est un booleen, jamais une ligne en double.
-  estFavori     Boolean     @default(false)
+  actif     Boolean @default(true) // Un produit retire garde son historique
+  // LOI 2 — un produit d'inventaire peut se compter au poids (balance) :
+  // quantites en GRAMMES. Figee des qu'il a un historique d'inventaire
+  // (declencheur Produit_controler -> ERR_UNITE_FIGEE).
+  unite     Unite   @default(piece)
 
   inventaires Inventaire[]
   releves     Releve[]
-  prix        PrixProduit[]
-  lignes      LigneCommande[]
 
-  @@index([nom])
   @@index([ordre])
   @@index([poste])
+}
+
+// ============================================================================
+//  CATALOGUE DE COMMANDE — identite stable du produit vendu (LOI 10)
+//  `id` ne change JAMAIS quand un prix change : les prix vivent dans
+//  `PrixProduit` (une ligne par periode de validite). Jamais supprime :
+//  `actif = false`. Lu / ecrit uniquement par src/catalogue/serveur.ts.
+// ============================================================================
+model ProduitCatalogue {
+  id            Int        @id @default(autoincrement())
+  // Identifiant stable du module src/catalogue/ (slug
+  // « categorie/produit/sous_categorie »). Ne change jamais.
+  cleCatalogue  String     @unique
+  // LOI 5 — libelle du catalogue, a la lettre. PAS unique : « Baguette »
+  // existe en plusieurs sous-categories, un meme nom en regime A et C.
+  nom           String
+  categorie     String // rayon reel du CSV (jamais « Favoris » : LOI 4)
+  sousCategorie String? // colonne sous_categorie du CSV, a la lettre (NULL = vide)
+  // LOI 2 — 4 produits seulement en kg. Figee des qu'il a des prix ou des
+  // lignes de commande (ERR_UNITE_FIGEE).
+  unite         Unite      @default(piece)
+  // LOI 6 — regime explicite, jamais deduit du nom, sans valeur par defaut.
+  // Fige des qu'il a des prix ou des lignes de commande (ERR_REGIME_FIGE).
+  regimePrix    RegimePrix
+  // LOI 4 — un favori est un booleen, jamais une ligne en double.
+  estFavori     Boolean    @default(false)
+  actif         Boolean    @default(true)
+  creeLe        DateTime   @default(now())
+  modifieLe     DateTime   @updatedAt
+
+  prix   PrixProduit[]
+  lignes LigneCommande[]
+
+  @@index([nom])
   @@index([regimePrix, actif])
 }
 
@@ -109,7 +140,7 @@ model Produit {
 //   - une version deja entree en vigueur n'est plus modifiable (prix, base,
 //     seuils) sauf sa date de fin (jamais dans le passe) et la TVA de NULL
 //     vers une valeur ; elle n'est jamais supprimee
-//   - prixCentimes > 0 ; basePrix = kg si et seulement si Produit.unite = kg
+//   - prixCentimes > 0 ; basePrix = kg si et seulement si ProduitCatalogue.unite = kg
 // Sens de prixCentimes selon basePrix :
 //   piece : prix a la piece · kg : prix AU KILO · personne : prix par part
 //   (regime C : PLANCHER « a partir de ») · forfait : une fois par gateau
@@ -136,8 +167,9 @@ model PrixProduit {
   source      String? // ex. "catalogue_prix_2026-09.csv"
   creeLe      DateTime @default(now())
 
+  // LOI 10 — catalogue de COMMANDE uniquement, jamais l'inventaire.
   produitId Int
-  produit   Produit @relation(fields: [produitId], references: [id], onDelete: Restrict)
+  produit   ProduitCatalogue @relation(fields: [produitId], references: [id], onDelete: Restrict)
 
   // Qui a saisi ce tarif (R28) — nom declare, texte trace. NULL pour un import.
   // Pas de comptes par employe (decision 15/10/2026) : pas de cle etrangere.
@@ -163,10 +195,12 @@ model Inventaire {
   rupturePremiereA DateTime? // Heure du premier zero constate dans la journee
   unite            Unite     @default(piece) // doit egaler Produit.unite (declencheur)
 
+  // LOI 10 — liste d'INVENTAIRE uniquement (cle vers "Produit", jamais
+  // vers ProduitCatalogue) : un id inconnu de l'inventaire est refuse.
   produitId Int
   produit   Produit @relation(fields: [produitId], references: [id])
 
-  // LOI 4 — un produit (donc un favori) n'est compte qu'une fois par journee.
+  // LOI 10 — un meme produit d'inventaire n'est compte qu'une fois par journee.
   @@unique([produitId, dateInventaire])
   @@index([dateInventaire])
 }
@@ -180,7 +214,14 @@ model Releve {
   quantiteRestante Int // pieces, ou GRAMMES si unite = kg
   releveA          DateTime @default(now())
   unite            Unite    @default(piece) // doit egaler Produit.unite (declencheur)
+  // Idempotence de la synchronisation : un geste de comptage = un saisieId
+  // (genere par la tablette). Rejoue deux fois -> P2002 sur saisieId, la
+  // route compare la valeur (totalInventaire du domaine). NULL = anterieur.
+  // R57 — l'heure de debut d'inventaire est releveA du premier releve de la
+  // journee (horloge de la tablette, transmise par la route).
+  saisieId         String?  @unique
 
+  // LOI 10 — liste d'INVENTAIRE uniquement (cle vers "Produit").
   produitId Int
   produit   Produit @relation(fields: [produitId], references: [id], onDelete: Cascade)
 
@@ -195,7 +236,7 @@ model Releve {
 //  ou un flottant finit par afficher 78,99999.
 // ============================================================================
 
-// OBSOLETE (lot 1) — remplace par Produit + PrixProduit. Conserve tant que le
+// OBSOLETE (lot 1) — remplace par ProduitCatalogue + PrixProduit. Conserve tant que le
 // code l'utilise ; suppression en deux temps (cesser de l'utiliser, puis
 // migration de retrait). Ses prix s'ecrasent sur place : ne plus y ecrire.
 // Grille tarifaire du magasin. Volontairement separee du catalogue
@@ -230,24 +271,58 @@ model Commande {
   telephone String
   vendeur   String
 
+  // R56 — date ET heure de prise, automatiques. La route y met l'horloge de
+  // la tablette (datePrise + heurePrise du domaine, heure de Bruxelles) ;
+  // defaut now() si absente. Sert de « jour de la saisie » au controle du
+  // lendemain a la creation (declencheur Commande_reglement).
   priseLe      DateTime @default(now())
   origine      String   @default("comptoir") // comptoir | telephone
   // LOI 3 — niveau persistance : un declencheur refuse toute date lue comme
   // fermee dans la table JourFerme (ERR_JOUR_FERME / ERR_PERIODE_CONGES).
+  // R53 — retrait avant la prise -> ERR_DATE_PASSEE ; retrait au plus tard
+  // le prochain jour ouvert -> ERR_COMMANDE_LENDEMAIN sauf accord trace.
   retraitLe    DateTime @db.Date
-  retraitHeure String // "11:00"
+  // R54 — « HH:MM » (CHECK Commande_retrait_heure_format), NULL = non precisee
+  // (commande sans patisserie). Le minimum patisserie (9h / 12h) n'est PAS
+  // rejoue en base : la famille du produit n'y est pas (voir rapport).
+  retraitHeure String?
 
-  modePaiement    String    @default("especes") // especes | virement
-  acompteCentimes Int       @default(0)
-  acompteRecuLe   DateTime?
-  totalCentimes   Int       @default(0)
+  // R53 — accord du responsable pour un retrait le lendemain : les deux ou
+  // aucun (CHECK Commande_accord_lendemain_trace). Nom declare, pas de compte.
+  accordLendemainPar String?
+  accordLendemainLe  DateTime?
 
-  texteGateau    String? // ce qui sera ecrit sur le gateau, orthographe comprise
-  sansEcriture   Boolean @default(false) // choix explicite : rien a ecrire
-  photoWhatsapp  Boolean @default(false) // photo modele envoyee par le client
-  photoImprimee  Boolean @default(false) // photo a imprimer sur le gateau (+15 EUR)
-  gateauComplexe Boolean @default(false) // le vendeur juge la commande complexe : a confirmer
-  remarques      String?
+  modePaiement       String    @default("especes") // especes | virement
+  // R52 — acompte <= total (ERR_ACOMPTE_SUPERIEUR_TOTAL) et >= le pourcentage
+  // LU dans Reglage « reglement:acompte_min_pourcent », arrondi au centime
+  // superieur (ERR_ACOMPTE_INSUFFISANT). Declencheur Commande_reglement.
+  acompteCentimes    Int       @default(0)
+  acompteRecuLe      DateTime?
+  // Total FACTURE : le tarif, ou le prix convenu avec remise autorisee.
+  totalCentimes      Int       @default(0)
+  // Somme des lignes recalculees depuis le catalogue (totalTarifCentimes du
+  // domaine). totalCentimes <= totalTarifCentimes ; en dessous seulement
+  // avec remiseAutoriseePar + remiseAutoriseeLe (ERR_REMISE_NON_AUTORISEE),
+  // jamais 0. NULL = commande anterieure au lot 2.
+  // Egalite a la somme des lignes (piece : quantite x prix ; kg : arrondi
+  // half-up grammes x prix / 1000) jugee au COMMIT : declencheurs differes
+  // Commande_total_lignes / LigneCommande_total_commande (ERR_TOTAL_INCOHERENT).
+  // (« remise » = rabais sur le total ; a ne pas confondre avec remiseLe,
+  // la remise de la commande au client.)
+  totalTarifCentimes Int?
+  remiseAutoriseePar String? // nom declare du gerant (les deux ou aucun)
+  remiseAutoriseeLe  DateTime?
+
+  texteGateau         String? // ce qui sera ecrit sur le gateau, orthographe comprise
+  sansEcriture        Boolean @default(false) // choix explicite : rien a ecrire
+  photoWhatsapp       Boolean @default(false) // photo modele envoyee par le client
+  photoImprimee       Boolean @default(false) // photo a imprimer sur le gateau (+15 EUR)
+  // OBSOLETE (lot 2) — remplace par demandeInhabituelle (copie faite par la
+  // migration 20261015140000). Ne plus y ecrire ; suppression en deux temps.
+  gateauComplexe      Boolean @default(false)
+  // R55 — demande inhabituelle (ingredients, moules speciaux...) : avertissement.
+  demandeInhabituelle Boolean @default(false)
+  remarques           String?
 
   statut     String    @default("a_imprimer") // a_imprimer | imprimee | remise | annulee
   imprimeeLe DateTime?
@@ -279,14 +354,28 @@ model LigneCommande {
   quantite     Int
   // Prix unitaire APPLIQUE, fige a la prise de commande (R4) :
   //   A piece : prix/piece · A kg : prix/KILO · B : prix/piece · C : prix/personne
+  // = PrixProduit.prixCentimes de la version (ERR_TARIF_INCOHERENT), sauf
+  // prix PLANCHER (regime C par personne / a la piece) : >= plancher.
   prixCentimes Int
-  unite        Unite   @default(piece) // doit egaler Produit.unite si produitId (declencheur)
+  unite        Unite   @default(piece) // = ProduitCatalogue.unite si produitCatalogueId (declencheur)
   poste        String?
   precision    String?
   ordre        Int     @default(0)
   // Number Cake — nombre de chiffres/lettres (« 25 » = 2), pour rejouer
-  // Produit.minimumParSymbole cote serveur. NULL hors Number Cake.
+  // PrixProduit.minimumParSymbole cote serveur. NULL hors Number Cake.
   nbSymboles   Int?
+  // R14 — pain surprise : nombre de sandwichs demandes au total (> 0). Le
+  // maximum par pain est un avertissement : pas de contrainte.
+  nbObjets     Int?
+
+  // LOI 7 — le declencheur LigneCommande_controler rejoue les minimums du
+  // tarif applique (prixProduitId) : ERR_QUANTITE_MIN, ERR_NB_SYMBOLES_MANQUANT.
+
+  // Ligne libre (ni produitCatalogueId ni tarifId) : prix > 0, a la piece, et
+  // accord du gerant trace, les deux champs ou aucun (ERR_DROIT_INSUFFISANT).
+  // HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°3)
+  ligneLibreAutoriseePar String?
+  ligneLibreAutoriseeLe  DateTime?
 
   commandeId Int
   commande   Commande @relation(fields: [commandeId], references: [id], onDelete: Cascade)
@@ -295,11 +384,15 @@ model LigneCommande {
   tarifId Int?
   tarif   Tarif? @relation(fields: [tarifId], references: [id], onDelete: SetNull)
 
-  // Lot 1 — produit stable et VERSION de tarif appliquee (« quel prix le 3 mars ? »).
-  produitId     Int?
-  produit       Produit?     @relation(fields: [produitId], references: [id], onDelete: Restrict)
-  prixProduitId Int?
-  prixProduit   PrixProduit? @relation(fields: [prixProduitId], references: [id], onDelete: Restrict)
+  // LOI 10 — produit du catalogue de COMMANDE (jamais un produit
+  // d'inventaire : aucune cle vers "Produit") et VERSION de tarif appliquee
+  // (R4, « quel prix le 3 mars ? »). La version doit appartenir au produit
+  // (declencheur -> ERR_TARIF_INCOHERENT). NULL pour les lignes anterieures
+  // (tarifId seul).
+  produitCatalogueId Int?
+  produitCatalogue   ProduitCatalogue? @relation(fields: [produitCatalogueId], references: [id], onDelete: Restrict)
+  prixProduitId      Int?
+  prixProduit        PrixProduit?      @relation(fields: [prixProduitId], references: [id], onDelete: Restrict)
 
   // LOI 6 — prix/personne SOUS le plancher (regime C) : refuse en base
   // (ERR_SOUS_PLANCHER) sauf si les DEUX champs ci-dessous sont renseignes.
@@ -309,7 +402,7 @@ model LigneCommande {
   sousPlancherAutoriseLe  DateTime?
 
   @@index([commandeId])
-  @@index([produitId])
+  @@index([produitCatalogueId])
   @@index([prixProduitId])
 }
 
@@ -404,6 +497,13 @@ model OptionGateau {
 // Reglages de la boutique, en cle/valeur JSON. Une seule ligne par sujet :
 // c'est plus simple qu'une colonne par regle, et le manager peut en ajouter
 // sans migration.
+// LOI 11 — cles « reglement:* » (donnees initiales = reglement interieur,
+// migration 20261015140000) : valeur controlee par la base
+// (CHECK Reglage_reglement_valide), jamais supprimee (ERR_CONFIGURATION_SERVEUR).
+//   reglement:acompte_min_pourcent 50 · reglement:heure_fermeture "20:00"
+//   reglement:patisserie_retrait_semaine "09:00" · ..._week_end "12:00"
+//   reglement:jours_week_end_iso [6,7] · reglement:familles_patisserie ["patisserie","viennoiserie"] (HYPOTHÈSE À VALIDER n°50)
+// Lecture : src/lib/serveur/reglages.ts.
 model Reglage {
   cle       String   @id
   valeur    String

@@ -11,9 +11,19 @@
 //      onglet fermé, tunnel réseau : la saisie est retrouvée au rechargement.
 //   3. L'enregistrement se déclenche tout seul, et l'écran dit toujours où
 //      il en est — y compris quand ça a échoué.
+//
+// LOI 2 : chaque produit porte son unité ; pour un produit au kilo la valeur
+// est un nombre entier de GRAMMES, et l'unité part avec chaque saisie.
+// Idempotence : chaque geste de saisie porte un `saisieId` (UUID) ; un même
+// geste renvoyé (réseau coupé, rejeu du brouillon) n'est compté qu'une fois.
+// Refus du serveur (format LOI 9) : la ligne visée est marquée et sort de la
+// file, les autres continuent de partir.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Poste } from './postes';
+import type { Echec, Signalement } from '@/domaine/resultat';
+import type { Unite } from '@/domaine/types';
+import { nouvelIdSaisie } from './inventaire/controles';
 
 export type ChampSaisie =
   | 'quantiteRestante'
@@ -28,6 +38,8 @@ export type Produit = {
   ordre: number;
   categorie: string;
   poste: Poste;
+  /** LOI 2 — 'kg' : valeurs en grammes, saisies au pavé décimal. */
+  unite: Unite;
 };
 
 export type LigneInventaire = {
@@ -52,6 +64,9 @@ const DELAI_AUTO_MS = 1500;
 const INTERVALLE_REPRISE_MS = 30_000;
 const VERSION_BROUILLON = 1;
 
+/** Geste de saisie en cours sur un produit (fermé quand sa valeur est enregistrée). */
+type Geste = { id: string; le: number };
+
 type Brouillon = {
   v: number;
   date: string;
@@ -59,7 +74,15 @@ type Brouillon = {
   valeurs: Record<string, string>;
   modifies: number[];
   horodatage: number;
+  /** Absent des brouillons écrits avant l'idempotence : un nouveau geste est créé. */
+  gestes?: Record<string, Geste>;
 };
+
+/** Envoi échoué sans réponse lisible (LOI 9 : jamais de code HTTP à l'écran). */
+const MESSAGE_ENVOI_IMPOSSIBLE =
+  'Enregistrement impossible pour le moment. La saisie est gardée sur cet appareil et repartira toute seule.';
+
+const CHAMP_PRODUIT = /^produit:(\d+)$/;
 
 function cleBrouillon(champ: ChampSaisie, date: string) {
   return `boulangerie:brouillon:${champ}:${date}`;
@@ -94,9 +117,13 @@ function effacerBrouillon(champ: ChampSaisie, date: string) {
   }
 }
 
-/** Nettoie une frappe : on ne garde que des entiers positifs, 4 chiffres max. */
-export function nettoyerQuantite(saisie: string): string {
-  const chiffres = saisie.replace(/[^\d]/g, '').slice(0, 4);
+/**
+ * Nettoie une frappe : on ne garde que des entiers positifs — pièces (4 chiffres
+ * max) ou grammes pour un produit au kilo (6 chiffres max, soit 999 kg).
+ * Garde-fou de frappe, pas une règle : la validation est celle du domaine.
+ */
+export function nettoyerQuantite(saisie: string, unite: Unite = 'piece'): string {
+  const chiffres = saisie.replace(/[^\d]/g, '').slice(0, unite === 'kg' ? 6 : 4);
   return chiffres.replace(/^0+(?=\d)/, '');
 }
 
@@ -119,9 +146,19 @@ export function useSaisieJournee({
   const [statut, setStatut] = useState<StatutSauvegarde>('vierge');
   const [derniereSauvegarde, setDerniereSauvegarde] = useState<Date | null>(null);
   const [messageErreur, setMessageErreur] = useState<string | null>(null);
+  /** Refus du serveur par produit (bloquant, format LOI 9). */
+  const [refus, setRefus] = useState<Map<number, Echec>>(new Map());
+  /** Avertissements renvoyés par le serveur (AVERT_DOUBLE_SCAN…) par produit. */
+  const [avertissementsServeur, setAvertissementsServeur] = useState<Map<number, Signalement[]>>(new Map());
+  /** Heure de fermeture (réglage en base), lue avec le chargement du comptage. */
+  const [heureFermeture, setHeureFermeture] = useState<string | null>(null);
 
   // Les identifiants dont la valeur a été touchée depuis le dernier envoi réussi.
   const modifies = useRef<Set<number>>(new Set());
+  const gestes = useRef<Map<number, Geste>>(new Map());
+  /** Produits de la requête en cours. */
+  const enVol = useRef<Set<number>>(new Set());
+  const unites = useRef<Map<number, Unite>>(new Map());
   const [nbEnAttente, setNbEnAttente] = useState(0);
   const minuteur = useRef<ReturnType<typeof setTimeout> | null>(null);
   const envoiEnCours = useRef(false);
@@ -151,14 +188,25 @@ export function useSaisieJournee({
 
       const [repProduits, repInventaires] = await Promise.all([
         fetch(`/api/produits?${paramsProduits}`),
-        fetch(`/api/inventaires?date=${date}${poste ? `&poste=${poste}` : ''}`),
+        // Le comptage du restant reçoit aussi l'heure de fermeture (en-tête), sans requête de plus.
+        fetch(
+          `/api/inventaires?date=${date}${poste ? `&poste=${poste}` : ''}${
+            champ === 'quantiteRestante' ? '&reglages=1' : ''
+          }`
+        ),
       ]);
 
       if (!repProduits.ok || !repInventaires.ok) {
         throw new Error('Réponse invalide du serveur');
       }
 
-      const listeProduits: Produit[] = await repProduits.json();
+      setHeureFermeture(repInventaires.headers.get('X-Heure-Fermeture'));
+      // LOI 2 : unité du produit, jamais déduite du nom ; absente = pièce.
+      const listeProduits: Produit[] = ((await repProduits.json()) as Produit[]).map((p) => ({
+        ...p,
+        unite: p.unite === 'kg' ? 'kg' : 'piece',
+      }));
+      unites.current = new Map(listeProduits.map((p) => [p.id, p.unite]));
       const listeInventaires: (LigneInventaire & { produit: Produit })[] =
         await repInventaires.json();
 
@@ -177,8 +225,14 @@ export function useSaisieJournee({
       // Un brouillon local plus récent l'emporte sur ce que dit le serveur :
       // il contient forcément des frappes qui n'ont pas encore pu partir.
       const brouillon = lireBrouillon(champ, date);
+      gestes.current = new Map();
       if (brouillon) {
         modifies.current = new Set(brouillon.modifies);
+        // Seuls les gestes encore en attente sont repris : un geste déjà
+        // enregistré ne doit jamais porter une nouvelle valeur.
+        for (const [id, geste] of Object.entries(brouillon.gestes ?? {})) {
+          if (modifies.current.has(Number(id))) gestes.current.set(Number(id), geste);
+        }
         for (const id of brouillon.modifies) {
           if (brouillon.valeurs[id] !== undefined) depuisServeur[id] = brouillon.valeurs[id];
         }
@@ -193,6 +247,8 @@ export function useSaisieJournee({
 
       setProduits(listeProduits);
       setInventaires(parProduit);
+      setRefus(new Map());
+      setAvertissementsServeur(new Map());
       valeursRef.current = depuisServeur;
       setValeurs(depuisServeur);
       synchroniserCompteur();
@@ -223,9 +279,11 @@ export function useSaisieJournee({
     }
 
     envoiEnCours.current = true;
+    enVol.current = new Set(aEnvoyer);
     setStatut('envoi');
 
     const instantane = new Map(aEnvoyer.map((id) => [id, valeursRef.current[id] ?? '']));
+    let relancer = false;
 
     try {
       const reponse = await fetch('/api/inventaires', {
@@ -233,23 +291,56 @@ export function useSaisieJournee({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           dateInventaire: date,
-          inventaires: aEnvoyer.map((id) => ({
-            produitId: id,
-            // Chaîne vide => null : la valeur est effacée, pas remise à zéro.
-            [champ]: instantane.get(id) === '' ? null : Number(instantane.get(id)),
-          })),
+          inventaires: aEnvoyer.map((id) => {
+            const geste = gestes.current.get(id);
+            return {
+              produitId: id,
+              unite: unites.current.get(id) ?? 'piece',
+              saisieId: geste?.id,
+              saisiLe: geste ? new Date(geste.le).toISOString() : undefined,
+              // Chaîne vide => null : la valeur est effacée, pas remise à zéro.
+              [champ]: instantane.get(id) === '' ? null : Number(instantane.get(id)),
+            };
+          }),
         }),
       });
 
+      const corps = await reponse.json().catch(() => null);
+
       if (!reponse.ok) {
-        const corps = await reponse.json().catch(() => null);
-        throw new Error(corps?.error ?? `Erreur ${reponse.status}`);
+        // Refus métier visant UNE ligne : elle est marquée et sort de la file,
+        // les autres repartent aussitôt (un produit retiré ne bloque pas tout).
+        const cible = typeof corps?.champ === 'string' ? CHAMP_PRODUIT.exec(corps.champ) : null;
+        const id = cible ? Number(cible[1]) : null;
+        if (corps?.ok === false && id !== null && modifies.current.has(id)) {
+          setRefus((precedent) => new Map(precedent).set(id, corps as Echec));
+          modifies.current.delete(id);
+          synchroniserCompteur();
+          relancer = modifies.current.size > 0;
+        }
+        throw new Error(typeof corps?.message === 'string' ? corps.message : MESSAGE_ENVOI_IMPOSSIBLE);
       }
+
+      const recus: Signalement[] = Array.isArray(corps?.signalements) ? corps.signalements : [];
+      setAvertissementsServeur((precedent) => {
+        const suivant = new Map(precedent);
+        for (const id of instantane.keys()) suivant.delete(id);
+        for (const s of recus) {
+          const m = typeof s?.champ === 'string' ? CHAMP_PRODUIT.exec(s.champ) : null;
+          if (!m) continue;
+          const id = Number(m[1]);
+          suivant.set(id, [...(suivant.get(id) ?? []), s]);
+        }
+        return suivant;
+      });
 
       // Seules les lignes envoyées sont retirées de la file : celles saisies
       // pendant la requête restent en attente pour le prochain envoi.
       for (const [id, valeur] of instantane) {
-        if (valeursRef.current[id] === valeur) modifies.current.delete(id);
+        if (valeursRef.current[id] === valeur) {
+          modifies.current.delete(id);
+          gestes.current.delete(id); // geste enregistré : la prochaine frappe en ouvre un nouveau
+        }
       }
       synchroniserCompteur();
 
@@ -261,18 +352,41 @@ export function useSaisieJournee({
       return true;
     } catch (e) {
       console.error(e);
-      setMessageErreur(e instanceof Error ? e.message : 'Erreur inconnue');
+      setMessageErreur(e instanceof Error && e.message ? e.message : MESSAGE_ENVOI_IMPOSSIBLE);
       setStatut('echec');
       return false; // les valeurs restent en attente et dans le brouillon local
     } finally {
       envoiEnCours.current = false;
+      enVol.current = new Set();
+      // Une ligne refusée vient de sortir de la file : les autres repartent tout de suite.
+      if (relancer) {
+        if (minuteur.current) clearTimeout(minuteur.current);
+        minuteur.current = setTimeout(() => void envoyerRef.current(), 0);
+      }
     }
   }, [champ, date, synchroniserCompteur]);
 
+  const envoyerRef = useRef(envoyer);
+  useEffect(() => {
+    envoyerRef.current = envoyer;
+  }, [envoyer]);
+
   const definir = useCallback(
     (produitId: number, saisie: string) => {
-      const valeur = nettoyerQuantite(saisie);
+      const valeur = nettoyerQuantite(saisie, unites.current.get(produitId) ?? 'piece');
       if (valeursRef.current[produitId] === valeur) return;
+
+      // Un nouveau geste commence si le précédent sur ce produit est enregistré,
+      // ou s'il est en cours d'envoi (sa valeur est déjà partie, elle ne change plus).
+      if (!gestes.current.has(produitId) || enVol.current.has(produitId)) {
+        gestes.current.set(produitId, { id: nouvelIdSaisie(), le: Date.now() });
+      }
+      setRefus((precedent) => {
+        if (!precedent.has(produitId)) return precedent;
+        const suivant = new Map(precedent);
+        suivant.delete(produitId);
+        return suivant;
+      });
 
       // L'écriture du brouillon reste hors de l'updater de setState : React
       // peut rejouer un updater, et un effet de bord rejoué fausserait la
@@ -288,6 +402,7 @@ export function useSaisieJournee({
         valeurs: suivant,
         modifies: [...modifies.current],
         horodatage: Date.now(),
+        gestes: Object.fromEntries(gestes.current),
       });
 
       setValeurs(suivant);
@@ -384,5 +499,8 @@ export function useSaisieJournee({
     nbEnAttente,
     nbRenseignes,
     enregistrerMaintenant,
+    refus,
+    avertissementsServeur,
+    heureFermeture,
   };
 }

@@ -1,0 +1,19 @@
+{
+  "description": "Registre des versions de tarif, par grille. Une ligne ajoutée = un nouveau tarif ; aucune ligne n'est jamais modifiée ni supprimée. valideAu est calculé (veille du tarif suivant).",
+  "versions": [
+    {
+      "grille": "comptoir",
+      "code": "tarif_2026-09",
+      "fichier": "catalogue_prix_2026-09.csv",
+      "valideDu": "2026-09-01",
+      "hypothese": "HYPOTHÈSE À VALIDER : « en vigueur 09/2026 » interprété comme à partir du 01/09/2026."
+    },
+    {
+      "grille": "sur-commande",
+      "code": "sur-commande_2026-10",
+      "fichier": "tarifs-sur-commande_2026-10.json",
+      "valideDu": "2026-10-15",
+      "hypothese": "HYPOTHÈSE À VALIDER : affiches transcrites le 15/10/2026 ; date d'entrée en vigueur réelle inconnue."
+    }
+  ]
+}

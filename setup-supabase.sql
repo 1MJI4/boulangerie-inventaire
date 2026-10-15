@@ -8,7 +8,8 @@
 --   2. insere les 123 produits (categorie + poste compris)
 --   3. enregistre les 12 migrations dans _prisma_migrations
 --
--- Rejouable sans risque : rien n'est efface, aucun doublon cree.
+-- Rejouable sans risque SUR UNE BASE NON MIGREE : rien n'est efface, aucun
+-- doublon cree. Sur une base deja migree (lot 1), la garde ci-dessous l'arrete.
 -- Apres ce script, lancer `prisma migrate deploy` : il applique les
 -- migrations posterieures au 2026-09-07 (impression reseau, puis lot 1 du
 -- 15/10/2026 : utilisateurs, catalogue versionne, jours fermes, RLS).
@@ -18,6 +19,42 @@
 -- produit n'est plus unique dans le catalogue) et son ON CONFLICT ("nom")
 -- en depend. Il ne sert plus qu'a amorcer une base VIDE.
 -- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- GARDE (reserve R5, lot 2) : ce script s'ARRETE sur une base deja migree.
+-- Une base qui porte une migration du lot 1 (20261015*) dans
+-- _prisma_migrations, ou la colonne "Produit"."cleCatalogue", a depasse ce
+-- script : le rejouer recreerait "Produit_nom_key" (unicite du nom supprimee
+-- au lot 1) et casserait l'import du catalogue. Une telle base s'entretient
+-- uniquement par `prisma migrate deploy`.
+--
+-- Dans le SQL Editor de Supabase, le script part en une seule requete : la
+-- premiere erreur annule TOUT le script (rien n'est ecrit).
+-- Avec psql, l'executer obligatoirement ainsi, sinon psql continue apres
+-- l'erreur :  psql -v ON_ERROR_STOP=1 --single-transaction -f setup-supabase.sql
+-- ---------------------------------------------------------------------
+DO $garde$
+BEGIN
+  IF to_regclass('public._prisma_migrations') IS NOT NULL THEN
+    IF EXISTS (
+      SELECT 1 FROM public."_prisma_migrations"
+      WHERE "migration_name" LIKE '20261015%' AND "rolled_back_at" IS NULL
+    ) THEN
+      RAISE EXCEPTION USING ERRCODE = 'P0001',
+        MESSAGE = 'setup-supabase.sql refuse : base deja migree (lot 1 present dans _prisma_migrations).',
+        HINT = 'Utiliser prisma migrate deploy. Ce script ne sert qu a amorcer une base VIDE.';
+    END IF;
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'Produit' AND column_name = 'cleCatalogue'
+  ) THEN
+    RAISE EXCEPTION USING ERRCODE = 'P0001',
+      MESSAGE = 'setup-supabase.sql refuse : base deja migree (colonne Produit.cleCatalogue presente).',
+      HINT = 'Utiliser prisma migrate deploy. Ce script ne sert qu a amorcer une base VIDE.';
+  END IF;
+END
+$garde$;
 
 -- ---------- tables inventaire ----------
 CREATE TABLE IF NOT EXISTS "Produit" (

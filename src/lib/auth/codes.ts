@@ -5,7 +5,8 @@
 // Le code saisi n'est jamais journalisé, jamais renvoyé.
 
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { bloquant, succes, type Resultat } from '../../domaine/resultat.ts';
+import { succes, type Resultat } from '../../domaine/resultat.ts';
+import { signaler } from '../../domaine/messages.ts';
 import { FENETRE_MS, LimiteurTentatives, MAX_ECHECS_GLOBAL, MAX_ECHECS_PAR_SOURCE } from './limiteur.ts';
 
 /** Au-delà, on ne compare même pas (évite de hacher des mégaoctets). */
@@ -37,14 +38,11 @@ export function nouveauxLimiteurs(): Limiteurs {
 export const LIMITEURS_TABLETTE = nouveauxLimiteurs();
 export const LIMITEURS_GERANT = nouveauxLimiteurs();
 
-// Ces messages devraient vivre dans src/domaine/messages.ts (gestion-erreurs) :
-// les codes ERR_CODE_INCORRECT et ERR_TROP_DE_TENTATIVES y manquent. Ils sont ici
-// en attendant, au format du catalogue (vouvoiement, dit quoi faire).
-const MESSAGE_CODE_INCORRECT = 'Code incorrect. Vérifiez-le et recommencez ; en cas d’oubli, demandez au gérant.';
+// Messages : catalogue unique de `gestion-erreurs` (src/domaine/messages.ts).
 
-function messageAttente(ms: number): string {
-  const minutes = Math.max(1, Math.ceil(ms / 60_000));
-  return `Trop d’essais. Réessayez dans ${minutes} minute${minutes > 1 ? 's' : ''}, ou demandez au gérant.`;
+/** Attente restante en minutes entières (au moins 1), pour le message. */
+function minutesAttente(ms: number): number {
+  return Math.max(1, Math.ceil(ms / 60_000));
 }
 
 /**
@@ -66,13 +64,13 @@ export function verifierCode(
     ...cles.map((c) => limiteurs.parSource.attenteRestante(c, maintenant))
   );
   if (attente > 0) {
-    return bloquant('ERR_TROP_DE_TENTATIVES', messageAttente(attente), { champ: 'code' });
+    return signaler('ERR_TROP_DE_TENTATIVES', { minutes: minutesAttente(attente) }, { champ: 'code' });
   }
 
   if (!memeCode(saisie, attendu)) {
     limiteurs.global.noterEchec('global', maintenant);
     for (const c of cles) limiteurs.parSource.noterEchec(c, maintenant);
-    return bloquant('ERR_CODE_INCORRECT', MESSAGE_CODE_INCORRECT, { champ: 'code' });
+    return signaler('ERR_CODE_INCORRECT', {}, { champ: 'code' });
   }
 
   for (const c of cles) limiteurs.parSource.oublier(c);

@@ -1,0 +1,75 @@
+// Conservation des accords du gérant en modification (réserve 3 et KO remise de qa-metier).
+// Montants : valeurs de test arbitraires en centimes, aucun prix du catalogue.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  lendemainCouvert,
+  ligneCouverte,
+  memeAccord,
+  remiseCouverte,
+  type AccordEnregistre,
+} from './accords.ts';
+
+const LE = new Date('2026-10-10T09:00:00.000Z');
+const TOTAL_REMISE = 9000;
+const TOTAL_TARIF = 10000;
+
+const remise: AccordEnregistre = {
+  type: 'remise',
+  par: 'Gérant',
+  le: LE,
+  totalCentimes: TOTAL_REMISE,
+  totalTarifCentimes: TOTAL_TARIF,
+};
+const ligne: AccordEnregistre = { type: 'ligne', cle: 'layer-cake|400', par: 'Gérant', le: LE, quantite: 20 };
+const lendemain: AccordEnregistre = { type: 'lendemain', par: 'Gérant', le: LE, dateRetrait: '2026-10-16' };
+
+test('remise inchangée (même total convenu, même total au tarif) → conservée', () => {
+  assert.equal(remiseCouverte(remise, { totalCentimes: TOTAL_REMISE, totalTarifCentimes: TOTAL_TARIF }), true);
+});
+
+test('remise : total convenu 90 € → 10 € sans gérant → refusée', () => {
+  assert.equal(remiseCouverte(remise, { totalCentimes: 1000, totalTarifCentimes: TOTAL_TARIF }), false);
+});
+
+test('remise : 20 → 40 parts (tarif doublé), total convenu identique → refusée', () => {
+  assert.equal(remiseCouverte(remise, { totalCentimes: TOTAL_REMISE, totalTarifCentimes: TOTAL_TARIF * 2 }), false);
+});
+
+test('remise : total convenu relevé → refusée aussi (règle la plus sûre : identiques)', () => {
+  assert.equal(remiseCouverte(remise, { totalCentimes: TOTAL_REMISE + 1, totalTarifCentimes: TOTAL_TARIF }), false);
+});
+
+test('remise ancienne sans total au tarif connu → jamais conservée', () => {
+  const ancienne: AccordEnregistre = { ...remise, totalTarifCentimes: null } as AccordEnregistre;
+  assert.equal(remiseCouverte(ancienne, { totalCentimes: TOTAL_REMISE, totalTarifCentimes: TOTAL_TARIF }), false);
+});
+
+test('ligne : même produit, même prix, même quantité → conservée ; quantité inférieure → conservée', () => {
+  assert.equal(ligneCouverte(ligne, { cle: 'layer-cake|400', quantite: 20 }), true);
+  assert.equal(ligneCouverte(ligne, { cle: 'layer-cake|400', quantite: 18 }), true);
+});
+
+test('ligne : 20 → 30 parts, ou prix / produit changé, ou quantité illisible → refusée', () => {
+  assert.equal(ligneCouverte(ligne, { cle: 'layer-cake|400', quantite: 30 }), false);
+  assert.equal(ligneCouverte(ligne, { cle: 'layer-cake|300', quantite: 20 }), false);
+  assert.equal(ligneCouverte(ligne, { cle: 'autre|400', quantite: 20 }), false);
+  assert.equal(ligneCouverte(ligne, { cle: 'layer-cake|400', quantite: null }), false);
+});
+
+test('lendemain : même date conservée, autre date refusée', () => {
+  assert.equal(lendemainCouvert(lendemain, '2026-10-16'), true);
+  assert.equal(lendemainCouvert(lendemain, '2026-10-17'), false);
+});
+
+test('un accord ne couvre jamais un autre type', () => {
+  assert.equal(remiseCouverte(ligne, { totalCentimes: TOTAL_REMISE, totalTarifCentimes: TOTAL_TARIF }), false);
+  assert.equal(lendemainCouvert(remise, '2026-10-16'), false);
+  assert.equal(ligneCouverte(lendemain, { cle: 'layer-cake|400', quantite: 20 }), false);
+});
+
+test('memeAccord : même nom et même heure exigés', () => {
+  assert.equal(memeAccord(remise, { par: 'Gérant', le: LE.toISOString() }), true);
+  assert.equal(memeAccord(remise, { par: 'Autre', le: LE.toISOString() }), false);
+  assert.equal(memeAccord(remise, { par: 'Gérant', le: new Date().toISOString() }), false);
+});

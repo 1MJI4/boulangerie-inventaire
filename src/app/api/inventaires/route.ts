@@ -5,117 +5,160 @@
 //   - un champ à null est explicitement effacé ;
 //   - null et 0 sont deux choses différentes : null = "pas encore compté",
 //     0 = "il n'en reste plus". C'est ce qui permet de savoir ce qui reste à faire.
+//
+// Rejeu serveur (offline-first) : chaque quantité repasse par le domaine
+// (`preparerLot` → `validerSaisieProduit` / `totalInventaire`). Un refus
+// répond au format LOI 9 (`reponseEchec`), jamais par un texte technique.
+//
+// LOI 10 : seule la table "Produit" (liste d'INVENTAIRE) est lue ici ; un
+// identifiant inconnu de cette liste → ERR_PRODUIT_INCONNU (422).
+//
+// Idempotence : chaque geste porte un `saisieId` (UUID de la tablette),
+// enregistré sur le relevé ("Releve".saisieId, unique). Un comptage déjà
+// reçu n'est pas réappliqué — sinon un vieux geste rejoué après un plus
+// récent écraserait la bonne valeur.
 
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { traiterErreur } from '@/lib/erreurBase';
+import { reponseEchec, traiterErreur } from '@/lib/erreurBase';
 import { journaliser } from '@/lib/journal';
 import { estUneRupture, journeeProduction } from '@/lib/dateProduction';
 import { estPoste } from '@/lib/postes';
 import { exigerRole } from '@/lib/auth/garde';
+import { lireReglages } from '@/lib/serveur/reglages';
+import {
+  CHAMPS_QUANTITE,
+  idsDuLot,
+  lireDate,
+  preparerLot,
+  versProduitInventaire,
+  type ChampQuantite,
+  type LigneEntrante,
+  type LignePreparee,
+} from '@/lib/inventaire/lot';
+import { signaler } from '@/domaine/messages';
+import { totalInventaire } from '@/domaine/inventaire';
+import type { Unite } from '@/domaine/types';
+import type { Echec } from '@/domaine/resultat';
 
-const CHAMPS_QUANTITE = [
-  'quantiteRestante',
-  'quantiteProduite',
-  'quantitePrevue',
-  'quantiteCommande',
-] as const;
-type ChampQuantite = (typeof CHAMPS_QUANTITE)[number];
+const ROUTE_POST = 'POST /api/inventaires';
 
-type LigneEntrante = {
-  produitId: number | string;
-  dateInventaire?: string;
-  date?: string; // ancien nom, accepté pour ne pas casser un onglet resté ouvert
-  faitLe?: string | null;
-} & Partial<Record<ChampQuantite, number | string | null>>;
-
-const FORMAT_DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** Taille maximale d'un lot (garde-fou de charge, pas une règle métier). */
+const LIGNES_MAX = 500;
 
 /**
  * Deux comptages identiques rapprochés ne sont qu'une correction de frappe :
  * on ne garde pas deux relevés. Au-delà, c'est un vrai second passage.
+ * Ne s'applique qu'aux écrans sans saisieId (anciens onglets) : avec un
+ * saisieId, chaque geste est un relevé distinct, enregistré une seule fois.
  */
 const FENETRE_ANTI_DOUBLON_MS = 15 * 60 * 1000;
 
-/** Convertit vers un entier positif. Renvoie undefined si le champ est absent. */
-function lireQuantite(valeur: unknown): number | null | undefined {
-  if (valeur === undefined) return undefined;
-  if (valeur === null || valeur === '') return null;
-  const n = Number(valeur);
-  if (!Number.isFinite(n)) return undefined;
-  return Math.max(0, Math.trunc(n));
-}
-
-function lireDate(...candidats: (string | undefined)[]): string | null {
-  for (const c of candidats) {
-    if (typeof c === 'string' && FORMAT_DATE.test(c)) return c;
-  }
-  return null;
-}
+/** Écart toléré entre l'horloge de la tablette et celle du serveur. */
+const DERIVE_HORLOGE_MAX_MS = 24 * 60 * 60 * 1000;
 
 /** Une DATE Postgres se stocke à midi UTC : à l'abri de tout décalage de fuseau. */
 function versDatePg(dateISO: string): Date {
   return new Date(`${dateISO}T12:00:00.000Z`);
 }
 
+/** Horodatage du geste sur la tablette (R57), sinon l'heure du serveur. */
+function lireInstant(valeur: unknown, maintenant: Date): Date {
+  if (typeof valeur !== 'string') return maintenant;
+  const d = new Date(valeur);
+  if (Number.isNaN(d.getTime())) return maintenant;
+  return Math.abs(d.getTime() - maintenant.getTime()) > DERIVE_HORLOGE_MAX_MS ? maintenant : d;
+}
+
 type Comptage = {
   produitId: number;
   date: string;
-  valeurs: { quantiteRestante?: number | null };
+  unite: Unite;
+  saisieId: string | null;
+  quantiteRestante: number;
+  releveA: Date;
 };
 
 /**
  * Ajoute au journal les comptages qui apportent une information nouvelle.
- *
- * Effacer une valeur n'est pas un comptage : on ne journalise que des
- * quantités. Et retaper le même chiffre dans la foulée est une correction,
- * pas un second passage — d'où la fenêtre anti-doublon.
+ * Effacer une valeur n'est pas un comptage : on ne journalise que des quantités.
  */
-async function journaliserComptages(comptages: Comptage[], instant: Date): Promise<number> {
-  const aJournaliser = comptages.filter(
-    (c) => typeof c.valeurs.quantiteRestante === 'number'
-  );
-  if (aJournaliser.length === 0) return 0;
+async function journaliserComptages(comptages: Comptage[]): Promise<number> {
+  if (comptages.length === 0) return 0;
 
-  const derniers = await prisma.releve.findMany({
-    where: {
-      OR: aJournaliser.map((c) => ({
-        produitId: c.produitId,
-        journee: versDatePg(c.date),
-      })),
-    },
-    orderBy: { releveA: 'desc' },
-    select: { produitId: true, journee: true, quantiteRestante: true, releveA: true },
-  });
-
-  // On ne garde que le relevé le plus récent de chaque couple produit/journée.
+  const sansGeste = comptages.filter((c) => c.saisieId === null);
   const dernierPar = new Map<string, { quantiteRestante: number; releveA: Date }>();
-  for (const d of derniers) {
-    const k = `${d.produitId}|${d.journee.toISOString().slice(0, 10)}`;
-    if (!dernierPar.has(k)) dernierPar.set(k, d);
+  if (sansGeste.length > 0) {
+    const derniers = await prisma.releve.findMany({
+      where: { OR: sansGeste.map((c) => ({ produitId: c.produitId, journee: versDatePg(c.date) })) },
+      orderBy: { releveA: 'desc' },
+      select: { produitId: true, journee: true, quantiteRestante: true, releveA: true },
+    });
+    for (const d of derniers) {
+      const k = `${d.produitId}|${d.journee.toISOString().slice(0, 10)}`;
+      if (!dernierPar.has(k)) dernierPar.set(k, d);
+    }
   }
 
-  const nouveaux = aJournaliser.filter((c) => {
+  const nouveaux = comptages.filter((c) => {
+    if (c.saisieId !== null) return true;
     const dernier = dernierPar.get(`${c.produitId}|${c.date}`);
     if (!dernier) return true;
-    const memeValeur = dernier.quantiteRestante === c.valeurs.quantiteRestante;
-    const recent = instant.getTime() - dernier.releveA.getTime() < FENETRE_ANTI_DOUBLON_MS;
+    const memeValeur = dernier.quantiteRestante === c.quantiteRestante;
+    const recent = c.releveA.getTime() - dernier.releveA.getTime() < FENETRE_ANTI_DOUBLON_MS;
     return !(memeValeur && recent);
   });
-
   if (nouveaux.length === 0) return 0;
 
   const { count } = await prisma.releve.createMany({
     data: nouveaux.map((c) => ({
       produitId: c.produitId,
       journee: versDatePg(c.date),
-      quantiteRestante: c.valeurs.quantiteRestante as number,
-      releveA: instant,
+      quantiteRestante: c.quantiteRestante,
+      unite: c.unite,
+      releveA: c.releveA,
+      saisieId: c.saisieId,
     })),
+    // Course entre deux envois du même geste : le second est ignoré.
+    skipDuplicates: true,
   });
-
   return count;
+}
+
+/**
+ * Comptages déjà reçus (même saisieId en base). Même valeur → déjà appliqué,
+ * on ne le rejoue pas ; valeur différente → ERR_CONFLIT_COMPTAGE (domaine).
+ */
+async function dejaRecus(
+  lignes: LignePreparee[],
+  produits: ReturnType<typeof versProduitInventaire>[],
+): Promise<{ ok: true; ids: Set<string> } | Echec> {
+  const ids = lignes.flatMap((l) => (typeof l.valeurs.quantiteRestante === 'number' ? l.saisieIds : []));
+  if (ids.length === 0) return { ok: true, ids: new Set() };
+
+  const existants = await prisma.releve.findMany({
+    where: { saisieId: { in: ids } },
+    select: { saisieId: true, produitId: true, quantiteRestante: true, unite: true },
+  });
+  const recus = new Set<string>();
+  for (const e of existants) {
+    if (!e.saisieId) continue;
+    const ligne = lignes.find((l) => l.saisieIds.includes(e.saisieId!));
+    if (!ligne || typeof ligne.valeurs.quantiteRestante !== 'number') continue;
+    const verdict = totalInventaire(produits, [
+      { saisieId: e.saisieId, produitId: String(e.produitId), unite: e.unite, quantite: e.quantiteRestante },
+      {
+        saisieId: e.saisieId,
+        produitId: String(ligne.produitId),
+        unite: ligne.unite,
+        quantite: ligne.valeurs.quantiteRestante,
+      },
+    ]);
+    if (!verdict.ok) return { ...verdict, champ: `produit:${ligne.produitId}` };
+    recus.add(e.saisieId);
+  }
+  return { ok: true, ids: recus };
 }
 
 export async function POST(request: Request) {
@@ -123,139 +166,93 @@ export async function POST(request: Request) {
   const garde = exigerRole(request, 'tablette', 'saisir un inventaire');
   if (!garde.ok) return garde.reponse;
   try {
-    const corps = await request.json();
-    const lignes: LigneEntrante[] = corps?.inventaires;
+    const corps = await request.json().catch(() => null);
+    const lignes: unknown = corps?.inventaires;
 
-    if (!Array.isArray(lignes)) {
-      return NextResponse.json(
-        { error: 'Format invalide. Attendu : { inventaires: [...] }' },
-        { status: 400 }
+    if (!Array.isArray(lignes) || lignes.length > LIGNES_MAX) {
+      const { corps: refus, statut } = reponseEchec(
+        signaler('ERR_SAISIE_INVALIDE', { champLibelle: 'liste des quantités' }, { champ: 'inventaires' }),
+        ROUTE_POST,
       );
+      return NextResponse.json(refus, { status: statut });
     }
     if (lignes.length === 0) {
-      return NextResponse.json({ message: 'Rien à enregistrer', enregistres: 0 });
-    }
-    if (lignes.length > 500) {
-      return NextResponse.json(
-        { error: 'Trop de lignes en une fois (maximum 500).' },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: true, message: 'Rien à enregistrer', enregistres: 0, signalements: [] });
     }
 
     // Date par défaut du lot, sinon la journée de production en cours.
     const dateLot = lireDate(corps?.dateInventaire, corps?.date) ?? journeeProduction();
     const maintenant = new Date();
     const modeAddition = corps?.modeAddition === true;
+    const entrees = lignes as LigneEntrante[];
 
-    const erreurs: string[] = [];
-    const preparees: {
-      produitId: number;
-      date: string;
-      valeurs: Partial<Record<ChampQuantite, number | null>>;
-      faitLe?: Date | null;
-    }[] = [];
+    // LOI 10 — la liste d'INVENTAIRE uniquement (table "Produit"), une requête pour tout le lot.
+    const produits = (
+      await prisma.produit.findMany({
+        where: { id: { in: idsDuLot(entrees) } },
+        select: { id: true, nom: true, unite: true, actif: true },
+      })
+    ).map(versProduitInventaire);
 
-    for (const ligne of lignes) {
-      const produitId = Number(ligne?.produitId);
-      if (!Number.isInteger(produitId) || produitId <= 0) {
-        erreurs.push(`Produit « ${ligne?.produitId} » : identifiant invalide`);
-        continue;
-      }
-
-      const valeurs: Partial<Record<ChampQuantite, number | null>> = {};
-      for (const champ of CHAMPS_QUANTITE) {
-        const v = lireQuantite(ligne[champ]);
-        if (v !== undefined) valeurs[champ] = v;
-      }
-
-      const faitLe =
-        ligne.faitLe === undefined
-          ? undefined
-          : ligne.faitLe === null
-            ? null
-            : new Date(ligne.faitLe);
-
-      // Une ligne sans aucune valeur n'a rien à dire : on l'ignore au lieu
-      // d'écrire une ligne vide (c'est ce qui écrasait les saisies avec des 0).
-      if (Object.keys(valeurs).length === 0 && faitLe === undefined) continue;
-
-      preparees.push({
-        produitId,
-        date: lireDate(ligne.dateInventaire, ligne.date) ?? dateLot,
-        valeurs,
-        faitLe,
-      });
+    const lot = preparerLot(entrees, produits, dateLot);
+    if (!lot.ok) {
+      const { corps: refus, statut } = reponseEchec(lot, ROUTE_POST);
+      return NextResponse.json(refus, { status: statut });
     }
 
-    if (preparees.length === 0) {
-      return NextResponse.json({
-        message: 'Aucune valeur à enregistrer',
-        enregistres: 0,
-        erreurs: erreurs.length ? erreurs : undefined,
-      });
+    const recus = await dejaRecus(lot.lignes, produits);
+    if (!recus.ok) {
+      const { corps: refus, statut } = reponseEchec(recus, ROUTE_POST);
+      return NextResponse.json(refus, { status: statut });
     }
 
-    // Les produits doivent exister : une seule requête pour tout le lot.
-    const idsDemandes = [...new Set(preparees.map((p) => p.produitId))];
-    const produitsConnus = new Set(
-      (
-        await prisma.produit.findMany({
-          where: { id: { in: idsDemandes } },
-          select: { id: true },
-        })
-      ).map((p) => p.id)
+    // Un geste déjà appliqué n'est pas rejoué : il ne doit pas écraser un comptage plus récent.
+    const aEcrire = lot.lignes.filter(
+      (l) => !(typeof l.valeurs.quantiteRestante === 'number' && l.saisieIds.some((id) => recus.ids.has(id))),
     );
-
-    const aEcrire = preparees.filter((p) => {
-      if (produitsConnus.has(p.produitId)) return true;
-      erreurs.push(`Produit ${p.produitId} introuvable`);
-      return false;
-    });
+    const dejaTraites = lot.lignes.length - aEcrire.length;
 
     if (aEcrire.length === 0) {
-      return NextResponse.json(
-        { error: 'Aucun produit valide dans la requête', erreurs },
-        { status: 400 }
-      );
+      return NextResponse.json({
+        ok: true,
+        message: 'Déjà enregistré',
+        enregistres: 0,
+        dejaTraites,
+        dateInventaire: dateLot,
+        signalements: lot.signalements,
+      });
     }
 
-    // Les comptages alimentent aussi le journal des relevés : il faut donc
-    // savoir où en était chaque ligne avant l'écriture.
+    const cle = (produitId: number, date: string) => `${produitId}|${date}`;
     const comptages = aEcrire.filter((p) => p.valeurs.quantiteRestante !== undefined);
     const besoinEtatPrecedent = modeAddition || comptages.length > 0;
-
-    const cle = (produitId: number, date: string) => `${produitId}|${date}`;
 
     let dejaEnBase = new Map<string, { quantiteProduite: number | null; rupture: Date | null }>();
     if (besoinEtatPrecedent) {
       const existants = await prisma.inventaire.findMany({
         where: {
-          OR: aEcrire.map((p) => ({
-            produitId: p.produitId,
-            dateInventaire: versDatePg(p.date),
-          })),
+          OR: aEcrire.map((p) => ({ produitId: p.produitId, dateInventaire: versDatePg(p.date) })),
         },
-        select: {
-          produitId: true,
-          dateInventaire: true,
-          quantiteProduite: true,
-          rupturePremiereA: true,
-        },
+        select: { produitId: true, dateInventaire: true, quantiteProduite: true, rupturePremiereA: true },
       });
       dejaEnBase = new Map(
         existants.map((e) => [
           cle(e.produitId, e.dateInventaire.toISOString().slice(0, 10)),
           { quantiteProduite: e.quantiteProduite, rupture: e.rupturePremiereA },
-        ])
+        ]),
       );
     }
 
     // Un seul aller-retour réseau pour tout le lot, au lieu d'un par produit.
     const operations = aEcrire.map((p) => {
-      const valeurs = { ...p.valeurs };
-
+      const valeurs: Partial<Record<ChampQuantite, number | null>> = {};
+      for (const champ of CHAMPS_QUANTITE) {
+        if (p.valeurs[champ] !== undefined) valeurs[champ] = p.valeurs[champ];
+      }
       const precedent = dejaEnBase.get(cle(p.produitId, p.date));
 
+      // HYPOTHÈSE À VALIDER : le mode addition (deuxième fournée) n'a pas
+      // d'idempotence par saisieId — "Inventaire" n'a pas de colonne saisieId.
       if (modeAddition && typeof valeurs.quantiteProduite === 'number') {
         if (typeof precedent?.quantiteProduite === 'number') {
           valeurs.quantiteProduite = precedent.quantiteProduite + valeurs.quantiteProduite;
@@ -263,12 +260,8 @@ export async function POST(request: Request) {
       }
 
       // Heure de rupture : on retient le PREMIER zéro de la journée.
-      //
-      // Trois garde-fous. Un réassort (valeur repassée au-dessus de zéro)
-      // l'annule, sinon on lirait une rupture à midi sur un produit refait à
-      // 14h. Un zéro constaté après la fermeture n'en est pas une : c'est
-      // l'inventaire du soir, où tout ce qui s'est bien vendu est à zéro. Et
-      // un zéro saisi pour une journée passée n'est pas datable.
+      // Un réassort l'annule ; un zéro après la fermeture (inventaire du soir)
+      // ou pour une journée passée n'en est pas une.
       const comptage = valeurs.quantiteRestante;
       const rupture =
         comptage === undefined
@@ -276,7 +269,7 @@ export async function POST(request: Request) {
           : comptage === 0
             ? estUneRupture(p.date, maintenant)
               ? { rupturePremiereA: precedent?.rupture ?? maintenant }
-              : {} // on ne pose rien, mais on n'efface pas une rupture déjà notée
+              : {}
             : { rupturePremiereA: null };
 
       const donnees = {
@@ -287,17 +280,10 @@ export async function POST(request: Request) {
 
       return prisma.inventaire.upsert({
         where: {
-          produitId_dateInventaire: {
-            produitId: p.produitId,
-            dateInventaire: versDatePg(p.date),
-          },
+          produitId_dateInventaire: { produitId: p.produitId, dateInventaire: versDatePg(p.date) },
         },
         update: donnees,
-        create: {
-          produitId: p.produitId,
-          dateInventaire: versDatePg(p.date),
-          ...donnees,
-        },
+        create: { produitId: p.produitId, dateInventaire: versDatePg(p.date), unite: p.unite, ...donnees },
         select: { id: true, produitId: true },
       });
     });
@@ -307,24 +293,58 @@ export async function POST(request: Request) {
     // Journal des comptages, écrit après coup : s'il échoue, l'inventaire
     // reste juste — on perd une ligne de statistiques, pas une saisie.
     let relevesEcrits = 0;
-    if (comptages.length > 0) {
-      try {
-        relevesEcrits = await journaliserComptages(comptages, maintenant);
-      } catch (e) {
-        journaliser({ niveau: 'erreur', code: 'ERR_INATTENDUE', route: 'POST /api/inventaires', piste: 'Journal des relevés non écrit (inventaire enregistré).', detail: e });
-      }
+    const instants = new Map<string, Date>();
+    for (const l of entrees) {
+      if (typeof l?.saisieId === 'string') instants.set(l.saisieId, lireInstant(l.saisiLe, maintenant));
+    }
+    const aJournaliser: Comptage[] = comptages.flatMap((c) =>
+      typeof c.valeurs.quantiteRestante === 'number'
+        ? [
+            {
+              produitId: c.produitId,
+              date: c.date,
+              unite: c.unite,
+              saisieId: c.saisieId,
+              quantiteRestante: c.valeurs.quantiteRestante,
+              releveA: (c.saisieId && instants.get(c.saisieId)) || maintenant,
+            },
+          ]
+        : [],
+    );
+    try {
+      relevesEcrits = await journaliserComptages(aJournaliser);
+    } catch (e) {
+      journaliser({ niveau: 'erreur', code: 'ERR_INATTENDUE', route: ROUTE_POST, piste: 'Journal des relevés non écrit (inventaire enregistré).', detail: e });
     }
 
     return NextResponse.json({
+      ok: true,
       message: `${resultats.length} ligne(s) enregistrée(s)`,
       enregistres: resultats.length,
+      dejaTraites,
       releves: relevesEcrits,
       dateInventaire: dateLot,
-      erreurs: erreurs.length ? erreurs : undefined,
+      signalements: lot.signalements,
     });
   } catch (error) {
-    const { corps, statut } = traiterErreur(error, 'POST /api/inventaires');
+    const { corps, statut } = traiterErreur(error, ROUTE_POST);
     return NextResponse.json(corps, { status: statut });
+  }
+}
+
+/**
+ * Heure de fermeture (LOI 11, R57) pour l'avertissement « inventaire avant
+ * fermeture ». Lue seulement si l'écran la demande (`reglages=1`), en
+ * parallèle de la requête principale : aucun aller-retour ajouté.
+ * Réglage absent ou illisible → pas d'en-tête, l'écran retombe sur
+ * HEURE_FERMETURE_HYPOTHESE (jamais d'échec de l'inventaire pour un avertissement).
+ */
+async function heureFermeture(): Promise<string | null> {
+  try {
+    return (await lireReglages(prisma)).heureFermeture;
+  } catch (e) {
+    journaliser({ niveau: 'avertissement', code: 'ERR_CONFIGURATION_SERVEUR', route: 'GET /api/inventaires', piste: 'Réglage reglement:heure_fermeture illisible : heure par défaut utilisée.', detail: e });
+    return null;
   }
 }
 
@@ -341,6 +361,7 @@ export async function GET(request: Request) {
     const poste = searchParams.get('poste');
     const limite = Number(searchParams.get('limit'));
     const seulementPrevus = searchParams.get('avecPrevision') === '1';
+    const avecReglages = searchParams.get('reglages') === '1';
 
     const where: Prisma.InventaireWhereInput = {};
 
@@ -367,18 +388,23 @@ export async function GET(request: Request) {
     // des dizaines de milliers de lignes au bout d'un an d'exploitation.
     const take = Number.isFinite(limite) && limite > 0 ? Math.min(limite, 2000) : 1000;
 
-    const inventaires = await prisma.inventaire.findMany({
-      where,
-      include: {
-        produit: {
-          select: { id: true, nom: true, ordre: true, categorie: true, poste: true },
+    const [inventaires, fermeture] = await Promise.all([
+      prisma.inventaire.findMany({
+        where,
+        include: {
+          produit: {
+            select: { id: true, nom: true, ordre: true, categorie: true, poste: true, unite: true },
+          },
         },
-      },
-      orderBy: [{ dateInventaire: 'desc' }, { produit: { ordre: 'asc' } }],
-      take,
-    });
+        orderBy: [{ dateInventaire: 'desc' }, { produit: { ordre: 'asc' } }],
+        take,
+      }),
+      avecReglages ? heureFermeture() : Promise.resolve(null),
+    ]);
 
-    return NextResponse.json(inventaires);
+    return NextResponse.json(inventaires, {
+      headers: fermeture ? { 'X-Heure-Fermeture': fermeture } : undefined,
+    });
   } catch (error) {
     const { corps, statut } = traiterErreur(error, 'GET /api/inventaires');
     return NextResponse.json(corps, { status: statut });

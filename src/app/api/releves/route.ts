@@ -50,9 +50,10 @@ export async function GET(request: Request) {
         id: true,
         produitId: true,
         journee: true,
-        quantiteRestante: true,
+        quantiteRestante: true, // pièces, ou GRAMMES si unite = kg (LOI 2)
+        unite: true,
         releveA: true,
-        produit: { select: { nom: true, categorie: true, poste: true } },
+        produit: { select: { nom: true, categorie: true, poste: true, unite: true } },
       },
     });
 

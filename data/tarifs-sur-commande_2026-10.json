@@ -1,0 +1,72 @@
+{
+  "description": "Transcription des deux affiches du gérant (docs/TARIFS-SUR-COMMANDE.md), saisie comme SOURCE DE DONNÉES. Libellés à la lettre (LOI 5). Prix en centimes TTC (LOI 1). Minimums tels que fixés par CLAUDE.md LOI 7, tous bloquants (décision du gérant du 15/10/2026). La date d'effet est dans data/versions-tarifs.json.",
+  "transcritLe": "2026-10-15",
+  "affiches": [
+    {
+      "titre": "Sur commande",
+      "mentions": ["Liste non-exhaustive.", "Autre demande ? Merci de contacter le gérant"],
+      "ligneLibreObligatoire": true,
+      "produits": [
+        { "id": "sur-commande/bestella-poulet-10-personnes", "produit": "Bestella poulet, 10 personnes", "regimePrix": "B", "basePrix": "piece", "prixCentimes": 7500, "prixEstPlancher": false, "minQuantite": null },
+        { "id": "sur-commande/bestella-fruits-de-mer-10-personnes", "produit": "Bestella fruits de mer, 10 personnes", "regimePrix": "B", "basePrix": "piece", "prixCentimes": 9000, "prixEstPlancher": false, "minQuantite": null },
+        { "id": "sur-commande/quiche-poulet-saumon-6-personnes", "produit": "Quiche poulet/saumon, 6 personnes", "regimePrix": "B", "basePrix": "piece", "prixCentimes": 2700, "prixEstPlancher": false, "minQuantite": null, "rapprochementComptoir": ["sales/quiche-6p/saumon-poulet"] },
+        { "id": "sur-commande/bestella-poulet-fruits-de-mer-individuelle", "produit": "Bestella poulet / fruits de mer, individuelle", "regimePrix": "B", "basePrix": "piece", "prixCentimes": 390, "prixEstPlancher": false, "minQuantite": null, "rapprochementComptoir": ["sales/bastella/poulet", "sales/bastella/fruits-de-mer"] },
+        { "id": "sur-commande/mini-cepe-farcie-classique", "produit": "Mini cêpe farcie classique", "regimePrix": "B", "basePrix": "piece", "prixCentimes": 320, "prixEstPlancher": false, "minQuantite": null },
+        { "id": "sur-commande/mini-pizza-quiche", "produit": "Mini pizza / quiche", "regimePrix": "B", "basePrix": "piece", "prixCentimes": 280, "prixEstPlancher": false, "minQuantite": 10, "typeMin": "bloquant" },
+        { "id": "sur-commande/mini-wrap", "produit": "Mini wrap", "regimePrix": "B", "basePrix": "piece", "prixCentimes": 390, "prixEstPlancher": false, "minQuantite": 10, "typeMin": "bloquant" },
+        { "id": "sur-commande/mini-burger", "produit": "Mini burger", "regimePrix": "B", "basePrix": "piece", "prixCentimes": 350, "prixEstPlancher": false, "minQuantite": 10, "typeMin": "bloquant", "rapprochementComptoir": ["sales/mini-burger"] },
+        { "id": "sur-commande/mini-bestella-poulet-fruits-de-mer", "produit": "Mini bestella poulet / fruits de mer", "regimePrix": "B", "basePrix": "piece", "prixCentimes": 290, "prixEstPlancher": false, "minQuantite": null },
+        { "id": "sur-commande/mini-briwate-poulet-cigare-fruits-de-mer", "produit": "Mini briwate poulet / cigare fruits de mer", "regimePrix": "B", "basePrix": "piece", "prixCentimes": 210, "prixEstPlancher": false, "minQuantite": null },
+        { "id": "sur-commande/mini-batbout-farci", "produit": "Mini batbout farci", "regimePrix": "B", "basePrix": "piece", "prixCentimes": 250, "prixEstPlancher": false, "minQuantite": 10, "typeMin": "bloquant" },
+        { "id": "sur-commande/grand-pain-surprise", "produit": "Grand pain surprise", "regimePrix": "B", "basePrix": "piece", "prixCentimes": 2000, "prixEstPlancher": false, "minQuantite": null, "maxParUnite": { "valeur": 20, "objet": "sandwichs" } },
+        {
+          "id": "sur-commande/mini-sandwichs-garnis", "produit": "Mini-sandwichs garnis", "regimePrix": "B", "basePrix": "piece", "prixCentimes": 250, "prixEstPlancher": false, "minQuantite": 10, "typeMin": "bloquant",
+          "variantes": ["Fromage–saumon", "Thon piquant", "Thon mayonnaise", "Poulet andalouse", "Poulet piquant", "Poulet curry", "Américain préparé", "Crabe/surimi", "Crevettes à l'ail", "Club dinde–fromage"],
+          "variantesFermees": true
+        }
+      ]
+    },
+    {
+      "titre": "Tarifs (minimum) pour les Gâteaux SIMPLES sur commande",
+      "mentions": [
+        "Liste non-exhaustive, ne pas se limiter à celle-ci",
+        "Les gâteaux du comptoir restent au prix connu",
+        "En cas de demande plus spécifique, contacter le pâtissier ou le gérant."
+      ],
+      "mentionsNonAppliquees": [
+        "Attention : Supplément pour les gâteaux dont le minimum n'est pas respecté — NON APPLIQUÉE depuis la décision du gérant du 15/10/2026 (LOI 7) : un minimum non atteint est refusé. L'affiche est à corriger."
+      ],
+      "ligneLibreObligatoire": true,
+      "produits": [
+        { "id": "gateaux-sur-commande/cake-nature", "produit": "Cake nature", "regimePrix": "C", "basePrix": "personne", "prixCentimes": 290, "prixEstPlancher": true, "minQuantite": null, "variantes": ["Vanille, Chocolat"] },
+        { "id": "gateaux-sur-commande/creme-fraiche", "produit": "Crème fraîche", "regimePrix": "C", "basePrix": "personne", "prixCentimes": 420, "prixEstPlancher": true, "minQuantite": null },
+        { "id": "gateaux-sur-commande/bavarois", "produit": "Bavarois", "regimePrix": "C", "basePrix": "personne", "prixCentimes": 450, "prixEstPlancher": true, "minQuantite": null, "variantes": ["Chocolat classique, forêt noire, etc.", "Fraise, framboise, mangue, passion"] },
+        { "id": "gateaux-sur-commande/layer-cake", "produit": "Layer Cake", "regimePrix": "C", "basePrix": "personne", "prixCentimes": 500, "prixEstPlancher": true, "minQuantite": 20, "typeMin": "bloquant" },
+        { "id": "gateaux-sur-commande/number-cake", "produit": "Number Cake", "regimePrix": "C", "basePrix": "personne", "prixCentimes": 500, "prixEstPlancher": true, "minQuantite": null, "minParSymbole": 15, "typeMin": "bloquant" },
+        { "id": "gateaux-sur-commande/gateau-de-mariage", "produit": "Gâteau de mariage", "regimePrix": "C", "basePrix": "personne", "prixCentimes": 560, "prixEstPlancher": true, "minQuantite": 40, "typeMin": "bloquant", "etages": 2 },
+        { "id": "gateaux-sur-commande/piece-montee", "produit": "Pièce montée", "regimePrix": "C", "basePrix": "personne", "prixCentimes": 560, "prixEstPlancher": true, "minQuantite": 60, "typeMin": "bloquant", "etages": 3 },
+        { "id": "gateaux-sur-commande/entremet", "produit": "Entremet", "regimePrix": "C", "basePrix": "personne", "prixCentimes": 690, "prixEstPlancher": true, "minQuantite": null, "variantes": ["Chocolat noisette, praliné amande", "Framboise avec insert, mangue avec insert"] },
+        { "id": "gateaux-sur-commande/mini-tartelette", "produit": "Mini tartelette", "regimePrix": "C", "basePrix": "piece", "prixCentimes": 190, "prixEstPlancher": true, "minQuantite": 15, "typeMin": "bloquant", "variantes": ["Fraise, framboise"] },
+        { "id": "gateaux-sur-commande/mini-bavarois", "produit": "Mini bavarois", "regimePrix": "C", "basePrix": "piece", "prixCentimes": 250, "prixEstPlancher": true, "minQuantite": 15, "typeMin": "bloquant", "variantes": ["Chocolat classique, forêt noire, etc.", "Framboise, mangue, passion"] },
+        { "id": "gateaux-sur-commande/mini-eclair-mille-feuille", "produit": "Mini éclair / mille-feuille", "regimePrix": "C", "basePrix": "piece", "prixCentimes": 150, "prixEstPlancher": true, "minQuantite": 15, "typeMin": "bloquant", "variantes": ["Chocolat, moka", "Vanille, chocolat, praliné, moka"] },
+        { "id": "gateaux-sur-commande/supplement-photo", "produit": "Supplément", "sousCategorie": "Photo", "regimePrix": "C", "basePrix": "forfait", "prixCentimes": 1500, "prixEstPlancher": false, "minQuantite": null, "rapprochementComptoir": ["gateaux-et-tartes/supplement/photo"] },
+        { "id": "gateaux-sur-commande/supplement-ecriture-simple", "produit": "Supplément", "sousCategorie": "Écriture simple", "regimePrix": "C", "basePrix": "forfait", "prixCentimes": 200, "prixEstPlancher": false, "minQuantite": null, "rapprochementComptoir": ["gateaux-et-tartes/supplement/ecriture"] }
+      ]
+    }
+  ],
+  "hypotheses": [
+    "HYPOTHÈSE À VALIDER : le minimum de 10 pièces (traiteur salé) s'applique par ligne de produit, pas au total du panier.",
+    "HYPOTHÈSE À VALIDER : Mini cêpe farcie, mini bestella et mini briwate/cigare n'ont AUCUN minimum (« — » sur l'affiche, absents de la LOI 7). L'application actuelle leur impose 10.",
+    "HYPOTHÈSE À VALIDER : date d'effet des affiches fixée au 15/10/2026 (date de transcription) ; avant cette date, aucun prix sur commande n'est connu et la lecture est refusée.",
+    "HYPOTHÈSE À VALIDER : les variantes sont reprises par groupes tels qu'écrits sur l'affiche (séparateur « · ») ; seules les garnitures des mini-sandwichs forment une liste fermée."
+  ],
+  "questionsOuvertes": [
+    "Massepain / pâte à sucre (6 € puis 5 € dès 20 parts), Ferrero / Raffaello (5,50 €), Crème au beurre (4,50 €), Tarte (2,50 €) et Cake (2,50 €) figurent dans l'application mais PAS sur l'affiche : toujours valables, à quel prix ?",
+    "Décorations à +5 € (M&M's, Kinder Bueno, Ferrero Rocher, Oreo, Macarons) : supplément toujours valable ? Par gâteau ou par personne ?",
+    "« Mini morceau pâtisserie » (application actuelle) : à quel produit de l'affiche correspond-il, et minimum 10 ou 15 ?",
+    "Grand pain surprise à 20 € : les sandwichs sont-ils compris, ou facturés en plus (mini-sandwichs à 2,50 €) ?",
+    "Bestella 10 personnes : 75 € / 90 € sur l'affiche, 65 € / 85 € dans l'application. L'affiche fait-elle foi ?",
+    "Bastella (Excel) ou Bestella (affiche) : quelle orthographe ?",
+    "Number Cake : comment compter les symboles (« 25 » = 2 ; « 18+ » = 3 ?) ?"
+  ]
+}

@@ -16,21 +16,23 @@ import { useEquipe } from '@/lib/vendeurs';
 import { useMemoireLocale } from '@/lib/memoireLocale';
 import { CSS_TICKET, Ticket, reglesPagesTicket } from '@/components/TicketCommande';
 import { ApercuReseau } from '@/components/ApercuReseau';
-import {
-  formaterEuros,
-  messageConfirmation,
-  type Commande,
-  type ModePaiement,
-} from '@/lib/commandes';
+import { depuisApi, messageConfirmation, type Commande, type CommandeApi, type ModePaiement } from '@/lib/commandes';
+import { formaterEuros, resteDu } from '@/domaine/argent';
+import { formaterQuantite, totalLigne } from '@/domaine/unites';
+import { RappelChargement } from '@/components/rappels';
+import { ListeSignalements } from '@/components/signalement';
+import { echecReseau, lireReponse } from '@/components/commande/modele';
+import type { Echec } from '@/domaine/resultat';
+
+/** Montant d'une ligne du bon : pièces × prix, ou poids × prix au kilo (LOI 2), par le domaine. */
+function montantLigne(l: Commande['lignes'][number]): string {
+  const r = totalLigne(l.unite === 'kg' ? 'kg' : 'piece', l.quantite, l.prixCentimes);
+  return r.ok ? formaterEuros(r.donnees) : '';
+}
 
 /** Les quatre destinations, dans l'ordre où elles sortent de l'imprimante. */
 const DESTINATIONS = ['CLIENT', 'BUREAU', 'MAGASIN', 'ATELIER'] as const;
 type Destination = (typeof DESTINATIONS)[number];
-
-type CommandeApi = Omit<Commande, 'retraitLe' | 'avertissements'> & {
-  retraitLe: string;
-  avertissements: string | null;
-};
 
 export default function ImprimerCommande() {
   const params = useParams<{ id: string }>();
@@ -38,6 +40,7 @@ export default function ImprimerCommande() {
   const { vendeur } = useEquipe();
   const [commande, setCommande] = useState<Commande | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [refus, setRefus] = useState<Echec | null>(null);
   const [copie, setCopie] = useState(false);
   const [deborde, setDeborde] = useState(false);
   // Les longueurs de page du rouleau, mesurées après affichage.
@@ -51,21 +54,24 @@ export default function ImprimerCommande() {
 
   const charger = useCallback(async () => {
     try {
-      const reponse = await fetch(`/api/commandes?id=${params.id}`);
-      const donnees: CommandeApi = await reponse.json();
-      if (!reponse.ok) throw new Error('Commande introuvable.');
-      setCommande({
-        ...donnees,
-        retraitLe: donnees.retraitLe.slice(0, 10),
-        avertissements: donnees.avertissements ? JSON.parse(donnees.avertissements) : [],
-      });
-    } catch (e) {
-      setErreur(e instanceof Error ? e.message : 'Commande introuvable.');
+      const r = await lireReponse<CommandeApi>(await fetch(`/api/commandes?id=${params.id}`));
+      if (r.ok) setCommande(depuisApi(r.donnees));
+      else setErreur(r.message);
+    } catch {
+      const e = echecReseau();
+      if (!e.ok) setErreur(e.message);
     }
   }, [params.id]);
 
   useEffect(() => {
-    void charger();
+    let annule = false;
+    (async () => {
+      await Promise.resolve();
+      if (!annule) await charger();
+    })();
+    return () => {
+      annule = true;
+    };
   }, [charger]);
 
   // Le bon fait 148 mm : au-delà d'un certain nombre de lignes, le pied sort
@@ -73,10 +79,7 @@ export default function ImprimerCommande() {
   // parce que la hauteur dépend des mentions présentes.
   useEffect(() => {
     // Sur rouleau, rien ne peut déborder : le papier s'allonge.
-    if (!commande || format !== 'a6') {
-      setDeborde(false);
-      return;
-    }
+    if (!commande || format !== 'a6') return;
     const mesurer = () => {
       const bon = document.querySelector('.bon');
       const pied = bon?.querySelector('.bon-pied');
@@ -96,10 +99,7 @@ export default function ImprimerCommande() {
   // client n'a pas de zone de dessin et fait 90 mm de moins que celui de
   // l'atelier. On mesure, puis on donne à chaque ticket sa page nommée.
   useEffect(() => {
-    if (!commande || format !== 'ticket') {
-      setPagesTicket('');
-      return;
-    }
+    if (!commande || format !== 'ticket') return;
     const mesurer = () => {
       const tickets = Array.from(document.querySelectorAll<HTMLElement>('.ticket'));
       if (!tickets.length) return;
@@ -119,11 +119,20 @@ export default function ImprimerCommande() {
   const imprimer = async () => {
     // Le statut passe à « imprimée » : c'est ce qui éteint le rappel du soir.
     // Rien d'autre à cocher — sortir le feuillet suffit.
-    await fetch('/api/commandes', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: Number(params.id), action: 'impression', auteur: vendeur ?? 'comptoir' }),
-    }).catch(() => {});
+    setRefus(null);
+    try {
+      const r = await lireReponse(
+        await fetch('/api/commandes', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: Number(params.id), action: 'impression', auteur: vendeur ?? 'comptoir' }),
+        }),
+      );
+      if (!r.ok) setRefus(r);
+    } catch {
+      const e = echecReseau();
+      if (!e.ok) setRefus(e);
+    }
     window.print();
     void charger();
   };
@@ -150,7 +159,13 @@ export default function ImprimerCommande() {
   };
 
   if (erreur && !commande) return <Alerte>{erreur}</Alerte>;
-  if (!commande) return <Chargement libelle="Préparation du bon…" />;
+  if (!commande)
+    return (
+      <>
+        <Chargement libelle="Préparation du bon…" />
+        <RappelChargement />
+      </>
+    );
 
   return (
     <>
@@ -217,8 +232,17 @@ export default function ImprimerCommande() {
         </div>
 
         {erreur ? <div className="mb-4"><Alerte>{erreur}</Alerte></div> : null}
+        {refus ? (
+          <ListeSignalements
+            className="mb-4"
+            signalements={[refus]}
+            autreSortiePour={() => (
+              <Bouton onClick={() => router.push(`/commandes/${params.id}/modifier`)}>Ouvrir la commande</Bouton>
+            )}
+          />
+        ) : null}
 
-        {deborde ? (
+        {deborde && format === 'a6' ? (
           <div className="mb-4">
             <Alerte>
               Ce bon ne tient pas sur un A6 : les dernières lignes seront coupées à l’impression.
@@ -277,7 +301,7 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
   const pourLeClient = destination === 'CLIENT';
   const nombreLignes = commande.lignes.length;
   const densite = nombreLignes > 16 ? ' tres-dense' : nombreLignes > 10 ? ' dense' : '';
-  const reste = commande.totalCentimes - commande.acompteCentimes;
+  const reste = resteDu(commande.totalCentimes, commande.acompteCentimes);
 
   return (
     <div className={`bon${densite}`}>
@@ -331,12 +355,14 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
         <div className="bon-soustitre">Produits commandés</div>
         {commande.lignes.map((ligne, index) => (
           <div className="bon-ligne" key={index}>
-            <span>{ligne.quantite} ×</span>
+            <span>{formaterQuantite(ligne.unite === 'kg' ? 'kg' : 'piece', ligne.quantite)} ×</span>
             <span>
               {ligne.libelle}
               {ligne.precision ? ` — ${ligne.precision}` : ''}
+              {/* Ligne libre (hors catalogue) : prix fixé avec le gérant, à confirmer. */}
+              {ligne.ligneLibreAutoriseePar ? ' — à confirmer par le pâtissier' : ''}
             </span>
-            <span>{(ligne.quantite * ligne.prixCentimes / 100).toFixed(2).replace('.', ',')}</span>
+            <span>{montantLigne(ligne)}</span>
           </div>
         ))}
         <div className="bon-libre">{pourLeClient ? null : 'Zone libre — dessin, précisions'}</div>
@@ -354,9 +380,9 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
         </div>
       ) : null}
 
-      {commande.gateauComplexe ? (
+      {commande.demandeInhabituelle || commande.gateauComplexe ? (
         <div className="bon-mention">
-          <span>Complexe</span>
+          <span>Inhabituelle</span>
           <b>À CONFIRMER — PRIX ET FAISABILITÉ</b>
         </div>
       ) : null}
@@ -393,7 +419,7 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
           </div>
           <div>
             <span>Restant</span>
-            <b>{formaterEuros(Math.max(0, reste))}</b>
+            <b>{formaterEuros(reste)}</b>
           </div>
         </div>
       </div>

@@ -77,10 +77,13 @@ export function cleSensible(cle: string): boolean {
 }
 
 const MOTIFS_TEXTE: [RegExp, string][] = [
-  // Chaînes de connexion (postgres://user:mdp@hote:port/base…)
-  [/\b[a-z][a-z0-9+.-]*:\/\/[^\s'"`]+/gi, '[url masquée]'],
-  // Adresses e-mail
-  [/[^\s@'"`<>]+@[^\s@'"`<>]+\.[a-z]{2,}/gi, '[e-mail masqué]'],
+  // Chaînes de connexion (postgres://user:mdp@hote:port/base…). Les chemins
+  // `file://` des traces de pile ne portent ni identifiant ni secret : gardés.
+  [/\b(?!file:)[a-z][a-z0-9+.-]*:\/\/[^\s'"`]+/gi, '[url masquée]'],
+  // Adresses e-mail. Le domaine ne contient ni « / » ni « _ » : un chemin de
+  // pile (« …/.pnpm/next@16.0.11_react-dom@19.2.8/node_modules/…/x.js ») n'est
+  // pas une adresse. Une vraie adresse, même collée à un chemin, reste masquée.
+  [/[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/gi, '[e-mail masqué]'],
   // Numéros de téléphone : commence par +, 00 ou 0, au moins 9 chiffres
   // (une date jj/mm/aaaa n'en a que 8 et n'est donc pas masquée).
   [/(?:\+|\b0)\d(?:[\s./-]?\d){7,}/g, '[numéro masqué]'],

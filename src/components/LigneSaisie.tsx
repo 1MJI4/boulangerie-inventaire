@@ -2,6 +2,8 @@
 
 import type { ReactNode } from 'react';
 import type { Densite, Main } from '@/lib/preferencesSaisie';
+import type { Unite } from '@/domaine/types';
+import { formaterQuantite } from '@/domaine/unites';
 
 /**
  * Une ligne de saisie, partagée par le comptage, la production et les prévisions.
@@ -18,6 +20,12 @@ import type { Densite, Main } from '@/lib/preferencesSaisie';
  *
  * Pour un usage à une main, la disposition se retourne : les cibles tactiles
  * passent du côté du pouce.
+ *
+ * LOI 2 : un produit au kilo (`unite="kg"`) a une valeur en GRAMMES, affichée
+ * en kg ; son champ ne se tape jamais au clavier — toucher la ligne ouvre le
+ * pavé décimal (`onSelectionner`). Jamais de « +1 » pour un produit au kilo.
+ * Les contrôles (refus, avertissements) arrivent déjà rendus par
+ * <Signalement> dans `signalements`.
  */
 export function LigneSaisie({
   nom,
@@ -33,8 +41,9 @@ export function LigneSaisie({
   selectionne = false,
   onSelectionner,
   variante = 'ligne',
-  anomalie,
+  signalements,
   complement,
+  unite = 'piece',
 }: {
   nom: string;
   valeur: string;
@@ -49,8 +58,10 @@ export function LigneSaisie({
   selectionne?: boolean;
   onSelectionner?: () => void;
   variante?: 'ligne' | 'carte';
-  /** Message de cohérence : « Plus que les 12 produits », par exemple. */
-  anomalie?: string | null;
+  /** Signalements de la ligne (refus, avertissements), rendus par <Signalement>. */
+  signalements?: ReactNode;
+  /** Unité du produit (LOI 2) : 'kg' → valeur en grammes, saisie au pavé décimal. */
+  unite?: Unite;
   /**
    * Un second champ, plus petit, à côté du premier. Sert à distinguer ce qui
    * sort normalement du four de ce qu'une commande client ajoute — le « 1 + 11 »
@@ -67,6 +78,10 @@ export function LigneSaisie({
   const compact = densite === 'compact';
   const carte = variante === 'carte';
   const gaucher = main === 'gauche';
+  const auPoids = unite === 'kg';
+  // Un produit au kilo se saisit toujours au pavé décimal, jamais au clavier.
+  const viaPave = modePave || auPoids;
+  const affichee = auPoids && rempli ? formaterQuantite('kg', Number(valeur)) : valeur;
 
   const tailleCible = compact ? 'h-9 w-9' : 'h-11 w-11';
   const hauteurChamp = compact ? 'h-9' : 'h-11';
@@ -75,20 +90,28 @@ export function LigneSaisie({
   // comme une zone de texte, pas comme une quantité.
   const largeurChamp = carte
     ? 'flex-1 min-w-0 max-w-[9rem]'
-    : compact
-      ? 'w-16'
-      : 'w-20';
+    : auPoids
+      ? compact
+        ? 'w-24'
+        : 'w-28' // « 12,345 kg » doit tenir sans être coupé
+      : compact
+        ? 'w-16'
+        : 'w-20';
 
   const classesConteneur = carte
     ? `ligne-impression flex flex-col justify-between rounded-lg border transition-colors ${
         compact ? 'gap-1.5 p-2' : 'gap-2 p-2.5'
       } ${selectionne ? 'border-accent bg-accent-doux/60' : 'border-line bg-surface'}`
-    : `ligne-impression flex items-center border-b border-line last:border-b-0 has-[input:focus]:bg-surface-2 ${
-        compact ? 'gap-2 px-3 py-1.5' : 'gap-3 px-4 py-2.5'
-      } ${gaucher ? 'flex-row-reverse' : ''} ${selectionne ? 'bg-accent-doux/60' : ''}`;
+    : `ligne-impression border-b border-line last:border-b-0 has-[input:focus]:bg-surface-2 ${
+        selectionne ? 'bg-accent-doux/60' : ''
+      }`;
+  const classesRangee = carte
+    ? 'contents'
+    : `flex items-center ${compact ? 'gap-2 px-3 py-1.5' : 'gap-3 px-4 py-2.5'} ${gaucher ? 'flex-row-reverse' : ''}`;
 
   return (
     <div className={classesConteneur}>
+      <div className={classesRangee}>
       <div
         className={`min-w-0 ${carte ? '' : 'flex-1'} ${gaucher && !carte ? 'text-right' : ''}`}
       >
@@ -100,9 +123,7 @@ export function LigneSaisie({
         >
           {nom}
         </div>
-        {anomalie ? (
-          <div className="mt-0.5 text-xs font-medium text-attention">{anomalie}</div>
-        ) : indice && !compact ? (
+        {indice && !compact ? (
           <div className="mt-0.5 text-xs text-ink-3">{indice}</div>
         ) : null}
       </div>
@@ -139,20 +160,20 @@ export function LigneSaisie({
 
         <input
           type="text"
-          inputMode={modePave ? 'none' : 'numeric'}
-          pattern="[0-9]*"
+          inputMode={viaPave ? 'none' : 'numeric'}
+          pattern={auPoids ? undefined : '[0-9]*'}
           autoComplete="off"
-          autoFocus={autoFocus}
-          readOnly={modePave}
-          value={valeur}
+          autoFocus={autoFocus && !viaPave}
+          readOnly={viaPave}
+          value={affichee}
           onChange={(e) => onChange(e.target.value)}
           onFocus={(e) => {
-            if (modePave) e.currentTarget.blur();
+            if (viaPave) e.currentTarget.blur();
             else e.currentTarget.select();
           }}
           onClick={onSelectionner}
-          placeholder="—"
-          aria-label={nom}
+          placeholder={auPoids ? '— kg' : '—'}
+          aria-label={auPoids ? `${nom}, poids en kg` : nom}
           className={`chiffres rounded-lg border text-center transition-colors placeholder:text-ink-3 focus:border-accent focus:outline-none ${hauteurChamp} ${largeurChamp} ${
             compact ? 'text-sm' : 'text-base'
           } ${
@@ -191,6 +212,10 @@ export function LigneSaisie({
           </>
         ) : null}
       </div>
+      </div>
+      {signalements ? (
+        <div className={`sans-impression ${carte ? '' : compact ? 'px-3 pb-2' : 'px-4 pb-3'}`}>{signalements}</div>
+      ) : null}
     </div>
   );
 }

@@ -1,0 +1,352 @@
+categorie,produit,sous_categorie,prix_ttc_eur,prix_cents,unite,est_favori
+Frigo-Boisson,Canette (33cl) classic,,1.3,130,piece,non
+Frigo-Boisson,Petite Bouteille spa rouge,,1.4,140,piece,non
+Frigo-Boisson,Petite Bouteille Spa,,1.2,120,piece,non
+Frigo-Boisson,Petite Bouteille Evian,,1.2,120,piece,non
+Frigo-Boisson,Cristaline,,0.5,50,piece,non
+Frigo-Boisson,Oasis 2L,,3,300,piece,non
+Frigo-Boisson,"Schweppes 1,5L",,2.8,280,piece,non
+Frigo-Boisson,"Ice Tea 1,5L",,2.8,280,piece,non
+Frigo-Boisson,"Grande Bouteille d’eau SPA 1,5L",,1.5,150,piece,non
+Frigo-Boisson,Cécémel (Canette),,1.5,150,piece,non
+Frigo-Boisson,Canette Fristi (Canette),,1.5,150,piece,non
+Frigo-Boisson,"Grande Bouteille (1,5L)",Coca,2.8,280,piece,non
+Frigo-Boisson,"Grande Bouteille (1,5L)",Fanta,2.8,280,piece,non
+Frigo-Boisson,"Grande Bouteille (1,5L)",Sprite,2.8,280,piece,non
+Frigo-Boisson,"Grande Bouteille (1,5L)",Pom’s,2.8,280,piece,non
+Frigo-Boisson,Red Bull Spécial,,2.2,220,piece,non
+Frigo-Boisson,Red Bull Classic,,1.8,180,piece,non
+Frigo-Boisson,Rodeo,,1.2,120,piece,non
+Frigo-Boisson,Freez,,1.8,180,piece,non
+Frigo-Boisson,AA Drink,,1.5,150,piece,non
+Frigo-Boisson,Lait battu,grand,2.9,290,piece,non
+Frigo-Boisson,Lait battu,petit,1.9,190,piece,non
+Frigo-Boisson,Smoothie,,2,200,piece,non
+Frigo-S,Salami boeuf,,2.3,230,piece,non
+Frigo-S,Salami volaille olive,,2.3,230,piece,non
+Frigo-S,Salami de dinde,,3.3,330,piece,non
+Frigo-S,Fromage Gouda,,5.5,550,piece,non
+Frigo-S,Salade thon mayo,,3.3,330,piece,non
+Frigo-S,Salade thon piquant,,3.3,330,piece,non
+Frigo-S,Salade poulet andalouse,,3.3,330,piece,non
+Frigo-S,Salade poulet piquant,,3.3,330,piece,non
+Frigo-S,Salade poulet curry,,3.3,330,piece,non
+Frigo-S,Salade amercain,,4.5,450,piece,non
+Frigo-S,Salade surimi,,3.3,330,piece,non
+Frigo-S,Salade crevettes à l'ail,,4.5,450,piece,non
+Oriental,Baghrer,,1.8,180,piece,non
+Oriental,Harcha,céréales,2.5,250,piece,non
+Oriental,Harcha,semoule,2,200,piece,non
+Oriental,Harcha,grise,2,200,piece,non
+Oriental,Msemen,semoule,2.2,220,piece,non
+Oriental,Msemen,grise,2.5,250,piece,non
+Oriental,Meloui,,2.2,220,piece,non
+Oriental,Corne de gazelle,,28,2800,kg,non
+Oriental,Halwa arbia,,25,2500,kg,non
+Oriental,Sellou,,22,2200,kg,non
+Oriental,Sablé orientaux,,22,2200,kg,non
+Oriental,Grand Makla,,2.2,220,piece,non
+Oriental,Petit Makla,,0.9,90,piece,non
+Oriental,Petit Batbout,,0.6,60,piece,non
+Salés,Pizza,thon,3.5,350,piece,non
+Salés,Pizza,viande hachée,3.5,350,piece,non
+Salés,Pizza,poulet,3.5,350,piece,non
+Salés,Demi-crêpe au miel + amandes,,2.8,280,piece,non
+Salés,Quiche 6P,Saumon/poulet,27,2700,piece,non
+Salés,Quiche (morceau),Saumon/poulet,3.5,350,piece,non
+Salés,Bastella,Poulet,3.9,390,piece,non
+Salés,Bastella,Fruits de mer,3.9,390,piece,non
+Salés,Cigare Fruits de mer,,2.6,260,piece,non
+Salés,Briwate épinards-Fromage,,2.6,260,piece,non
+Salés,Briwate Poulet,,2.6,260,piece,non
+Salés,Crêpe facie,Fromage,3.9,390,piece,non
+Salés,Crêpe facie,poulet,3.9,390,piece,non
+Salés,Crêpe facie,viande hachée,3.9,390,piece,non
+Salés,Crêpe facie,légumes fromage,3.9,390,piece,non
+Salés,Crêpe facie,épinards fromage,3.9,390,piece,non
+Salés,Crêpe facie,poulet épinards,3.9,390,piece,non
+Salés,Crêpe facie,haché de poulet,3.9,390,piece,non
+Salés,Cigare Fromage,,2.6,260,piece,non
+Salés,Mini Salés,,2.6,260,piece,non
+Salés,Salade bowl,,8,800,piece,non
+Salés,Tacos poulet,,7,700,piece,non
+Salés,Lasagne Bolo,,8,800,piece,non
+Salés,Wrap Poulet,,5,500,piece,non
+Salés,Batbout Healthy,,4.9,490,piece,non
+Salés,Batbout farci,,3.3,330,piece,non
+Salés,Burger,,4.5,450,piece,non
+Salés,Mini-Burger,,3.5,350,piece,non
+Viennoiserie,Croissant,,1.6,160,piece,non
+Viennoiserie,Pain chocolat,,1.6,160,piece,non
+Viennoiserie,Couque au beurre,,1.6,160,piece,non
+Viennoiserie,Couque aux raisins,,1.6,160,piece,non
+Viennoiserie,Croissant au chocolat,,1.9,190,piece,non
+Viennoiserie,Croissant aux amandes,,2.3,230,piece,non
+Viennoiserie,Croissant à la pâte d'amande,,2.3,230,piece,non
+Viennoiserie,Torsade,,1.9,190,piece,non
+Viennoiserie,Couque suisse longue,,1.9,190,piece,non
+Viennoiserie,Couque suisse ronde,,1.9,190,piece,non
+Viennoiserie,Huit,,1.9,190,piece,non
+Viennoiserie,Noix de pécan,,1.9,190,piece,non
+Viennoiserie,Sablé poire frangipane,,3.3,330,piece,non
+Viennoiserie,Sablé frangipane,,3.3,330,piece,non
+Viennoiserie,Sablé breton pistache,,3.3,330,piece,non
+Viennoiserie,Sablé breton praliné,,3.3,330,piece,non
+Viennoiserie,Sablé breton framboise,,3.3,330,piece,non
+Viennoiserie,Sablé breton café caramel,,3.3,330,piece,non
+Viennoiserie,Financier,,5,500,piece,non
+Viennoiserie,Beignet,,1.7,170,piece,non
+Viennoiserie,Palmier,,1.7,170,piece,non
+Viennoiserie,Maton fromage,,1.9,190,piece,non
+Viennoiserie,Coque croquant amandes cerise,,1.9,190,piece,non
+Viennoiserie,Coque croquant noisettes chocolat,,1.9,190,piece,non
+Viennoiserie,Gosette aux pommes,,1.9,190,piece,non
+Viennoiserie,Gosette aux cerises,,1.9,190,piece,non
+Viennoiserie,Brioche sésames,,1.6,160,piece,non
+Viennoiserie,Brioche a la crème,,1.9,190,piece,non
+Viennoiserie,Mini Croissant,,1.3,130,piece,non
+Viennoiserie,Mini Pain chocolat,,1.3,130,piece,non
+Viennoiserie,Mini pécan,,1.6,160,piece,non
+Viennoiserie,Mini Suisse,,1.6,160,piece,non
+Viennoiserie,Sandwich mou,,0.7,70,piece,non
+Viennoiserie,Cougnou,,3,300,piece,non
+Viennoiserie,Fqaqess sachet,,3,300,piece,non
+Boulangerie,Pain Français,,1.4,140,piece,non
+Boulangerie,Baguette,grise,1.4,140,piece,non
+Boulangerie,Baguette,blanche,1.4,140,piece,non
+Boulangerie,Baguette,Sésames,1.6,160,piece,non
+Boulangerie,Baguette,Céréales,1.8,180,piece,non
+Boulangerie,Pain Marocain,gris,1.4,140,piece,non
+Boulangerie,Pain Marocain,blanc,1.4,140,piece,non
+Boulangerie,Pain Shawarma - bagnat,blanc,0.6,60,piece,non
+Boulangerie,Pain Shawarma - bagnat,gris,0.6,60,piece,non
+Boulangerie,Pistolet,blanc,0.7,70,piece,non
+Boulangerie,Pistolet,gris,0.7,70,piece,non
+Boulangerie,Grand pain,blanc,2.9,290,piece,non
+Boulangerie,Grand pain,gris,2.9,290,piece,non
+Boulangerie,Grand pain,demi gris,2.9,290,piece,non
+Boulangerie,Grand pain,aux 7 céréales,3.9,390,piece,non
+Boulangerie,Grand pain,campagne aux 7 céréales,3.9,390,piece,non
+Boulangerie,Grand pain,campagne Demi Gris,2.9,290,piece,non
+Boulangerie,Grand pain,campagne Gris,2.9,290,piece,non
+Boulangerie,Grand pain,campagne recuit,4,400,piece,non
+Boulangerie,Grand pain,campagne Blanc,2.9,290,piece,non
+Boulangerie,Petit pain,blanc,1.9,190,piece,non
+Boulangerie,Petit pain,gris,1.9,190,piece,non
+Boulangerie,Petit pain,demi gris,1.9,190,piece,non
+Boulangerie,Petit pain,aux 7 céréales,2.5,250,piece,non
+Boulangerie,Petit pain,campagne aux 7 céréales,2.5,250,piece,non
+Boulangerie,Petit pain,campagne Demi Gris,1.9,190,piece,non
+Boulangerie,Petit pain,campagne Gris,1.9,190,piece,non
+Boulangerie,Petit pain,campagne recuit,3,300,piece,non
+Boulangerie,Petit pain,campagne Blanc,1.9,190,piece,non
+Boulangerie,Craquelin,,3.5,350,piece,non
+Boulangerie,Cramique,,3.5,350,piece,non
+Boulangerie,Pain Italien,,1.8,180,piece,non
+Boulangerie,Pain Espagnol,,1.8,180,piece,non
+Boulangerie,Pain Artisanal,,2.4,240,piece,non
+Boulangerie,Pain aux olives,,1.9,190,piece,non
+Boulangerie,Pain soleil,,1.9,190,piece,non
+Boulangerie,Pain spécial,,2,200,piece,non
+Boulangerie,Pain aux raisins,,1.9,190,piece,non
+Boulangerie,Pain turc,,1.5,150,piece,non
+Boulangerie,Piccolo,gris,0.6,60,piece,non
+Boulangerie,Piccolo,aux céréales,1.2,120,piece,non
+Boulangerie,Piccolo,blanc,0.6,60,piece,non
+Boulangerie,Ciabatta,Nature,1.9,190,piece,non
+Boulangerie,Ciabatta,Aux olives,2.1,210,piece,non
+Boulangerie,Grand pain sucré,,1.9,190,piece,non
+Boulangerie,Baguette au levain,,2.1,210,piece,non
+Boulangerie,Grand pain au levain,,4.5,450,piece,non
+Boulangerie,Petit Pain au levain au seigle,,3.9,390,piece,non
+Boulangerie,Grand Pain au levain au seigle,,4.9,490,piece,non
+Gâteaux et tartes,Supplément,Photo,15,1500,piece,non
+Gâteaux et tartes,Supplément,Ecriture,2,200,piece,non
+Gâteaux et tartes,Croûte,Fruits 6P,27,2700,piece,non
+Gâteaux et tartes,Croûte,Fraises 6P,27,2700,piece,non
+Gâteaux et tartes,Croûte,framboises 6P,27,2700,piece,non
+Gâteaux et tartes,Croûte,Fruits 8P,32,3200,piece,non
+Gâteaux et tartes,Croûte,Fraises 8P,32,3200,piece,non
+Gâteaux et tartes,Croûte,framboises 8P,32,3200,piece,non
+Gâteaux et tartes,Bavarois,10P,39,3900,piece,non
+Gâteaux et tartes,Bavarois,4P,20,2000,piece,non
+Gâteaux et tartes,Bavarois,6P,31,3100,piece,non
+Gâteaux et tartes,Bavarois,8P,36,3600,piece,non
+Gâteaux et tartes,Bavarois framboise,4P,20,2000,piece,non
+Gâteaux et tartes,Bavarois framboise,6P,31,3100,piece,non
+Gâteaux et tartes,Bavarois framboise,8P,36,3600,piece,non
+Gâteaux et tartes,Bavarois fruits de la passion,4P,20,2000,piece,non
+Gâteaux et tartes,Bavarois fruits de la passion,6P,31,3100,piece,non
+Gâteaux et tartes,Bavarois fruits de la passion,8P,36,3600,piece,non
+Gâteaux et tartes,Bavarois mangue,4P,20,2000,piece,non
+Gâteaux et tartes,Bavarois mangue,6P,31,3100,piece,non
+Gâteaux et tartes,Bavarois mangue,8P,36,3600,piece,non
+Gâteaux et tartes,Crème fraîche,6P,26,2600,piece,non
+Gâteaux et tartes,Crème fraîche,8P,31,3100,piece,non
+Gâteaux et tartes,Forêt noire,4P,20,2000,piece,non
+Gâteaux et tartes,Forêt noire,6P,31,3100,piece,non
+Gâteaux et tartes,Forêt noire,8P,36,3600,piece,non
+Gâteaux et tartes,Fraisier,4P,20,2000,piece,non
+Gâteaux et tartes,Fraisier,6P,31,3100,piece,non
+Gâteaux et tartes,Fraisier,8P,36,3600,piece,non
+Gâteaux et tartes,Matadi chocolat,4P,20,2000,piece,non
+Gâteaux et tartes,Matadi chocolat,6P,31,3100,piece,non
+Gâteaux et tartes,Matadi chocolat,8P,36,3600,piece,non
+Gâteaux et tartes,Mousse chocolat,4P,20,2000,piece,non
+Gâteaux et tartes,Mousse chocolat,6P,31,3100,piece,non
+Gâteaux et tartes,Mousse chocolat,8P,36,3600,piece,non
+Gâteaux et tartes,Tarte,riz 6P,18,1800,piece,non
+Gâteaux et tartes,Tarte,fromage 6P,18,1800,piece,non
+Gâteaux et tartes,Tarte,pommes 6P,18,1800,piece,non
+Gâteaux et tartes,Tarte,frangipane poires cerises 6P,18,1800,piece,non
+Gâteaux et tartes,Tarte,abricots 6P,18,1800,piece,non
+Gâteaux et tartes,Tarte,cerises 6P,18,1800,piece,non
+Gâteaux et tartes,Tarte,Moelleux 6P,24,2400,piece,non
+Gâteaux et tartes,Trompe l'oeil XXL 4P,,35,3500,piece,non
+Gâteaux et tartes,Entremet 8P,Noisette chocolat,48,4800,piece,non
+Gâteaux et tartes,Entremet 8P,Framboise,48,4800,piece,non
+Gâteaux et tartes,Entremet 8P,Passion,48,4800,piece,non
+Gâteaux et tartes,Entremet 8P,Vanille,48,4800,piece,non
+Individuelle,Tartelette,fruits de la passion,4.7,470,piece,non
+Individuelle,Tartelette,citron,4.7,470,piece,non
+Individuelle,Tartelette,fruits,4.2,420,piece,non
+Individuelle,Tartelette,fraises,4.2,420,piece,non
+Individuelle,Tartelette,framboises,4.2,420,piece,non
+Individuelle,Macaron,framboises,4.9,490,piece,non
+Individuelle,Macaron,Fraises,4.9,490,piece,non
+Individuelle,Macaron,violette,4.9,490,piece,non
+Individuelle,Macaron,mûres,4.9,490,piece,non
+Individuelle,Chou signe,,4.2,420,piece,non
+Individuelle,Tiramisu,,4.5,450,piece,non
+Individuelle,Verrine,,4.5,450,piece,non
+Individuelle,Saint-Michel (noix – amandes),,5,500,piece,non
+Individuelle,Fleur caramel chocolat,,4.8,480,piece,non
+Individuelle,Forêt noire,,4.8,480,piece,non
+Individuelle,Bavarois fruits de la passion,,4.8,480,piece,non
+Individuelle,Mousse chocolat,,4.8,480,piece,non
+Individuelle,Bavarois framboise,,4.8,480,piece,non
+Individuelle,Javanais,,4.8,480,piece,non
+Individuelle,Morceau praline,,4.8,480,piece,non
+Individuelle,Crème au beurre moka,,4.8,480,piece,non
+Individuelle,Paris-brest,,4.8,480,piece,non
+Individuelle,Merveilleux,,4.2,420,piece,non
+Individuelle,Mille-feuille,Amande praliné,2.6,260,piece,non
+Individuelle,Mille-feuille,Classique,2.6,260,piece,non
+Individuelle,Mille-feuille,Chocolat,2.6,260,piece,non
+Individuelle,Boule de Berlin,,2.5,250,piece,non
+Individuelle,Donuts,,2.5,250,piece,non
+Individuelle,Éclair,Pistache,3.2,320,piece,non
+Individuelle,Éclair,framboises fraiches,3.2,320,piece,non
+Individuelle,Éclair,framboises,2.6,260,piece,non
+Individuelle,Éclair,Chocolat,2.6,260,piece,non
+Individuelle,Éclair,Moka,2.6,260,piece,non
+Individuelle,Croissant et couque a la crème,,2.5,250,piece,non
+Individuelle,Morceau,tarte aux cerises,3.6,360,piece,non
+Individuelle,Morceau,brésilienne,4.2,420,piece,non
+Individuelle,Morceau,tarte aux abricots,3.6,360,piece,non
+Individuelle,Morceau,tarte aux pommes,3.6,360,piece,non
+Individuelle,Morceau,tarte au riz,3.6,360,piece,non
+Individuelle,Morceau,Moelleux chocolat,4.2,420,piece,non
+Individuelle,Morceau,tarte au flan,3.6,360,piece,non
+Individuelle,Trompe l'oeil,Pistache,8.9,890,piece,non
+Individuelle,Trompe l'oeil,Citron,8.9,890,piece,non
+Individuelle,Trompe l'oeil,Cabosse,8.9,890,piece,non
+Individuelle,Trompe l'oeil,Amande,8.9,890,piece,non
+Individuelle,Trompe l'oeil,Passion,8.9,890,piece,non
+Individuelle,Trompe l'oeil,Mangue,8.9,890,piece,non
+Individuelle,Trompe l'oeil,Noisette,8.9,890,piece,non
+Individuelle,Trompe l'oeil,Cacahouète,8.9,890,piece,non
+Individuelle,Trompe l'oeil,Vanille,8.9,890,piece,non
+Individuelle,Trompe l'oeil,Poire,8.9,890,piece,non
+Individuelle,Trompe l'oeil,Pomme,8.9,890,piece,non
+Individuelle,Trompe l'oeil,Cerise,8.9,890,piece,non
+Individuelle,Trompe l'oeil,Framboise,8.9,890,piece,non
+Individuelle,Trompe l'oeil,Pêche,8.9,890,piece,non
+Individuelle,Trompe l'oeil,Banane,8.9,890,piece,non
+Special fin d'année,Galette des rois Frangipane,6P,27,2700,piece,non
+Special fin d'année,Galette des rois Frangipane,8P,31,3100,piece,non
+Special fin d'année,Galette des rois Abricot/Frangipane,6P,27,2700,piece,non
+Special fin d'année,Galette des rois Abricot/Frangipane,8P,31,3100,piece,non
+Special fin d'année,Bûches 4P,"Noisette, Exotique coco, Mousse au chocolat, Pistache , Framboise , Passion, Citron, Chocolat blanc spéculos, Crème au beurre moka, Crème au beurre chocolat, crème fraîche, Matadi",24,2400,piece,non
+Special fin d'année,Bûches 6P,"Noisette, Exotique coco, Mousse au chocolat, Pistache , Framboise , Passion, Citron, Chocolat blanc spéculos, Crème au beurre moka, Crème au beurre chocolat, crème fraîche, Matadi",36,3600,piece,non
+Special fin d'année,Bûches 8P,"Noisette, Exotique coco, Mousse au chocolat, Pistache , Framboise , Passion, Citron, Chocolat blanc spéculos, Crème au beurre moka, Crème au beurre chocolat, crème fraîche, Matadi",48,4800,piece,non
+Special fin d'année,Bûches 10P,"Noisette, Exotique coco, Mousse au chocolat, Pistache , Framboise , Passion, Citron, Chocolat blanc spéculos, Crème au beurre moka, Crème au beurre chocolat, crème fraîche, Matadi",60,6000,piece,non
+Special fin d'année,Bûchette,"Noisette, Exotique coco, Mousse au chocolat, Pistache , Framboise , Passion, Citron, Chocolat blanc spéculos, Crème au beurre moka, Crème au beurre chocolat",5.9,590,piece,non
+Special fin d'année,Petit Cœurs,Noisette / Exotique coco / Mousse au chocolat / Pistache / Framboise / Passion / Mangue / Fraise / Chocolat blanc spéculos,5.9,590,piece,non
+Special fin d'année,Cœurs 5P,Noisette / Exotique coco / Mousse au chocolat / Pistache / Framboise / Passion / Mangue / Fraise / Chocolat blanc spéculos / Crème fraîche / Matadi,30,3000,piece,non
+Special fin d'année,Cœurs 7P,Noisette / Exotique coco / Mousse au chocolat / Pistache / Framboise / Passion / Mangue / Fraise / Chocolat blanc spéculos / Crème fraîche / Matadi,42,4200,piece,non
+Special fin d'année,Cœurs 9P,Noisette / Exotique coco / Mousse au chocolat / Pistache / Framboise / Passion / Mangue / Fraise / Chocolat blanc spéculos / Crème fraîche / Matadi,54,5400,piece,non
+Sandwichs Froids,THON PIQUANT,,4.5,450,piece,non
+Sandwichs Froids,THON MAYONNAISE,,4.5,450,piece,non
+Sandwichs Froids,POULET ANDALOUSE,,4.5,450,piece,non
+Sandwichs Froids,POULET PIQUANT,,4.5,450,piece,non
+Sandwichs Froids,POULET CURRY,,4.5,450,piece,non
+Sandwichs Froids,AMÉRICAIN PRÉPARÉ,,4.5,450,piece,non
+Sandwichs Froids,CRABE‭ | ‬SURIMI,,4.5,450,piece,non
+Sandwichs Froids,CREVETTES A L’AIL,,4.9,490,piece,non
+Sandwichs Froids,CLUB SANDWICH,,4.9,490,piece,non
+Sandwichs Froids,Supplément (oeuf),,0.6,60,piece,non
+Favoris,Pain Français,,1.4,140,piece,oui
+Favoris,Baguette,grise,1.4,140,piece,oui
+Favoris,Baguette,blanche,1.4,140,piece,oui
+Favoris,Baguette,Sésames,1.6,160,piece,oui
+Favoris,Pain Marocain,gris,1.4,140,piece,oui
+Favoris,Pain Marocain,blanc,1.4,140,piece,oui
+Favoris,Pain Shawarma - bagnat,blanc,0.6,60,piece,oui
+Favoris,Pain Shawarma - bagnat,gris,0.6,60,piece,oui
+Favoris,Pistolet,blanc,0.7,70,piece,oui
+Favoris,Grand pain,blanc,2.9,290,piece,oui
+Favoris,Grand pain,gris,2.9,290,piece,oui
+Favoris,Grand pain,aux 7 céréales,3.9,390,piece,oui
+Favoris,Petit pain,blanc,1.9,190,piece,oui
+Favoris,Petit pain,gris,1.9,190,piece,oui
+Favoris,Petit pain,aux 7 céréales,2.5,250,piece,oui
+Favoris,Piccolo,gris,0.6,60,piece,oui
+Favoris,Piccolo,blanc,0.6,60,piece,oui
+Favoris,Piccolo,blanc,0.6,60,piece,oui
+Favoris,THON PIQUANT,,4.5,450,piece,oui
+Favoris,THON MAYONNAISE,,4.5,450,piece,oui
+Favoris,POULET ANDALOUSE,,4.5,450,piece,oui
+Favoris,POULET PIQUANT,,4.5,450,piece,oui
+Favoris,CREVETTES A L’AIL,,4.9,490,piece,oui
+Favoris,CLUB SANDWICH,,4.9,490,piece,oui
+Favoris,Supplément (oeuf),,0.6,60,piece,oui
+Favoris,Tartelette,fruits,4.2,420,piece,oui
+Favoris,Tartelette,fraises,4.2,420,piece,oui
+Favoris,Tartelette,framboises,4.2,420,piece,oui
+Favoris,Mille-feuille,Classique,2.6,260,piece,oui
+Favoris,Baghrer,,1.8,180,piece,oui
+Favoris,Harcha,semoule,2,200,piece,oui
+Favoris,Msemen,semoule,2.2,220,piece,oui
+Favoris,Meloui,,2.2,220,piece,oui
+Favoris,Éclair,Chocolat,2.6,260,piece,oui
+Favoris,Éclair,Moka,2.6,260,piece,oui
+Favoris,Croissant,,1.6,160,piece,oui
+Favoris,Pain chocolat,,1.6,160,piece,oui
+Favoris,Croissant au chocolat,,1.9,190,piece,oui
+Favoris,Croissant à la pâte d'amande,,2.3,230,piece,oui
+Favoris,Couque suisse longue,,1.9,190,piece,oui
+Favoris,Couque suisse ronde,,1.9,190,piece,oui
+Favoris,Huit,,1.9,190,piece,oui
+Favoris,Bastella,Poulet,3.9,390,piece,oui
+Favoris,Bastella,Fruits de mer,3.9,390,piece,oui
+Favoris,Cigare Fruits de mer,,2.6,260,piece,oui
+Favoris,Briwate épinards-Fromage,,2.6,260,piece,oui
+Favoris,Briwate Poulet,,2.6,260,piece,oui
+Favoris,Canette (33cl) classic,,1.3,130,piece,oui
+Favoris,Cristaline,,0.5,50,piece,oui
+Oriental,Baghrer - Confiture,,2.9,290,piece,non
+Oriental,Harcha céréales - Confiture,,3.8,380,piece,non
+Oriental,Harcha semoule - Confiture,,3.2,320,piece,non
+Oriental,Harcha grise - Confiture,,3.2,320,piece,non
+Oriental,Msemen semoule - Confiture,,3.5,350,piece,non
+Oriental,Msemen grise - Confiture,,3.9,390,piece,non
+Oriental,Meloui - Confiture,,3.5,350,piece,non
+Café,Café,,2.5,250,piece,non
+Café,Espresso,,2.5,250,piece,non
+Café,Double Espresso,,3.5,350,piece,non
+Café,Thé Lipton,,2.5,250,piece,non
+Café,Café Latte,,2.5,250,piece,non
+Café,Cappuccino Latte,,2.5,250,piece,non
+Café,Macchiato,,2.5,250,piece,non
+Café,Chocolat chaud,,2.5,250,piece,non

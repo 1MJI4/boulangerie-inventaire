@@ -10,20 +10,36 @@
 // des tranches de taille fixe qui suivent l'ordre affiché — un parcours dans
 // le magasin reste donc suivi de bout en bout. Caler les pages sur les rayons
 // reste possible, en option.
+//
+// LOI 2 : un produit au kilo se saisit au pavé décimal (poids en grammes),
+// jamais au clavier ni par « +1 ». LOI 8 : les contrôles du domaine
+// (src/domaine/inventaire.ts) s'affichent sur la ligne avec <Signalement>.
+// LOI 10 : seuls les produits de la liste d'INVENTAIRE apparaissent ici.
+// LOI 11 : un inventaire commencé avant l'heure de fermeture est signalé,
+// sans bloquer ; un rappel d'équipe peut suivre l'inventaire terminé.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide, Progression, Puce } from '@/components/ui';
 import { BandeauOnglets, Onglet } from '@/components/BandeauOnglets';
 import { GestionParcours } from '@/components/GestionParcours';
 import { IndicateurSauvegarde } from '@/components/IndicateurSauvegarde';
 import { LigneSaisie } from '@/components/LigneSaisie';
-import { PaveNumerique } from '@/components/PaveNumerique';
+import { PaveSaisieProduit } from '@/components/inventaire/PaveSaisieProduit';
+import { SignalementsLigne } from '@/components/inventaire/SignalementsLigne';
+import { RappelApresAction, RappelChargement } from '@/components/rappels';
+import { Signalement } from '@/components/signalement';
 import { RappelsService } from '@/components/RappelsService';
 import { ReglagesSaisie } from '@/components/ReglagesSaisie';
 import { SelecteurJournee } from '@/components/SelecteurJournee';
 import { dateDuJour, formatDateLong } from '@/lib/dateProduction';
 import { decouperEnPages, libellePage } from '@/lib/pagination';
-import { verifierComptage } from '@/lib/coherence';
+import {
+  additionnerRecomptage,
+  controleDebutInventaire,
+  controlesComptage,
+  type SignalementLigne,
+} from '@/lib/inventaire/controles';
+import { formaterQuantite } from '@/domaine/unites';
 import { classerSelonParcours, useParcours } from '@/lib/parcours';
 import { trierCategories } from '@/lib/postes';
 import { usePreferencesSaisie } from '@/lib/preferencesSaisie';
@@ -39,8 +55,15 @@ export default function Comptage() {
   const [selectionne, setSelectionne] = useState<number | null>(null);
   const [parcoursActif, setParcoursActif] = useState<string | null>(null);
   const [triImpose, setTriImpose] = useState(false);
-  // Incrémenté quand l'ordre a le droit d'être recalculé (voir plus bas).
-  const [generationTri, setGenerationTri] = useState(0);
+  /** Produit en cours de RECOMPTAGE (déjà compté, retrouvé par la recherche). */
+  const [recomptage, setRecomptage] = useState<number | null>(null);
+  /** Produits déjà comptés quand la recherche a été ouverte : les retrouver = recompter. */
+  const [comptesALaRecherche, setComptesALaRecherche] = useState<ReadonlySet<number>>(new Set());
+  /** Avertissements nés sur cet écran (AVERT_DOUBLE_SCAN d'un recomptage). */
+  const [avertissementsLocaux, setAvertissementsLocaux] = useState<Map<number, SignalementLigne[]>>(new Map());
+  /** LOI 11 : contrôle de l'heure fait au premier geste de la journée. */
+  const [debutControle, setDebutControle] = useState<{ date: string; signalements: SignalementLigne[] } | null>(null);
+  const [termineLe, setTermineLe] = useState<string | null>(null);
 
   const { preferences, definir: definirPreference, reinitialiser } = usePreferencesSaisie();
   const saisie = useSaisieJournee({ date, champ: 'quantiteRestante' });
@@ -55,11 +78,11 @@ export default function Comptage() {
 
   // Le parcours par défaut s'applique au premier chargement, sans écraser un
   // choix fait à la main pendant la session.
-  useEffect(() => {
-    if (triImpose || !trajet.pret) return;
-    if (trajet.idParDefaut && preferences.tri === 'feuille') definirPreference('tri', 'parcours');
+  // (Ajustement pendant le rendu, motif recommandé par React, plutôt qu'un effet.)
+  if (!triImpose && trajet.pret) {
     setTriImpose(true);
-  }, [trajet.pret, trajet.idParDefaut, preferences.tri, definirPreference, triImpose]);
+    if (trajet.idParDefaut && preferences.tri === 'feuille') definirPreference('tri', 'parcours');
+  }
 
   /**
    * Toute saisie passe par ici : en plus d'enregistrer la valeur, on note le
@@ -68,18 +91,46 @@ export default function Comptage() {
    */
   const compter = useCallback(
     (produitId: number, valeur: string) => {
+      // Premier geste de l'inventaire du jour : heure comparée à la fermeture
+      // (donnée en base, sinon hypothèse). Avertissement seulement.
+      if (debutControle?.date !== date && date === dateDuJour()) {
+        setDebutControle({ date, signalements: controleDebutInventaire(new Date(), saisie.heureFermeture) });
+      }
       saisie.definir(produitId, valeur);
       if (valeur === '') trajet.oublierPassage(produitId);
       else trajet.noterPassage(produitId);
     },
-    [saisie, trajet]
+    [saisie, trajet, date, debutControle]
   );
+
+  const changerDate = (suivante: string) => {
+    setDate(suivante);
+    setRecomptage(null);
+    setAvertissementsLocaux(new Map());
+  };
+
+  const ouvrirOuFermerRecherche = (texte: string) => {
+    // À l'ouverture de la recherche, on fige la liste des produits déjà
+    // comptés : en retrouver un, c'est le recompter (addition, R21).
+    if (recherche.trim() === '' && texte.trim() !== '') {
+      setComptesALaRecherche(
+        new Set(saisie.produits.filter((p) => (saisie.valeurs[p.id] ?? '') !== '').map((p) => p.id))
+      );
+    }
+    setRecherche(texte);
+  };
 
   /* ------------------------------------------------------- Ordre d'affichage */
 
-  // Les valeurs les plus récentes, lisibles sans redéclencher le classement.
-  const valeursPourTri = useRef(saisie.valeurs);
-  valeursPourTri.current = saisie.valeurs;
+  // Instantané des valeurs utilisé pour classer : pris à la fin d'un
+  // chargement et à chaque reclassement demandé, jamais pendant la frappe.
+  const [valeursPourTri, setValeursPourTri] = useState(saisie.valeurs);
+  const [chargementVu, setChargementVu] = useState(saisie.chargement);
+  if (chargementVu !== saisie.chargement) {
+    setChargementVu(saisie.chargement);
+    if (!saisie.chargement) setValeursPourTri(saisie.valeurs);
+  }
+  const reclasser = () => setValeursPourTri(saisie.valeurs);
 
   /**
    * L'ordre est FIGÉ entre deux recalculs.
@@ -91,7 +142,7 @@ export default function Comptage() {
    * demande explicite — jamais pendant la frappe.
    */
   const produitsOrdonnes = useMemo(() => {
-    const valeurs = valeursPourTri.current;
+    const valeurs = valeursPourTri;
     let liste = saisie.produits;
 
     if (preferences.tri === 'parcours') {
@@ -106,12 +157,7 @@ export default function Comptage() {
     }
 
     return liste;
-  }, [saisie.produits, preferences.tri, parcoursUtilise, generationTri]);
-
-  // Un nouveau jour repart d'un classement propre.
-  useEffect(() => {
-    setGenerationTri((g) => g + 1);
-  }, [date]);
+  }, [saisie.produits, preferences.tri, parcoursUtilise, valeursPourTri]);
 
   /* ----------------------------------------------------------------- Sections */
 
@@ -156,14 +202,12 @@ export default function Comptage() {
   }, [produitsOrdonnes, preferences.decoupage, enRecherche, recherche, modeFocus]);
 
   // L'index reste dans les bornes quand le découpage ou la recherche changent.
-  useEffect(() => {
-    setIndexSection((precedent) => Math.min(precedent, Math.max(0, sections.length - 1)));
-  }, [sections.length]);
-
-  const sectionCourante = sections[Math.min(indexSection, sections.length - 1)] ?? null;
-  const produitsVisibles = modeFocus
-    ? produitsOrdonnes
-    : (sectionCourante?.produits ?? []);
+  const indexBorne = Math.min(indexSection, Math.max(0, sections.length - 1));
+  const sectionCourante = sections[indexBorne] ?? null;
+  const produitsVisibles = useMemo(
+    () => (modeFocus ? produitsOrdonnes : (sectionCourante?.produits ?? [])),
+    [modeFocus, produitsOrdonnes, sectionCourante]
+  );
 
   const avancementSection = useCallback(
     (produits: Produit[]) => {
@@ -175,15 +219,14 @@ export default function Comptage() {
 
   /* ------------------------------------------------------------- Navigation */
 
-  const indexSelectionne = produitsVisibles.findIndex((p) => p.id === selectionne);
+  // En mode « un par un » ou pavé, un produit est toujours sélectionné : le
+  // premier de la page si la sélection n'y est plus.
+  const selectionEffective =
+    (modeFocus || modePave) && !produitsVisibles.some((p) => p.id === selectionne)
+      ? (produitsVisibles[0]?.id ?? null)
+      : selectionne;
+  const indexSelectionne = produitsVisibles.findIndex((p) => p.id === selectionEffective);
   const produitSelectionne = indexSelectionne >= 0 ? produitsVisibles[indexSelectionne] : null;
-
-  useEffect(() => {
-    if (produitsVisibles.length === 0) return;
-    if ((modeFocus || modePave) && !produitsVisibles.some((p) => p.id === selectionne)) {
-      setSelectionne(produitsVisibles[0].id);
-    }
-  }, [produitsVisibles, modeFocus, modePave, selectionne]);
 
   const allerAuProduit = useCallback(
     (decalage: number) => {
@@ -200,22 +243,57 @@ export default function Comptage() {
     setIndexSection(index);
     // Le changement de page est le bon moment pour reclasser : rien n'est en
     // cours de frappe, et le vendeur s'attend à voir la suite de son travail.
-    setGenerationTri((g) => g + 1);
+    reclasser();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   /* ------------------------------------------------------------------ Pavé */
 
   const valeurSelectionnee = produitSelectionne ? (saisie.valeurs[produitSelectionne.id] ?? '') : '';
+  const selectionAuPoids = produitSelectionne?.unite === 'kg';
 
-  const frapper = (chiffre: string) => {
-    if (produitSelectionne) compter(produitSelectionne.id, valeurSelectionnee + chiffre);
+  /** Texte affiché d'une quantité : grammes → « 1,250 kg » (LOI 2). */
+  const afficherQuantite = (produit: Produit, valeur: string) =>
+    produit.unite === 'kg' && valeur !== '' ? formaterQuantite('kg', Number(valeur)) : valeur;
+
+  const recompter = (produit: Produit, ajout: number) => {
+    const deja = Number(saisie.valeurs[produit.id] ?? '0');
+    const r = additionnerRecomptage(produit, deja, ajout);
+    if (r.ok) compter(produit.id, String(r.donnees));
+    setAvertissementsLocaux((precedent) =>
+      new Map(precedent).set(produit.id, r.ok ? r.signalements : [r])
+    );
+    setRecomptage(null);
   };
-  const effacerDernier = () => {
-    if (produitSelectionne) compter(produitSelectionne.id, valeurSelectionnee.slice(0, -1));
+
+  const fermerPave = () => {
+    if (recomptage !== null) {
+      setRecomptage(null);
+      return;
+    }
+    if (modePave) definirPreference('clavier', 'natif');
+    if (!modeFocus) setSelectionne(null);
   };
-  const vider = () => {
-    if (produitSelectionne) compter(produitSelectionne.id, '');
+
+  /** Signalements d'une ligne : refus du serveur, contrôles du domaine, avertissements reçus. */
+  const signalementsDe = (produit: Produit): SignalementLigne[] => {
+    const refus = saisie.refus.get(produit.id);
+    return [
+      ...(refus ? [refus] : []),
+      ...controlesComptage(
+        produit,
+        saisie.valeurs[produit.id],
+        saisie.inventaires.get(produit.id)?.quantiteProduite
+      ),
+      ...(saisie.avertissementsServeur.get(produit.id) ?? []),
+      ...(avertissementsLocaux.get(produit.id) ?? []),
+    ];
+  };
+  const blocSignalements = (produit: Produit) => {
+    const liste = signalementsDe(produit);
+    return liste.length > 0 ? (
+      <SignalementsLigne signalements={liste} onEffacer={() => compter(produit.id, '')} />
+    ) : undefined;
   };
 
   /* --------------------------------------------------------------- Affichage */
@@ -242,7 +320,17 @@ export default function Comptage() {
   ).length;
   const triPerime =
     preferences.tri === 'restants' && !enRecherche && dejaComptesDansLaPage > 0 && !comptageTermine;
-  const paveVisible = modePave && produitSelectionne !== null && !saisie.chargement;
+  // Le pavé s'ouvre en mode pavé, pour un produit au kilo (jamais de clavier
+  // ni de « +1 » pour un poids), et pour un recomptage.
+  const paveVisible =
+    produitSelectionne !== null &&
+    !saisie.chargement &&
+    (modePave || selectionAuPoids || recomptage === produitSelectionne.id);
+
+  // Inventaire terminé (tout compté ET enregistré) : un rappel d'équipe, une fois par journée.
+  const inventaireTermine = comptageTermine && saisie.statut === 'enregistre' && saisie.nbEnAttente === 0;
+  if (inventaireTermine && termineLe !== date) setTermineLe(date);
+  const avertissementDebut = debutControle?.date === date ? debutControle.signalements : [];
 
   const bornesSection =
     sectionCourante && sectionCourante.produits.length > 0
@@ -250,7 +338,7 @@ export default function Comptage() {
       : null;
 
   return (
-    <div className={paveVisible ? 'pb-[22rem]' : ''}>
+    <div className={paveVisible ? 'pb-[30rem]' : ''}>
       <Entete
         titre="Comptage du restant"
         sousTitre={
@@ -266,10 +354,27 @@ export default function Comptage() {
               onChanger={definirPreference}
               onReinitialiser={reinitialiser}
             />
-            <SelecteurJournee date={date} onChange={setDate} libelle="Journée" />
+            <SelecteurJournee date={date} onChange={changerDate} libelle="Journée" />
           </>
         }
       />
+
+      {avertissementDebut.map((s) => (
+        <Signalement
+          key={s.code}
+          signalement={s}
+          className="sans-impression mb-3"
+          autreSortie={
+            <button
+              type="button"
+              onClick={() => setDebutControle({ date, signalements: [] })}
+              className="min-h-11 rounded-lg border border-line-fort bg-surface px-3 text-sm font-medium text-ink"
+            >
+              Compris
+            </button>
+          }
+        />
+      ))}
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex items-center gap-3">
@@ -306,7 +411,7 @@ export default function Comptage() {
           <input
             type="search"
             value={recherche}
-            onChange={(e) => setRecherche(e.target.value)}
+            onChange={(e) => ouvrirOuFermerRecherche(e.target.value)}
             placeholder="Chercher un produit dans toute la liste…"
             aria-label="Chercher un produit"
             autoFocus
@@ -316,6 +421,7 @@ export default function Comptage() {
             variante="secondaire"
             onClick={() => {
               setRecherche('');
+              setRecomptage(null);
               setRechercheOuverte(false);
             }}
           >
@@ -334,7 +440,7 @@ export default function Comptage() {
                   key={section.cle}
                   libelle={parPages ? `Page ${section.libelle}` : section.libelle}
                   detail={`${faits}/${total}`}
-                  actif={index === indexSection}
+                  actif={index === indexBorne}
                   etat={faits === total && total > 0 ? 'complet' : faits > 0 ? 'partiel' : 'vide'}
                   onClick={() => allerALaSection(index)}
                 />
@@ -354,7 +460,10 @@ export default function Comptage() {
       ) : null}
 
       {saisie.chargement ? (
-        <Chargement libelle="Chargement du catalogue…" />
+        <>
+          <Chargement libelle="Chargement de la liste d'inventaire…" />
+          <RappelChargement className="mx-auto max-w-md" />
+        </>
       ) : produitsVisibles.length === 0 ? (
         <Carte>
           <EtatVide
@@ -389,22 +498,28 @@ export default function Comptage() {
 
             <input
               type="text"
-              inputMode={modePave ? 'none' : 'numeric'}
-              pattern="[0-9]*"
-              readOnly={modePave}
-              value={valeurSelectionnee}
+              inputMode={modePave || selectionAuPoids ? 'none' : 'numeric'}
+              pattern={selectionAuPoids ? undefined : '[0-9]*'}
+              readOnly={modePave || selectionAuPoids}
+              value={afficherQuantite(produitSelectionne, valeurSelectionnee)}
               onChange={(e) => compter(produitSelectionne.id, e.target.value)}
-              onFocus={(e) => (modePave ? e.currentTarget.blur() : e.currentTarget.select())}
-              placeholder="—"
-              aria-label={produitSelectionne.nom}
-              autoFocus={!modePave}
+              onFocus={(e) =>
+                modePave || selectionAuPoids ? e.currentTarget.blur() : e.currentTarget.select()
+              }
+              placeholder={selectionAuPoids ? '— kg' : '—'}
+              aria-label={selectionAuPoids ? `${produitSelectionne.nom}, poids en kg` : produitSelectionne.nom}
+              autoFocus={!modePave && !selectionAuPoids}
               className="chiffres h-20 w-36 rounded-xl border border-line-fort bg-surface text-center text-4xl font-semibold text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none"
             />
           </div>
 
           <p className="mt-3 text-xs text-ink-3">
-            {valeurSelectionnee === '' ? 'pas encore compté' : 'quantité restante'}
+            {valeurSelectionnee === '' ? 'pas encore compté' : selectionAuPoids ? 'poids restant' : 'quantité restante'}
           </p>
+
+          {blocSignalements(produitSelectionne) ? (
+            <div className="mx-auto mt-4 max-w-md text-left">{blocSignalements(produitSelectionne)}</div>
+          ) : null}
 
           <div className="mt-8 flex items-center justify-center gap-2">
             <Bouton
@@ -451,28 +566,35 @@ export default function Comptage() {
                 : ''
             }
           >
-            {produitsVisibles.map((produit) => (
-              <LigneSaisie
-                key={produit.id}
-                nom={produit.nom}
-                valeur={saisie.valeurs[produit.id] ?? ''}
-                onChange={(v) => compter(produit.id, v)}
-                indice={enRecherche ? produit.categorie : undefined}
-                densite={preferences.densite}
-                main={preferences.main}
-                modePave={modePave}
-                selectionne={modePave && produit.id === selectionne}
-                onSelectionner={() => setSelectionne(produit.id)}
-                variante={enGrille ? 'carte' : 'ligne'}
-                anomalie={verifierComptage({
-                  restante:
-                    (saisie.valeurs[produit.id] ?? '') === ''
-                      ? null
-                      : Number(saisie.valeurs[produit.id]),
-                  produite: saisie.inventaires.get(produit.id)?.quantiteProduite ?? null,
-                })}
-              />
-            ))}
+            {produitsVisibles.map((produit) => {
+              // Retrouvé par la recherche alors qu'il était déjà compté : recomptage (addition).
+              const recomptable =
+                enRecherche &&
+                comptesALaRecherche.has(produit.id) &&
+                (saisie.valeurs[produit.id] ?? '') !== '';
+              return (
+                <LigneSaisie
+                  key={produit.id}
+                  nom={produit.nom}
+                  unite={produit.unite}
+                  valeur={saisie.valeurs[produit.id] ?? ''}
+                  onChange={(v) => compter(produit.id, v)}
+                  indice={
+                    recomptable ? 'déjà compté — touchez pour ajouter' : enRecherche ? produit.categorie : undefined
+                  }
+                  densite={preferences.densite}
+                  main={preferences.main}
+                  modePave={modePave || recomptable}
+                  selectionne={paveVisible && produit.id === selectionEffective}
+                  onSelectionner={() => {
+                    setSelectionne(produit.id);
+                    setRecomptage(recomptable ? produit.id : null);
+                  }}
+                  variante={enGrille ? 'carte' : 'ligne'}
+                  signalements={blocSignalements(produit)}
+                />
+              );
+            })}
           </div>
         </Carte>
       )}
@@ -485,18 +607,18 @@ export default function Comptage() {
         >
           <Bouton
             variante="secondaire"
-            onClick={() => allerALaSection(indexSection - 1)}
-            disabled={indexSection <= 0}
+            onClick={() => allerALaSection(indexBorne - 1)}
+            disabled={indexBorne <= 0}
           >
             ‹ Précédent
           </Bouton>
           <span className="chiffres text-xs text-ink-3">
-            {parPages ? 'page' : 'zone'} {indexSection + 1} sur {sections.length}
+            {parPages ? 'page' : 'zone'} {indexBorne + 1} sur {sections.length}
           </span>
           <Bouton
             variante="principal"
-            onClick={() => allerALaSection(indexSection + 1)}
-            disabled={indexSection >= sections.length - 1}
+            onClick={() => allerALaSection(indexBorne + 1)}
+            disabled={indexBorne >= sections.length - 1}
           >
             Suivant ›
           </Bouton>
@@ -505,7 +627,7 @@ export default function Comptage() {
 
       {triPerime ? (
         <div className="sans-impression mt-4 flex justify-center">
-          <Bouton variante="secondaire" onClick={() => setGenerationTri((g) => g + 1)}>
+          <Bouton variante="secondaire" onClick={reclasser}>
             Reclasser — {dejaComptesDansLaPage} produit
             {dejaComptesDansLaPage > 1 ? 's' : ''} de cette page {dejaComptesDansLaPage > 1 ? 'sont comptés' : 'est compté'}
           </Bouton>
@@ -545,19 +667,33 @@ export default function Comptage() {
         }}
       />
 
+      <RappelApresAction
+        moment="apres_inventaire"
+        declencheur={termineLe === date ? date : null}
+        className="sans-impression mt-4"
+      />
+
       <RappelsService comptageTermine={comptageTermine} />
 
-      {paveVisible ? (
-        <PaveNumerique
-          produitNom={produitSelectionne?.nom ?? null}
+      {paveVisible && produitSelectionne ? (
+        <PaveSaisieProduit
+          produit={produitSelectionne}
           valeur={valeurSelectionnee}
+          onChange={(v) => compter(produitSelectionne.id, v)}
+          onAjouter={
+            recomptage === produitSelectionne.id ? (n) => recompter(produitSelectionne, n) : undefined
+          }
+          sousTitre={
+            recomptage === produitSelectionne.id
+              ? `Déjà compté : ${afficherQuantite(produitSelectionne, valeurSelectionnee)}${
+                  selectionAuPoids ? '' : ' pièce(s)'
+                }. Saisissez ce que vous ajoutez.`
+              : undefined
+          }
           main={preferences.main}
-          onTouche={frapper}
-          onEffacer={effacerDernier}
-          onVider={vider}
           onSuivant={() => allerAuProduit(1)}
-          onFermer={() => definirPreference('clavier', 'natif')}
           peutAllerSuivant={indexSelectionne < produitsVisibles.length - 1}
+          onFermer={fermerPave}
         />
       ) : null}
     </div>
