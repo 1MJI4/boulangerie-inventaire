@@ -7,31 +7,19 @@
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { diagnostiquer } from '@/lib/erreurBase';
+import { traiterErreur } from '@/lib/erreurBase';
 import { estPoste } from '@/lib/postes';
+import { exigerRole } from '@/lib/auth/garde';
 
-const CODE_GESTION = process.env.CODE_GESTION ?? '';
-
-function codeValide(fourni: unknown): boolean {
-  if (!CODE_GESTION) return false;
-  return typeof fourni === 'string' && fourni === CODE_GESTION;
-}
-
-const refusCode = () =>
-  NextResponse.json(
-    {
-      error: CODE_GESTION
-        ? 'Code de gestion incorrect'
-        : "Le code de gestion n'est pas configuré sur le serveur (CODE_GESTION).",
-    },
-    { status: 403 }
-  );
+// Droits : voir src/lib/auth/matrice.ts (lecture : toute tablette installée ; écriture : gérant).
 
 function texte(valeur: unknown, max = 120): string {
   return typeof valeur === 'string' ? valeur.trim().slice(0, max) : '';
 }
 
 export async function GET(request: Request) {
+  const garde = exigerRole(request, 'tablette', 'consulter les tarifs');
+  if (!garde.ok) return garde.reponse;
   try {
     const { searchParams } = new URL(request.url);
     const inclureInactifs = searchParams.get('inclureInactifs') === '1';
@@ -57,12 +45,15 @@ export async function GET(request: Request) {
 
     return NextResponse.json(tarifs);
   } catch (error) {
-    console.error('GET /api/tarifs', error);
-    return NextResponse.json(diagnostiquer(error), { status: 500 });
+    const { corps, statut } = traiterErreur(error, 'GET /api/tarifs');
+    return NextResponse.json(corps, { status: statut });
   }
 }
 
 /**
+ * HYPOTHÈSE À VALIDER : réservé au gérant (prix libre = H4 de l'audit sécurité)
+ * tant que le gérant n'a pas confirmé qu'un vendeur peut créer seul un tarif.
+ *
  * Produit inconnu créé au comptoir. Pas de code demandé : le vendeur a un
  * client en face, il ne va pas appeler le manager pour vendre une brioche.
  * En échange, la ligne arrive marquée « à ranger » dans l'écran des tarifs —
@@ -70,6 +61,8 @@ export async function GET(request: Request) {
  * « CROISSANT AMANDE » qui vivraient côte à côte.
  */
 export async function POST(request: Request) {
+  const garde = exigerRole(request, 'gerant', 'créer un tarif');
+  if (!garde.ok) return garde.reponse;
   try {
     const corps = await request.json();
     const nom = texte(corps.nom, 120);
@@ -102,16 +95,17 @@ export async function POST(request: Request) {
 
     return NextResponse.json(tarif, { status: 201 });
   } catch (error) {
-    console.error('POST /api/tarifs', error);
-    return NextResponse.json(diagnostiquer(error), { status: 500 });
+    const { corps, statut } = traiterErreur(error, 'POST /api/tarifs');
+    return NextResponse.json(corps, { status: statut });
   }
 }
 
 /** Correction d'un prix, d'un libellé ou d'un rangement. Réservé au manager. */
 export async function PATCH(request: Request) {
+  const garde = exigerRole(request, 'gerant', 'modifier un tarif');
+  if (!garde.ok) return garde.reponse;
   try {
     const corps = await request.json();
-    if (!codeValide(corps.codeSecurite)) return refusCode();
 
     const id = Number(corps.id);
     if (!Number.isFinite(id) || id <= 0) {
@@ -133,8 +127,8 @@ export async function PATCH(request: Request) {
     const tarif = await prisma.tarif.update({ where: { id }, data: donnees });
     return NextResponse.json(tarif);
   } catch (error) {
-    console.error('PATCH /api/tarifs', error);
-    return NextResponse.json(diagnostiquer(error), { status: 500 });
+    const { corps, statut } = traiterErreur(error, 'PATCH /api/tarifs');
+    return NextResponse.json(corps, { status: statut });
   }
 }
 

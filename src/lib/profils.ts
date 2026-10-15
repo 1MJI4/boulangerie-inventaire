@@ -62,7 +62,6 @@ export const DEFINITIONS: Record<Profil, DefinitionProfil> = {
       '/inventaire',
       '/dashboard',
       '/historique-previsions',
-      '/test-api',
     ],
     protege: true,
   },
@@ -80,7 +79,6 @@ export const LIBELLES_ECRANS: Record<string, string> = {
   '/inventaire': 'Inventaire',
   '/dashboard': 'Tableau de bord',
   '/historique-previsions': 'Historique',
-  '/test-api': 'Catalogue',
 };
 
 export function estProfil(valeur: string | null | undefined): valeur is Profil {

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useProfil } from './ProfilAppareil';
 import { DEFINITIONS, LIBELLES_ECRANS, ecranAutorise } from '@/lib/profils';
+import { CHEMIN_CONNEXION } from '@/lib/auth/chemins';
 
 /**
  * Empêche d'afficher un écran hors du profil de l'appareil — typiquement en
@@ -14,6 +15,9 @@ import { DEFINITIONS, LIBELLES_ECRANS, ecranAutorise } from '@/lib/profils';
 export function GardienProfil({ children }: { children: React.ReactNode }) {
   const chemin = usePathname();
   const { profil, prete, ouvrirSelecteur } = useProfil();
+
+  // La page de connexion précède le choix du profil : elle s'affiche toujours.
+  if (chemin === CHEMIN_CONNEXION) return <>{children}</>;
 
   // Avant lecture du profil, on ne rend rien : le sélecteur s'affiche par-dessus.
   if (!prete || !profil) return null;

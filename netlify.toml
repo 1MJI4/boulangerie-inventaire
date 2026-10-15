@@ -21,3 +21,8 @@
   for = "/api/*"
   [headers.values]
     Cache-Control = "no-store, max-age=0"
+
+# En-tetes de securite (CSP, frame-ancestors, nosniff, Referrer-Policy, HSTS) :
+# declares UNE seule fois, dans next.config.ts (fonction headers), et appliques
+# par le runtime Next de Netlify. Ne pas les redeclarer ici : deux politiques
+# CSP s'additionnent et la plus stricte casse l'application sans prevenir.

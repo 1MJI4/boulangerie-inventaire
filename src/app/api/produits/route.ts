@@ -3,28 +3,15 @@
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { diagnostiquer } from '@/lib/erreurBase';
+import { traiterErreur } from '@/lib/erreurBase';
 import { estPoste } from '@/lib/postes';
+import { exigerRole } from '@/lib/auth/garde';
 
-/** Le code de gestion ne doit pas vivre dans le dépôt : il vient de l'environnement. */
-const CODE_GESTION = process.env.CODE_GESTION ?? '';
-
-function codeValide(fourni: unknown): boolean {
-  if (!CODE_GESTION) return false;
-  return typeof fourni === 'string' && fourni === CODE_GESTION;
-}
-
-const refusCode = () =>
-  NextResponse.json(
-    {
-      error: CODE_GESTION
-        ? 'Code de gestion incorrect'
-        : "Le code de gestion n'est pas configuré sur le serveur (CODE_GESTION).",
-    },
-    { status: 403 }
-  );
+// Droits : voir src/lib/auth/matrice.ts (lecture : toute tablette installée ; écriture : gérant).
 
 export async function GET(request: Request) {
+  const garde = exigerRole(request, 'tablette', 'consulter le catalogue');
+  if (!garde.ok) return garde.reponse;
   try {
     const { searchParams } = new URL(request.url);
     const poste = searchParams.get('poste');
@@ -44,16 +31,17 @@ export async function GET(request: Request) {
 
     return NextResponse.json(produits);
   } catch (error) {
-    console.error('GET /api/produits', error);
-    return NextResponse.json(diagnostiquer(error), { status: 500 });
+    const { corps, statut } = traiterErreur(error, 'GET /api/produits');
+    return NextResponse.json(corps, { status: statut });
   }
 }
 
 /** Ajout en masse : "Croissant, Torsade, Huit" */
 export async function POST(request: Request) {
+  const garde = exigerRole(request, 'gerant', 'ajouter un produit');
+  if (!garde.ok) return garde.reponse;
   try {
-    const { noms, categorie, poste, codeSecurite } = await request.json();
-    if (!codeValide(codeSecurite)) return refusCode();
+    const { noms, categorie, poste } = await request.json();
 
     if (typeof noms !== 'string') {
       return NextResponse.json({ error: 'Liste de noms invalide' }, { status: 400 });
@@ -74,16 +62,16 @@ export async function POST(request: Request) {
     const resultat = await prisma.produit.createMany({ data: donnees, skipDuplicates: true });
     return NextResponse.json({ message: `${resultat.count} produit(s) ajouté(s).` });
   } catch (error) {
-    console.error('POST /api/produits', error);
-    return NextResponse.json({ error: "L'ajout des produits a échoué." }, { status: 500 });
+    const { corps, statut } = traiterErreur(error, 'POST /api/produits');
+    return NextResponse.json(corps, { status: statut });
   }
 }
 
 export async function PUT(request: Request) {
+  const garde = exigerRole(request, 'gerant', 'modifier un produit');
+  if (!garde.ok) return garde.reponse;
   try {
-    const { id, nouveauNom, nouvelOrdre, categorie, poste, actif, codeSecurite } =
-      await request.json();
-    if (!codeValide(codeSecurite)) return refusCode();
+    const { id, nouveauNom, nouvelOrdre, categorie, poste, actif } = await request.json();
 
     const produitId = Number(id);
     if (!Number.isInteger(produitId)) {
@@ -126,8 +114,8 @@ export async function PUT(request: Request) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
       return NextResponse.json({ error: 'Produit introuvable' }, { status: 404 });
     }
-    console.error('PUT /api/produits', error);
-    return NextResponse.json({ error: 'La modification a échoué.' }, { status: 500 });
+    const { corps, statut } = traiterErreur(error, 'PUT /api/produits');
+    return NextResponse.json(corps, { status: statut });
   }
 }
 
@@ -136,9 +124,10 @@ export async function PUT(request: Request) {
  * Supprimer effacerait des mois d'inventaire au passage.
  */
 export async function DELETE(request: Request) {
+  const garde = exigerRole(request, 'gerant', 'retirer un produit');
+  if (!garde.ok) return garde.reponse;
   try {
-    const { id, codeSecurite, forceSuppression } = await request.json();
-    if (!codeValide(codeSecurite)) return refusCode();
+    const { id, forceSuppression } = await request.json();
 
     const produitId = Number(id);
     if (!Number.isInteger(produitId)) {
@@ -178,7 +167,7 @@ export async function DELETE(request: Request) {
       supprime: true,
     });
   } catch (error) {
-    console.error('DELETE /api/produits', error);
-    return NextResponse.json({ error: 'La suppression a échoué.' }, { status: 500 });
+    const { corps, statut } = traiterErreur(error, 'DELETE /api/produits');
+    return NextResponse.json(corps, { status: statut });
   }
 }

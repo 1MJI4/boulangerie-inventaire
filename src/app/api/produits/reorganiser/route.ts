@@ -3,19 +3,18 @@
 
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { traiterErreur } from '@/lib/erreurBase';
+import { exigerRole } from '@/lib/auth/garde';
 
 export async function PUT(request: Request) {
+  const garde = exigerRole(request, 'gerant', 'réordonner le catalogue');
+  if (!garde.ok) return garde.reponse;
   try {
-    const { ordreNouveau, codeSecurite } = await request.json();
-
-    // Vérification du code de sécurité
-    if (!process.env.CODE_GESTION || codeSecurite !== process.env.CODE_GESTION) {
-      return NextResponse.json({ error: 'Code de sécurité incorrect' }, { status: 403 });
-    }
+    const { ordreNouveau } = await request.json();
 
     if (!ordreNouveau || !Array.isArray(ordreNouveau)) {
       return NextResponse.json({ 
-        error: 'Format invalide. Attendu: { ordreNouveau: [produitId1, produitId2, ...], codeSecurite: "..." }' 
+        error: 'Format invalide. Attendu: { ordreNouveau: [produitId1, produitId2, ...] }' 
       }, { status: 400 });
     }
     const startTime = Date.now();
@@ -79,7 +78,7 @@ export async function PUT(request: Request) {
     });
 
   } catch (error) {
-    console.error('Erreur lors de la réorganisation:', error);
-    return NextResponse.json({ error: 'Échec de la réorganisation des produits.' }, { status: 500 });
+    const { corps, statut } = traiterErreur(error, 'PUT /api/produits/reorganiser');
+    return NextResponse.json(corps, { status: statut });
   }
 }

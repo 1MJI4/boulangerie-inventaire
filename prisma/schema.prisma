@@ -1,6 +1,6 @@
 // prisma/schema.prisma
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   // Les fonctions Netlify tournent sur AWS Lambda (Amazon Linux, OpenSSL 3).
   // Sans ce moteur, l'application se deploie mais chaque appel a la base
   // echoue avec "Query Engine not found" - la panne la plus frequente de
@@ -11,38 +11,162 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL") // Supavisor transaction pooler (port 6543)
-  directUrl = env("DIRECT_URL")   // Supavisor session pooler (port 5432) - migrations
+  directUrl = env("DIRECT_URL") // Supavisor session pooler (port 5432) - migrations
 }
 
-// Liste des articles de la boulangerie
+// ============================================================================
+//  ENUMS DU CATALOGUE (lot 1 — 15/10/2026)
+// ============================================================================
+
+// LOI 2 — deux unites qui ne se confondent jamais.
+// Convention de stockage : toute quantite est un ENTIER dans l'unite de base
+//   piece -> nombre de pieces (ou de parts pour le regime C)
+//   kg    -> GRAMMES (1,250 kg = 1250). Jamais de flottant, jamais de kg decimal.
+// Chaque ligne qui porte une quantite porte aussi sa propre `unite` (copie
+// figee) ; un declencheur verifie qu'elle est celle du produit.
+enum Unite {
+  piece
+  kg
+}
+
+// Sur quoi porte le prix d'une version de tarif (= LignePrix.basePrix du
+// module catalogue). `forfait` : ajoute une fois par gateau (supplements).
+enum BasePrix {
+  piece
+  kg
+  personne
+  forfait
+}
+
+// LOI 6 — regime de prix explicite, JAMAIS deduit du nom.
+//   A : comptoir, prix fixe a la piece ou au kilo
+//   B : traiteur sale sur commande, prix a la piece + minimum bloquant
+//   C : gateau sur commande, prix PAR PERSONNE ; le prix du tarif est un PLANCHER
+enum RegimePrix {
+  A
+  B
+  C
+}
+
+// LOI 3 — nature d'une ligne de la table des jours fermes.
+enum NatureFermeture {
+  hebdomadaire // jour de semaine recurrent (ex. le mardi)
+  ferie // jour ferie
+  exceptionnel // fermeture ponctuelle (travaux, deuil...)
+  conges // conges annuels (periode) -> ERR_PERIODE_CONGES
+  ouverture_exceptionnelle // HYPOTHESE A VALIDER : ouvre une date normalement fermee
+}
+
+// ============================================================================
+//  CATALOGUE — identite stable du produit
+//  `Produit.id` ne change JAMAIS quand un prix change : les prix vivent dans
+//  `PrixProduit` (une ligne par periode de validite). Un produit n'est jamais
+//  supprime : `actif = false`.
+// ============================================================================
 model Produit {
-  id          Int          @id @default(autoincrement())
-  nom         String       @unique
-  ordre       Int          @default(999) // Ordre d'affichage (plus petit = affiche en premier)
-  categorie   String       @default("Autres") // Zone du magasin : sert au decoupage en pages
-  poste       String       @default("boulanger") // patissier | boulanger | traiteur
-  actif       Boolean      @default(true) // Un produit retire du catalogue garde son historique
+  id        Int     @id @default(autoincrement())
+  // LOI 5 — libelle du catalogue, a la lettre (colonne « produit » du CSV).
+  // PAS unique depuis le lot 1 : « Baguette » existe en plusieurs
+  // sous-categories, et un meme nom peut exister en regime A et en regime C.
+  // L'identite d'un produit du catalogue est `cleCatalogue`. Les produits
+  // anterieurs au lot 1 (cleCatalogue NULL) restent uniques par nom
+  // (declencheur Produit_nom_unique_hors_catalogue).
+  nom       String
+  ordre     Int     @default(999) // Ordre d'affichage (plus petit = affiche en premier)
+  categorie String  @default("Autres") // Zone du magasin : sert au decoupage en pages
+  poste     String  @default("boulanger") // patissier | boulanger | traiteur
+  actif     Boolean @default(true) // Un produit retire du catalogue garde son historique
+
+  // --- Catalogue versionne (lot 1) ---
+  // Identifiant stable du catalogue = `Produit.id` du module src/catalogue/
+  // (slug « categorie/produit/sous_categorie »). Ne change jamais.
+  // NULL pour les produits saisis avant le lot 1.
+  cleCatalogue  String?     @unique
+  sousCategorie String? // colonne sous_categorie du CSV, a la lettre (NULL = vide)
+  unite         Unite       @default(piece) // LOI 2 — 4 produits seulement en kg
+  // LOI 6 — NULL = regime non renseigne : le produit ne peut PAS etre vendu
+  // (getPrix doit refuser). Jamais de valeur par defaut devinee.
+  regimePrix    RegimePrix?
+  // LOI 4 — un favori est un booleen, jamais une ligne en double.
+  estFavori     Boolean     @default(false)
+
   inventaires Inventaire[]
   releves     Releve[]
+  prix        PrixProduit[]
+  lignes      LigneCommande[]
 
+  @@index([nom])
   @@index([ordre])
   @@index([poste])
+  @@index([regimePrix, actif])
+}
+
+// LOI 1 — tarif versionne par date d'effet. Un nouveau tarif n'ecrase JAMAIS
+// l'ancien : on ferme la version courante (`valideAu`) et on en cree une neuve.
+// Periode INCLUSE aux deux bornes : [valideDu ; valideAu], valideAu NULL = en cours.
+// Garanties en base (migration 20261015110000, declencheur PrixProduit_controler) :
+//   - pas de chevauchement de periodes pour un meme produit
+//   - une version deja entree en vigueur n'est plus modifiable (prix, base,
+//     seuils) sauf sa date de fin (jamais dans le passe) et la TVA de NULL
+//     vers une valeur ; elle n'est jamais supprimee
+//   - prixCentimes > 0 ; basePrix = kg si et seulement si Produit.unite = kg
+// Sens de prixCentimes selon basePrix :
+//   piece : prix a la piece · kg : prix AU KILO · personne : prix par part
+//   (regime C : PLANCHER « a partir de ») · forfait : une fois par gateau
+model PrixProduit {
+  id           Int       @id @default(autoincrement())
+  prixCentimes Int // TTC, centimes entiers
+  basePrix     BasePrix
+  valideDu     DateTime  @db.Date
+  valideAu     DateTime? @db.Date
+
+  // R9 — TVA en POINTS DE BASE (600 = 6 %). NULL = A CONFIRMER par le comptable.
+  // Portee par la version : une commande passee garde le taux de sa date.
+  tauxTvaEmporterPb Int?
+  tauxTvaSurPlacePb Int?
+
+  // LOI 7 — seuils en DONNEES, versionnes avec le tarif, dans l'unite de base
+  // (pieces / parts ; grammes pour un produit au kilo). NULL = aucun seuil.
+  // Les seuils ne sont pas unifies.
+  minimum           Int? // ex. 10 mini-burgers, 20 parts de Layer Cake (bloquant)
+  minimumParSymbole Int? // ex. Number Cake : 15 parts par chiffre/lettre (bloquant)
+  maximum           Int? // ex. 20 sandwichs par pain surprise (avertissement)
+
+  versionCode String? // ex. "tarif_2026-09" (VersionTarif.code du module catalogue)
+  source      String? // ex. "catalogue_prix_2026-09.csv"
+  creeLe      DateTime @default(now())
+
+  produitId Int
+  produit   Produit @relation(fields: [produitId], references: [id], onDelete: Restrict)
+
+  // Qui a saisi ce tarif (R28) — nom declare, texte trace. NULL pour un import.
+  // Pas de comptes par employe (decision 15/10/2026) : pas de cle etrangere.
+  creePar String?
+
+  lignes LigneCommande[]
+
+  @@unique([produitId, valideDu])
+  @@index([valideDu])
 }
 
 // Saisie quotidienne
+// LOI 2 — les quantites sont dans l'unite de base de `unite` :
+// pieces, ou GRAMMES pour un produit au kilo.
 model Inventaire {
-  id               Int      @id @default(autoincrement())
-  dateInventaire   DateTime @default(now()) @db.Date // Journee de production (YYYY-MM-DD)
-  quantiteRestante Int?     // null = pas encore compte (a ne pas confondre avec 0)
+  id               Int       @id @default(autoincrement())
+  dateInventaire   DateTime  @default(now()) @db.Date // Journee de production (YYYY-MM-DD)
+  quantiteRestante Int? // null = pas encore compte (a ne pas confondre avec 0)
   quantiteProduite Int?
-  quantitePrevue   Int?     // Quantite demandee par le manager pour cette journee
-  quantiteCommande Int?     // Part « + » due aux commandes clients (feuille 1 + 11)
+  quantitePrevue   Int? // Quantite demandee par le manager pour cette journee
+  quantiteCommande Int? // Part « + » due aux commandes clients (feuille 1 + 11)
   faitLe           DateTime? // Horodatage du "c'est produit" coche au fournil
   rupturePremiereA DateTime? // Heure du premier zero constate dans la journee
+  unite            Unite     @default(piece) // doit egaler Produit.unite (declencheur)
 
   produitId Int
   produit   Produit @relation(fields: [produitId], references: [id])
 
+  // LOI 4 — un produit (donc un favori) n'est compte qu'une fois par journee.
   @@unique([produitId, dateInventaire])
   @@index([dateInventaire])
 }
@@ -53,8 +177,9 @@ model Inventaire {
 model Releve {
   id               Int      @id @default(autoincrement())
   journee          DateTime @db.Date
-  quantiteRestante Int
+  quantiteRestante Int // pieces, ou GRAMMES si unite = kg
   releveA          DateTime @default(now())
+  unite            Unite    @default(piece) // doit egaler Produit.unite (declencheur)
 
   produitId Int
   produit   Produit @relation(fields: [produitId], references: [id], onDelete: Cascade)
@@ -70,20 +195,23 @@ model Releve {
 //  ou un flottant finit par afficher 78,99999.
 // ============================================================================
 
+// OBSOLETE (lot 1) — remplace par Produit + PrixProduit. Conserve tant que le
+// code l'utilise ; suppression en deux temps (cesser de l'utiliser, puis
+// migration de retrait). Ses prix s'ecrasent sur place : ne plus y ecrire.
 // Grille tarifaire du magasin. Volontairement separee du catalogue
 // d'inventaire : elle aide le vendeur a saisir vite et juste, elle ne
 // pretend pas remplacer sa connaissance du magasin. Aucun rapprochement
 // n'est fait entre les deux listes.
 model Tarif {
-  id            Int      @id @default(autoincrement())
-  nom           String   @unique
-  categorie     String   @default("Autres")
-  prixCentimes  Int
-  poste         String?  // patissier | boulanger | traiteur | null (revente)
-  ordre         Int      @default(999)
-  actif         Boolean  @default(true)
-  creeAuComptoir Boolean @default(false) // saisi a la volee, a ranger par le manager
-  modifieLe     DateTime @updatedAt
+  id             Int      @id @default(autoincrement())
+  nom            String   @unique
+  categorie      String   @default("Autres")
+  prixCentimes   Int
+  poste          String? // patissier | boulanger | traiteur | null (revente)
+  ordre          Int      @default(999)
+  actif          Boolean  @default(true)
+  creeAuComptoir Boolean  @default(false) // saisi a la volee, a ranger par le manager
+  modifieLe      DateTime @updatedAt
 
   lignes LigneCommande[]
 
@@ -104,20 +232,22 @@ model Commande {
 
   priseLe      DateTime @default(now())
   origine      String   @default("comptoir") // comptoir | telephone
+  // LOI 3 — niveau persistance : un declencheur refuse toute date lue comme
+  // fermee dans la table JourFerme (ERR_JOUR_FERME / ERR_PERIODE_CONGES).
   retraitLe    DateTime @db.Date
-  retraitHeure String   // "11:00"
+  retraitHeure String // "11:00"
 
   modePaiement    String    @default("especes") // especes | virement
   acompteCentimes Int       @default(0)
   acompteRecuLe   DateTime?
   totalCentimes   Int       @default(0)
 
-  texteGateau   String? // ce qui sera ecrit sur le gateau, orthographe comprise
-  sansEcriture  Boolean @default(false) // choix explicite : rien a ecrire
-  photoWhatsapp Boolean @default(false) // photo modele envoyee par le client
-  photoImprimee Boolean @default(false) // photo a imprimer sur le gateau (+15 EUR)
+  texteGateau    String? // ce qui sera ecrit sur le gateau, orthographe comprise
+  sansEcriture   Boolean @default(false) // choix explicite : rien a ecrire
+  photoWhatsapp  Boolean @default(false) // photo modele envoyee par le client
+  photoImprimee  Boolean @default(false) // photo a imprimer sur le gateau (+15 EUR)
   gateauComplexe Boolean @default(false) // le vendeur juge la commande complexe : a confirmer
-  remarques     String?
+  remarques      String?
 
   statut     String    @default("a_imprimer") // a_imprimer | imprimee | remise | annulee
   imprimeeLe DateTime?
@@ -144,19 +274,43 @@ model Commande {
 model LigneCommande {
   id           Int     @id @default(autoincrement())
   libelle      String
+  // LOI 2 — quantite dans l'unite de base de `unite` : pieces / parts, ou
+  // GRAMMES si unite = kg. Toujours > 0 (contrainte en base).
   quantite     Int
+  // Prix unitaire APPLIQUE, fige a la prise de commande (R4) :
+  //   A piece : prix/piece · A kg : prix/KILO · B : prix/piece · C : prix/personne
   prixCentimes Int
+  unite        Unite   @default(piece) // doit egaler Produit.unite si produitId (declencheur)
   poste        String?
   precision    String?
   ordre        Int     @default(0)
+  // Number Cake — nombre de chiffres/lettres (« 25 » = 2), pour rejouer
+  // Produit.minimumParSymbole cote serveur. NULL hors Number Cake.
+  nbSymboles   Int?
 
   commandeId Int
   commande   Commande @relation(fields: [commandeId], references: [id], onDelete: Cascade)
 
+  // OBSOLETE (lot 1) — ancien lien vers Tarif, conserve pour l'historique.
   tarifId Int?
   tarif   Tarif? @relation(fields: [tarifId], references: [id], onDelete: SetNull)
 
+  // Lot 1 — produit stable et VERSION de tarif appliquee (« quel prix le 3 mars ? »).
+  produitId     Int?
+  produit       Produit?     @relation(fields: [produitId], references: [id], onDelete: Restrict)
+  prixProduitId Int?
+  prixProduit   PrixProduit? @relation(fields: [prixProduitId], references: [id], onDelete: Restrict)
+
+  // LOI 6 — prix/personne SOUS le plancher (regime C) : refuse en base
+  // (ERR_SOUS_PLANCHER) sauf si les DEUX champs ci-dessous sont renseignes.
+  // Le serveur ne les remplit qu'apres verification du code gerant.
+  // HYPOTHÈSE À VALIDER : déverrouillage tracé par nom déclaré, vérifié par le code gérant côté serveur
+  sousPlancherAutorisePar String? // nom declare de la personne qui deverrouille
+  sousPlancherAutoriseLe  DateTime?
+
   @@index([commandeId])
+  @@index([produitId])
+  @@index([prixProduitId])
 }
 
 // Rien n'est jamais efface : modifier une commande ajoute une ligne ici.
@@ -164,14 +318,44 @@ model LigneCommande {
 model EvenementCommande {
   id     Int      @id @default(autoincrement())
   quand  DateTime @default(now())
-  auteur String
-  action String   // creation | modification | impression | remise | annulation | acompte
+  auteur String // nom declare (choisi dans la liste a l'ecran), copie figee
+  action String // creation | modification | impression | remise | annulation | acompte
   detail String?
 
   commandeId Int
   commande   Commande @relation(fields: [commandeId], references: [id], onDelete: Cascade)
 
   @@index([commandeId])
+}
+
+// ============================================================================
+//  JOURS FERMES (LOI 3) — une DONNEE, pas une constante.
+//  Le mardi est une ligne de cette table (donnee initiale), nulle part ailleurs.
+//  - hebdomadaire : jourSemaineIso (1 = lundi ... 7 = dimanche), avec periode
+//    d'application optionnelle [dateDebut ; dateFin] (changement de jour de
+//    fermeture sans reecrire l'historique)
+//  - ferie | exceptionnel | conges : dateDebut obligatoire, dateFin incluse
+//    (NULL = un seul jour)
+//  - ouverture_exceptionnelle : l'emporte sur toute fermeture de la periode
+//    (HYPOTHESE A VALIDER)
+//  Le declencheur de Commande lit cette table ; `regles-metier` doit lire la
+//  meme liste (pas de copie en dur).
+// ============================================================================
+model JourFerme {
+  id             Int             @id @default(autoincrement())
+  nature         NatureFermeture
+  jourSemaineIso Int? // 1..7, seulement pour `hebdomadaire`
+  dateDebut      DateTime?       @db.Date
+  dateFin        DateTime?       @db.Date
+  libelle        String // ex. "mardi", "Noël", "Congés annuels"
+  actif          Boolean         @default(true) // jamais supprime : desactive
+  creeLe         DateTime        @default(now())
+  modifieLe      DateTime        @updatedAt
+
+  creePar String? // nom declare, texte trace (pas de comptes par employe)
+
+  @@index([nature, actif])
+  @@index([dateDebut])
 }
 
 // ---------------------------------------------------------------------------
@@ -206,7 +390,7 @@ model FamilleGateau {
 // eventuel, un ordre. Une seule table, deux genres.
 model OptionGateau {
   id                 Int      @id @default(autoincrement())
-  genre              String   // parfum | decoration
+  genre              String // parfum | decoration
   nom                String
   supplementCentimes Int      @default(0)
   ordre              Int      @default(999)
@@ -234,7 +418,7 @@ model Reglage {
 // ---------------------------------------------------------------------------
 model TravailImpression {
   id          Int    @id @default(autoincrement())
-  commandeId  Int?   // pas de relation : la file survit a l'anonymisation
+  commandeId  Int? // pas de relation : la file survit a l'anonymisation
   numero      String @default("")
   destination String // CLIENT | BUREAU | MAGASIN | ATELIER
 

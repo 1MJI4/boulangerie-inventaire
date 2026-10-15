@@ -8,13 +8,17 @@
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { traiterErreur } from '@/lib/erreurBase';
 import { estPoste } from '@/lib/postes';
+import { exigerRole } from '@/lib/auth/garde';
 
 const FORMAT_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const versDatePg = (d: string) => new Date(`${d}T12:00:00.000Z`);
 const lireDate = (v: string | null) => (v && FORMAT_DATE.test(v) ? v : null);
 
 export async function GET(request: Request) {
+  const garde = exigerRole(request, 'tablette', 'consulter les relevés');
+  if (!garde.ok) return garde.reponse;
   try {
     const { searchParams } = new URL(request.url);
 
@@ -54,8 +58,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json(releves);
   } catch (error) {
-    console.error('GET /api/releves', error);
-    return NextResponse.json({ error: 'Impossible de charger les relevés.' }, { status: 500 });
+    const { corps, statut } = traiterErreur(error, 'GET /api/releves');
+    return NextResponse.json(corps, { status: statut });
   }
 }
 

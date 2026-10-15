@@ -9,9 +9,11 @@
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { diagnostiquer } from '@/lib/erreurBase';
+import { traiterErreur } from '@/lib/erreurBase';
+import { journaliser } from '@/lib/journal';
 import { estUneRupture, journeeProduction } from '@/lib/dateProduction';
 import { estPoste } from '@/lib/postes';
+import { exigerRole } from '@/lib/auth/garde';
 
 const CHAMPS_QUANTITE = [
   'quantiteRestante',
@@ -117,6 +119,9 @@ async function journaliserComptages(comptages: Comptage[], instant: Date): Promi
 }
 
 export async function POST(request: Request) {
+  // HYPOTHÈSE À VALIDER : pas de clôture d'inventaire distincte (rôle « responsable » supprimé le 15/10/2026).
+  const garde = exigerRole(request, 'tablette', 'saisir un inventaire');
+  if (!garde.ok) return garde.reponse;
   try {
     const corps = await request.json();
     const lignes: LigneEntrante[] = corps?.inventaires;
@@ -306,7 +311,7 @@ export async function POST(request: Request) {
       try {
         relevesEcrits = await journaliserComptages(comptages, maintenant);
       } catch (e) {
-        console.error('journal des relevés', e);
+        journaliser({ niveau: 'erreur', code: 'ERR_INATTENDUE', route: 'POST /api/inventaires', piste: 'Journal des relevés non écrit (inventaire enregistré).', detail: e });
       }
     }
 
@@ -318,15 +323,14 @@ export async function POST(request: Request) {
       erreurs: erreurs.length ? erreurs : undefined,
     });
   } catch (error) {
-    console.error('POST /api/inventaires', error);
-    return NextResponse.json(
-      { error: "L'enregistrement a échoué. Les saisies n'ont pas été perdues, réessayez." },
-      { status: 500 }
-    );
+    const { corps, statut } = traiterErreur(error, 'POST /api/inventaires');
+    return NextResponse.json(corps, { status: statut });
   }
 }
 
 export async function GET(request: Request) {
+  const garde = exigerRole(request, 'tablette', 'consulter un inventaire');
+  if (!garde.ok) return garde.reponse;
   try {
     const { searchParams } = new URL(request.url);
 
@@ -376,8 +380,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json(inventaires);
   } catch (error) {
-    console.error('GET /api/inventaires', error);
-    return NextResponse.json(diagnostiquer(error), { status: 500 });
+    const { corps, statut } = traiterErreur(error, 'GET /api/inventaires');
+    return NextResponse.json(corps, { status: statut });
   }
 }
 

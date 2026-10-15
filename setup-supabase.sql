@@ -9,7 +9,14 @@
 --   3. enregistre les 12 migrations dans _prisma_migrations
 --
 -- Rejouable sans risque : rien n'est efface, aucun doublon cree.
--- Apres ce script, prisma migrate deploy ne doit plus rien a appliquer.
+-- Apres ce script, lancer `prisma migrate deploy` : il applique les
+-- migrations posterieures au 2026-09-07 (impression reseau, puis lot 1 du
+-- 15/10/2026 : utilisateurs, catalogue versionne, jours fermes, RLS).
+--
+-- ATTENTION (lot 1) : NE PLUS REJOUER ce script sur une base deja migree.
+-- Il recree l'index unique "Produit_nom_key" (supprime au lot 1 : un nom de
+-- produit n'est plus unique dans le catalogue) et son ON CONFLICT ("nom")
+-- en depend. Il ne sert plus qu'a amorcer une base VIDE.
 -- =====================================================================
 
 -- ---------- tables inventaire ----------

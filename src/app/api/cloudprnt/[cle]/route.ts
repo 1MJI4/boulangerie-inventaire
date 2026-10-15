@@ -20,16 +20,36 @@
 // « Imprimer » d'un navigateur, lui, ment — il marque imprimé même si le
 // papier était fini.
 
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+
+// Accès : cette route est la seule exception au proxy (src/lib/auth/chemins.ts).
+// L'imprimante ne sait pas ouvrir de session : elle est authentifiée par la clé
+// de son URL, et uniquement pour lire et acquitter des travaux d'impression.
+// La clé n'est JAMAIS journalisée ni renvoyée dans une réponse.
+
+/**
+ * Longueur minimale de CLOUDPRNT_CLE. Une clé courte se devine ; en dessous,
+ * on refuse tout.
+ * HYPOTHÈSE À VALIDER : 32 caractères (clé aléatoire générée, jamais choisie).
+ */
+const LONGUEUR_MIN_CLE = 32;
+
+function empreinte(valeur: string): Buffer {
+  return createHash('sha256').update(valeur, 'utf8').digest();
+}
 
 /** L'URL configurée dans l'imprimante contient cette clé. Sans elle, rien. */
 function cleValide(cle: string): boolean {
   const attendue = process.env.CLOUDPRNT_CLE;
-  // Pas de clé configurée : on refuse tout plutôt que d'ouvrir une file
-  // d'impression publique à qui passe.
-  if (!attendue) return false;
-  return cle === attendue;
+  // Pas de clé configurée (ou trop courte) : on refuse tout plutôt que d'ouvrir
+  // une file d'impression publique à qui passe.
+  if (!attendue || attendue.length < LONGUEUR_MIN_CLE) return false;
+  if (typeof cle !== 'string' || cle.length > 256) return false;
+  // Comparaison à durée constante sur des empreintes de même longueur : le
+  // temps de réponse ne révèle ni la clé ni sa longueur.
+  return timingSafeEqual(empreinte(cle), empreinte(attendue));
 }
 
 /** Mémorise l'état de l'imprimante pour que l'écran puisse le montrer. */

@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { exigerRole } from '@/lib/auth/garde';
 
 /** Au-delà, c'est qu'on envoie autre chose qu'un ticket : on refuse. */
 const TAILLE_MAX = 400_000;
@@ -17,6 +18,8 @@ const TAILLE_MAX = 400_000;
 type TicketEntrant = { destination: string; png: string };
 
 export async function POST(requete: NextRequest) {
+  const garde = exigerRole(requete, 'tablette', 'imprimer une commande');
+  if (!garde.ok) return garde.reponse;
   let corps: { commandeId?: number; numero?: string; tickets?: TicketEntrant[] };
   try {
     corps = await requete.json();
@@ -75,6 +78,8 @@ export async function POST(requete: NextRequest) {
 
 /** L'écran interroge cette route pour dire « l'imprimante a pris les tickets ». */
 export async function GET(requete: NextRequest) {
+  const garde = exigerRole(requete, 'tablette', "suivre l'impression");
+  if (!garde.ok) return garde.reponse;
   const id = Number(requete.nextUrl.searchParams.get('commandeId'));
 
   const etatBrut = await prisma.reglage.findUnique({ where: { cle: 'imprimante:etat' } });

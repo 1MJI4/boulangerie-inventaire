@@ -288,12 +288,6 @@ export default function DashboardInventaires() {
           >
             Nouvelle saisie d'inventaire
           </Link>
-          <Link
-            href="/test-api"
-            className="inline-flex items-center justify-center bg-accent text-white px-6 py-3 rounded-md hover:bg-accent-fort font-medium transition-colors"
-          >
-            Gérer les produits
-          </Link>
         </div>
       </div>
 

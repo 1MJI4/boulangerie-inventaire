@@ -7,7 +7,7 @@
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { diagnostiquer } from '@/lib/erreurBase';
+import { traiterErreur } from '@/lib/erreurBase';
 import {
   JOURS_AVANT_ANONYMISATION,
   MENTION_ANONYME,
@@ -16,6 +16,8 @@ import {
   totalCentimes,
 } from '@/lib/commandes';
 import { decalerJours, dateDuJour } from '@/lib/dateProduction';
+import { exigerRole } from '@/lib/auth/garde';
+import { nomDeclare } from '@/lib/auth/identite';
 
 const FORMAT_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const FORMAT_HEURE = /^\d{2}:\d{2}$/;
@@ -32,6 +34,8 @@ function texte(valeur: unknown, max = 200): string {
 /* -------------------------------------------------------------------- GET */
 
 export async function GET(request: Request) {
+  const garde = exigerRole(request, 'tablette', 'consulter les commandes');
+  if (!garde.ok) return garde.reponse;
   try {
     const { searchParams } = new URL(request.url);
     const id = Number(searchParams.get('id'));
@@ -77,8 +81,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json(commandes);
   } catch (error) {
-    console.error('GET /api/commandes', error);
-    return NextResponse.json(diagnostiquer(error), { status: 500 });
+    const { corps, statut } = traiterErreur(error, 'GET /api/commandes');
+    return NextResponse.json(corps, { status: statut });
   }
 }
 
@@ -109,18 +113,22 @@ function normaliserLignes(brut: unknown) {
 }
 
 export async function POST(request: Request) {
+  const garde = exigerRole(request, 'tablette', 'prendre une commande');
+  if (!garde.ok) return garde.reponse;
   try {
     const corps = await request.json();
 
     const client = texte(corps.client, 80);
     const telephone = texte(corps.telephone, 30);
-    const vendeur = texte(corps.vendeur, 40);
+    // HYPOTHÈSE À VALIDER : identité déclarée par la tablette, pas de compte individuel (décision 15/10/2026)
+    // Nom choisi dans la liste de l'écran : indication pour l'historique, pas une preuve.
+    const vendeur = nomDeclare(corps.vendeur);
     const retraitLe = texte(corps.retraitLe, 10);
     const retraitHeure = texte(corps.retraitHeure, 5);
 
+    if (!vendeur) return NextResponse.json({ error: 'Choisissez le vendeur dans la liste.' }, { status: 400 });
     if (!client) return NextResponse.json({ error: 'Le nom du client est obligatoire.' }, { status: 400 });
     if (!telephone) return NextResponse.json({ error: 'Le téléphone est obligatoire.' }, { status: 400 });
-    if (!vendeur) return NextResponse.json({ error: 'Le vendeur est obligatoire.' }, { status: 400 });
     if (!FORMAT_DATE.test(retraitLe)) {
       return NextResponse.json({ error: 'Date de retrait invalide.' }, { status: 400 });
     }
@@ -200,18 +208,21 @@ export async function POST(request: Request) {
 
     return NextResponse.json(commande, { status: 201 });
   } catch (error) {
-    console.error('POST /api/commandes', error);
-    return NextResponse.json(diagnostiquer(error), { status: 500 });
+    const { corps, statut } = traiterErreur(error, 'POST /api/commandes');
+    return NextResponse.json(corps, { status: statut });
   }
 }
 
 /* ------------------------------------------------------------------ PATCH */
 
 export async function PATCH(request: Request) {
+  const garde = exigerRole(request, 'tablette', 'modifier une commande');
+  if (!garde.ok) return garde.reponse;
   try {
     const corps = await request.json();
     const id = Number(corps.id);
-    const auteur = texte(corps.auteur, 40) || 'inconnu';
+    // HYPOTHÈSE À VALIDER : identité déclarée par la tablette, pas de compte individuel (décision 15/10/2026)
+    const auteur = nomDeclare(corps.auteur) || 'inconnu';
     const action = texte(corps.action, 30);
 
     if (!Number.isFinite(id) || id <= 0) {
@@ -391,8 +402,8 @@ export async function PATCH(request: Request) {
 
     return NextResponse.json(commande);
   } catch (error) {
-    console.error('PATCH /api/commandes', error);
-    return NextResponse.json(diagnostiquer(error), { status: 500 });
+    const { corps, statut } = traiterErreur(error, 'PATCH /api/commandes');
+    return NextResponse.json(corps, { status: statut });
   }
 }
 
@@ -403,7 +414,9 @@ export async function PATCH(request: Request) {
  * chargement de la liste : pas de tâche planifiée à surveiller, et le ménage
  * se fait de toute façon puisque quelqu'un ouvre l'écran tous les jours.
  */
-export async function PUT() {
+export async function PUT(request: Request) {
+  const garde = exigerRole(request, 'tablette', 'ranger les commandes passées');
+  if (!garde.ok) return garde.reponse;
   try {
     const aujourdhui = dateDuJour();
     const limiteArchivage = new Date(`${decalerJours(aujourdhui, -2)}T00:00:00Z`);
@@ -429,8 +442,8 @@ export async function PUT() {
 
     return NextResponse.json({ archivees: archivees.count, anonymisees: anonymisees.count });
   } catch (error) {
-    console.error('PUT /api/commandes', error);
-    return NextResponse.json(diagnostiquer(error), { status: 500 });
+    const { corps, statut } = traiterErreur(error, 'PUT /api/commandes');
+    return NextResponse.json(corps, { status: statut });
   }
 }
 

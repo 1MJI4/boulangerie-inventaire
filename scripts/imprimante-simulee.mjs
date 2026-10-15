@@ -33,7 +33,8 @@ if (!CLE) {
   process.exit(1);
 }
 mkdirSync(DOSSIER, { recursive: true });
-console.log('Imprimante simulee sur', URL_IMPRIMANTE);
+// La cle ne s'affiche jamais : un terminal se copie, se partage, s'enregistre.
+console.log('Imprimante simulee sur', `${BASE}/api/cloudprnt/[cle masquee]`);
 console.log('Sondage toutes les', INTERVALLE / 1000, 's. Ctrl+C pour arreter.\n');
 
 let recus = 0;
@@ -77,5 +78,6 @@ async function tour() {
 }
 
 setInterval(() => {
-  tour().catch((e) => console.error('\n', e.message));
+  // Un message d'erreur de fetch peut recopier l'URL : on y masque la cle.
+  tour().catch((e) => console.error('\n', String(e?.message ?? e).split(CLE).join('[cle masquee]')));
 }, INTERVALLE);

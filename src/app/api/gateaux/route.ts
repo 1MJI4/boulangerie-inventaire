@@ -1,30 +1,16 @@
 // src/app/api/gateaux/route.ts
 //
 // Familles, parfums et décorations. Tout le monde peut les lire — le vendeur en
-// a besoin à chaque commande — mais seul le manager les modifie, avec le code
-// de gestion, comme pour le catalogue.
+// a besoin à chaque commande — mais seul le gérant connecté les modifie,
+// comme pour le catalogue.
 
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { diagnostiquer } from '@/lib/erreurBase';
+import { traiterErreur } from '@/lib/erreurBase';
 import { COUPES_PAR_DEFAUT, type ReglageCoupes } from '@/lib/gateaux';
+import { exigerRole } from '@/lib/auth/garde';
 
-const CODE_GESTION = process.env.CODE_GESTION ?? '';
-
-function codeValide(fourni: unknown): boolean {
-  if (!CODE_GESTION) return false;
-  return typeof fourni === 'string' && fourni === CODE_GESTION;
-}
-
-const refusCode = () =>
-  NextResponse.json(
-    {
-      error: CODE_GESTION
-        ? 'Code de gestion incorrect'
-        : "Le code de gestion n'est pas configuré sur le serveur (CODE_GESTION).",
-    },
-    { status: 403 }
-  );
+// Droits : voir src/lib/auth/matrice.ts (lecture : toute tablette installée ; écriture : gérant).
 
 function texte(valeur: unknown, max = 80): string {
   return typeof valeur === 'string' ? valeur.trim().slice(0, max) : '';
@@ -97,6 +83,8 @@ function lireCoupes(brut: string | null | undefined): ReglageCoupes {
 }
 
 export async function GET(request: Request) {
+  const garde = exigerRole(request, 'tablette', 'consulter les gâteaux');
+  if (!garde.ok) return garde.reponse;
   try {
     const { searchParams } = new URL(request.url);
     const inclureInactifs = searchParams.get('inclureInactifs') === '1';
@@ -134,16 +122,17 @@ export async function GET(request: Request) {
         .map((o) => ({ id: o.id, nom: o.nom, supplementCentimes: o.supplementCentimes, actif: o.actif })),
     });
   } catch (error) {
-    console.error('GET /api/gateaux', error);
-    return NextResponse.json(diagnostiquer(error), { status: 500 });
+    const { corps, statut } = traiterErreur(error, 'GET /api/gateaux');
+    return NextResponse.json(corps, { status: statut });
   }
 }
 
 /** Ajout d'une famille, d'un parfum ou d'une décoration. */
 export async function POST(request: Request) {
+  const garde = exigerRole(request, 'gerant', 'ajouter une option de gâteau');
+  if (!garde.ok) return garde.reponse;
   try {
     const corps = await request.json();
-    if (!codeValide(corps.codeSecurite)) return refusCode();
 
     if (corps.type === 'famille') {
       const libelle = texte(corps.libelle, 60);
@@ -185,16 +174,17 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(option, { status: 201 });
   } catch (error) {
-    console.error('POST /api/gateaux', error);
-    return NextResponse.json(diagnostiquer(error), { status: 500 });
+    const { corps, statut } = traiterErreur(error, 'POST /api/gateaux');
+    return NextResponse.json(corps, { status: statut });
   }
 }
 
 /** Correction d'un prix, d'un nom, d'un minimum, ou mise hors service. */
 export async function PATCH(request: Request) {
+  const garde = exigerRole(request, 'gerant', 'modifier les gâteaux');
+  if (!garde.ok) return garde.reponse;
   try {
     const corps = await request.json();
-    if (!codeValide(corps.codeSecurite)) return refusCode();
 
     // Les coupes sont un réglage de boutique, pas une ligne de liste.
     if (corps.type === 'coupes') {
@@ -255,8 +245,8 @@ export async function PATCH(request: Request) {
     const option = await prisma.optionGateau.update({ where: { id }, data: donnees });
     return NextResponse.json(option);
   } catch (error) {
-    console.error('PATCH /api/gateaux', error);
-    return NextResponse.json(diagnostiquer(error), { status: 500 });
+    const { corps, statut } = traiterErreur(error, 'PATCH /api/gateaux');
+    return NextResponse.json(corps, { status: statut });
   }
 }
 

@@ -31,7 +31,6 @@ const DESCRIPTIONS: Record<string, { description: string; moment?: string }> = {
   '/inventaire': { description: 'Demandé, produit, restant et vendu sur une journée.' },
   '/dashboard': { description: 'Tendances et taux d’invendu sur la durée.' },
   '/historique-previsions': { description: 'Ce qui a été demandé, jour après jour.' },
-  '/test-api': { description: 'Ajouter, renommer et réordonner les articles.' },
 };
 
 /** Les quatre écrans qui forment le tour de la journée, dans l'ordre. */
