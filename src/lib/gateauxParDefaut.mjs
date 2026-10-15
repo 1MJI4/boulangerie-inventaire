@@ -14,13 +14,13 @@
 
 export const FAMILLES = [
   // ------------------------------------------------------------- Gâteaux
-  { cle: 'bavarois', libelle: 'Bavarois', parPersonneCentimes: 400, formatsFixes: { 4: 1800, 6: 2700, 8: 3100, 10: 3500 } },
-  { cle: 'classique', libelle: 'Gâteau classique', parPersonneCentimes: 400, formatsFixes: { 4: 1800, 6: 2700, 8: 3100 }, note: 'Forêt noire, fraisier, matadi, mousse chocolat.' },
-  { cle: 'creme-fraiche', libelle: 'Crème fraîche', parPersonneCentimes: 350, formatsFixes: { 6: 2200, 8: 2600 } },
+  { cle: 'bavarois', libelle: 'Bavarois', parPersonneCentimes: 400, formatsFixes: { 4: 2000, 6: 3100, 8: 3600, 10: 3900 } },
+  { cle: 'classique', libelle: 'Gâteau classique', parPersonneCentimes: 400, formatsFixes: { 4: 2000, 6: 3100, 8: 3600 }, note: 'Forêt noire, fraisier, matadi, mousse chocolat.' },
+  { cle: 'creme-fraiche', libelle: 'Crème fraîche', parPersonneCentimes: 350, formatsFixes: { 6: 2600, 8: 3100 } },
   { cle: 'creme-beurre', libelle: 'Crème au beurre', parPersonneCentimes: 450 },
   { cle: 'ferrero', libelle: 'Ferrero / Raffaello', parPersonneCentimes: 550 },
   { cle: 'massepain', libelle: 'Massepain / pâte à sucre', parPersonneCentimes: 600, paliers: [{ aPartirDe: 1, centimes: 600 }, { aPartirDe: 20, centimes: 500 }] },
-  { cle: 'tarte', libelle: 'Tarte', parPersonneCentimes: 250, formatsFixes: { 6: 1500 } },
+  { cle: 'tarte', libelle: 'Tarte', parPersonneCentimes: 250, formatsFixes: { 6: 1800 } },
   { cle: 'cake', libelle: 'Cake', parPersonneCentimes: 250 },
   { cle: 'number-cake', libelle: 'Number cake', parPersonneCentimes: 450, minimumParts: 10 },
   { cle: 'layer-cake', libelle: 'Layer cake', parPersonneCentimes: 450, minimumParts: 20 },

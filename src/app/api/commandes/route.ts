@@ -224,6 +224,9 @@ export async function PATCH(request: Request) {
     const maintenant = new Date();
     const donnees: Prisma.CommandeUpdateInput = {};
     let detail: string | null = null;
+    // Remplacement des lignes : préparé ici, exécuté dans la même transaction
+    // que l'update — sinon un crash entre delete et update laisse une commande vide.
+    let lignesARemplacer: ReturnType<typeof normaliserLignes> | null = null;
 
     switch (action) {
       case 'impression':
@@ -274,20 +277,48 @@ export async function PATCH(request: Request) {
             changements.push(`retrait : ${avant} → ${corps.retraitLe}`);
           }
         }
-        if (typeof corps.remarques === 'string') donnees.remarques = texte(corps.remarques, 500) || null;
-        if (typeof corps.texteGateau === 'string') donnees.texteGateau = texte(corps.texteGateau, 200) || null;
-        if (typeof corps.sansEcriture === 'boolean') donnees.sansEcriture = corps.sansEcriture;
-        if (typeof corps.photoWhatsapp === 'boolean') donnees.photoWhatsapp = corps.photoWhatsapp;
-        if (typeof corps.photoImprimee === 'boolean') donnees.photoImprimee = corps.photoImprimee;
-        if (typeof corps.gateauComplexe === 'boolean') donnees.gateauComplexe = corps.gateauComplexe;
+        // Ces six champs etaient enregistres sans etre comptes comme des
+        // changements. Consequence : corriger le prenom ecrit sur le gateau
+        // d'une commande deja imprimee ne declenchait pas de reimpression, et
+        // l'historique annoncait « aucun changement ». Le patissier lisait le
+        // feuillet accroche, donc l'ancien prenom.
+        if (typeof corps.remarques === 'string') {
+          const valeur = texte(corps.remarques, 500) || null;
+          if (valeur !== existante.remarques) {
+            donnees.remarques = valeur;
+            changements.push('remarques');
+          }
+        }
+        if (typeof corps.texteGateau === 'string') {
+          const valeur = texte(corps.texteGateau, 200) || null;
+          if (valeur !== existante.texteGateau) {
+            donnees.texteGateau = valeur;
+            changements.push(
+              `ecriture : ${existante.texteGateau ?? 'aucune'} -> ${valeur ?? 'aucune'}`
+            );
+          }
+        }
+        if (typeof corps.sansEcriture === 'boolean' && corps.sansEcriture !== existante.sansEcriture) {
+          donnees.sansEcriture = corps.sansEcriture;
+          changements.push(corps.sansEcriture ? 'sans ecriture' : 'ecriture demandee');
+        }
+        if (typeof corps.photoWhatsapp === 'boolean' && corps.photoWhatsapp !== existante.photoWhatsapp) {
+          donnees.photoWhatsapp = corps.photoWhatsapp;
+          changements.push(corps.photoWhatsapp ? 'photo modele annoncee' : 'photo modele retiree');
+        }
+        if (typeof corps.photoImprimee === 'boolean' && corps.photoImprimee !== existante.photoImprimee) {
+          donnees.photoImprimee = corps.photoImprimee;
+          changements.push(corps.photoImprimee ? 'photo a imprimer' : 'photo a imprimer retiree');
+        }
+        if (typeof corps.gateauComplexe === 'boolean' && corps.gateauComplexe !== existante.gateauComplexe) {
+          donnees.gateauComplexe = corps.gateauComplexe;
+          changements.push(corps.gateauComplexe ? 'gateau complexe' : 'complexite levee');
+        }
 
         if (Array.isArray(corps.lignes)) {
           const lignes = normaliserLignes(corps.lignes);
           if (lignes.length > 0) {
-            await prisma.ligneCommande.deleteMany({ where: { commandeId: id } });
-            await prisma.ligneCommande.createMany({
-              data: lignes.map((l) => ({ ...l, commandeId: id })),
-            });
+            lignesARemplacer = lignes;
             donnees.totalCentimes = totalCentimes(lignes);
             changements.push('produits');
           }
@@ -343,10 +374,19 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: 'Action inconnue' }, { status: 400 });
     }
 
-    const commande = await prisma.commande.update({
-      where: { id },
-      data: { ...donnees, evenements: { create: { auteur, action, detail } } },
-      include: inclusions,
+    const commande = await prisma.$transaction(async (tx) => {
+      if (lignesARemplacer) {
+        await tx.ligneCommande.deleteMany({ where: { commandeId: id } });
+        await tx.ligneCommande.createMany({
+          data: lignesARemplacer.map((l) => ({ ...l, commandeId: id })),
+        });
+      }
+
+      return tx.commande.update({
+        where: { id },
+        data: { ...donnees, evenements: { create: { auteur, action, detail } } },
+        include: inclusions,
+      });
     });
 
     return NextResponse.json(commande);

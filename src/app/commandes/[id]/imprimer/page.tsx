@@ -13,6 +13,9 @@ import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { Alerte, Bouton, Chargement, Entete, Puce } from '@/components/ui';
 import { useEquipe } from '@/lib/vendeurs';
+import { useMemoireLocale } from '@/lib/memoireLocale';
+import { CSS_TICKET, Ticket, reglesPagesTicket } from '@/components/TicketCommande';
+import { ApercuReseau } from '@/components/ApercuReseau';
 import {
   formaterEuros,
   messageConfirmation,
@@ -37,6 +40,14 @@ export default function ImprimerCommande() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [copie, setCopie] = useState(false);
   const [deborde, setDeborde] = useState(false);
+  // Les longueurs de page du rouleau, mesurées après affichage.
+  const [pagesTicket, setPagesTicket] = useState('');
+  // Le format vit sur l'appareil : la tablette du comptoir imprime en ticket,
+  // un poste de secours peut rester en A6 sans qu'on touche au code.
+  const [format, setFormat, formatPret] = useMemoireLocale<'a6' | 'ticket' | 'reseau'>(
+    'boulangerie:format-bon',
+    'a6'
+  );
 
   const charger = useCallback(async () => {
     try {
@@ -61,7 +72,11 @@ export default function ImprimerCommande() {
   // de la feuille et l'imprimante coupe. On le mesure plutôt que de l'estimer,
   // parce que la hauteur dépend des mentions présentes.
   useEffect(() => {
-    if (!commande) return;
+    // Sur rouleau, rien ne peut déborder : le papier s'allonge.
+    if (!commande || format !== 'a6') {
+      setDeborde(false);
+      return;
+    }
     const mesurer = () => {
       const bon = document.querySelector('.bon');
       const pied = bon?.querySelector('.bon-pied');
@@ -75,7 +90,31 @@ export default function ImprimerCommande() {
       clearTimeout(minuteur);
       window.removeEventListener('resize', mesurer);
     };
-  }, [commande]);
+  }, [commande, format]);
+
+  // Sur rouleau, chaque exemplaire doit sortir à sa propre longueur : celui du
+  // client n'a pas de zone de dessin et fait 90 mm de moins que celui de
+  // l'atelier. On mesure, puis on donne à chaque ticket sa page nommée.
+  useEffect(() => {
+    if (!commande || format !== 'ticket') {
+      setPagesTicket('');
+      return;
+    }
+    const mesurer = () => {
+      const tickets = Array.from(document.querySelectorAll<HTMLElement>('.ticket'));
+      if (!tickets.length) return;
+      // 1 mm = 96/25.4 px CSS, quel que soit le zoom de l'aperçu.
+      const parMm = 96 / 25.4;
+      const hauteurs = tickets.map((t) => t.getBoundingClientRect().height / parMm);
+      setPagesTicket(reglesPagesTicket(hauteurs));
+    };
+    const minuteur = setTimeout(mesurer, 150);
+    window.addEventListener('resize', mesurer);
+    return () => {
+      clearTimeout(minuteur);
+      window.removeEventListener('resize', mesurer);
+    };
+  }, [commande, format]);
 
   const imprimer = async () => {
     // Le statut passe à « imprimée » : c'est ce qui éteint le rappel du soir.
@@ -115,24 +154,55 @@ export default function ImprimerCommande() {
 
   return (
     <>
-      <style>{CSS_IMPRESSION}</style>
+      <style>{format === 'a6' ? CSS_IMPRESSION : CSS_TICKET}</style>
+      {format === 'ticket' && pagesTicket ? <style>{pagesTicket}</style> : null}
 
       <div className="ecran-seulement">
         <Entete
           titre={`Bon n° ${commande.numero}`}
-          sousTitre="Quatre exemplaires A6 sur une feuille A4. Deux coups de massicot."
+          sousTitre={
+            format === 'reseau'
+              ? 'Envoyé directement à l’imprimante Star. Rien à faire sur la tablette.'
+              : format === 'ticket'
+                ? 'Quatre tickets 80 mm à la suite. L’imprimante coupe entre chaque.'
+                : 'Quatre exemplaires A6 sur une feuille A4. Deux coups de massicot.'
+          }
           actions={
             <>
               <Bouton onClick={() => router.push('/commandes')}>Retour</Bouton>
               <Bouton onClick={() => router.push(`/commandes/${params.id}/modifier`)}>
                 Modifier
               </Bouton>
-              <Bouton variante="principal" onClick={() => void imprimer()}>
-                Imprimer
-              </Bouton>
+              {format === 'reseau' ? null : (
+                <Bouton variante="principal" onClick={() => void imprimer()}>
+                  Imprimer
+                </Bouton>
+              )}
             </>
           }
         />
+
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="text-xs uppercase tracking-wide text-ink-3">Format</span>
+          <Bouton
+            variante={format === 'a6' ? 'principal' : 'secondaire'}
+            onClick={() => setFormat('a6')}
+          >
+            A4 découpé en 4
+          </Bouton>
+          <Bouton
+            variante={format === 'ticket' ? 'principal' : 'secondaire'}
+            onClick={() => setFormat('ticket')}
+          >
+            Ticket 80 mm
+          </Bouton>
+          <Bouton
+            variante={format === 'reseau' ? 'principal' : 'secondaire'}
+            onClick={() => setFormat('reseau')}
+          >
+            Imprimante Star (réseau)
+          </Bouton>
+        </div>
 
         <div className="mb-5 flex flex-wrap items-center gap-2">
           <Puce ton={commande.statut === 'a_imprimer' ? 'accent' : 'ok'}>
@@ -157,6 +227,16 @@ export default function ImprimerCommande() {
           </div>
         ) : null}
 
+        {format === 'ticket' ? (
+          <p className="mb-4 max-w-prose text-sm text-ink-2">
+            Pour essayer sans imprimante à tickets&nbsp;: imprimez sur votre A4 habituelle, la
+            bande de 80 mm sortira sur le bord de la feuille et vous jugerez la lisibilité. Sur une
+            vraie imprimante de caisse, réglez le format papier sur « rouleau
+            80&nbsp;mm » et les marges sur « aucune ». L’application donne à chaque exemplaire sa
+            longueur exacte, l’imprimante coupe juste après le dernier trait.
+          </p>
+        ) : null}
+
         <p className="mb-4 max-w-prose text-sm text-ink-2">
           Le message de confirmation ne contient pas vos coordonnées bancaires — ajoutez-les
           vous-même dans WhatsApp. Le numéro <span className="chiffres">{commande.numero}</span> y
@@ -165,13 +245,28 @@ export default function ImprimerCommande() {
         </p>
       </div>
 
-      <div className="apercu">
-        <div className="feuille">
-          {DESTINATIONS.map((destination) => (
-            <Bon key={destination} destination={destination} commande={commande} />
+      {!formatPret ? null : format === 'reseau' ? (
+        <ApercuReseau commande={commande} onImprime={() => void charger()} />
+      ) : format === 'ticket' ? (
+        <div className="rouleau">
+          {DESTINATIONS.map((destination, rang) => (
+            <Ticket
+              key={destination}
+              rang={rang}
+              destination={destination}
+              commande={commande}
+            />
           ))}
         </div>
-      </div>
+      ) : (
+        <div className="apercu">
+          <div className="feuille">
+            {DESTINATIONS.map((destination) => (
+              <Bon key={destination} destination={destination} commande={commande} />
+            ))}
+          </div>
+        </div>
+      )}
     </>
   );
 }

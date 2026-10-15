@@ -10,7 +10,8 @@
     "postinstall": "prisma generate",
     "db:seed": "node prisma/seed.mjs",
     "db:seed-tarifs": "node prisma/seed-tarifs.mjs",
-    "db:seed-gateaux": "node prisma/seed-gateaux.mjs"
+    "db:seed-gateaux": "node prisma/seed-gateaux.mjs",
+    "db:formats-gateaux": "node scripts/maj-formats-gateaux.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.18.0",

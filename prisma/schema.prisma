@@ -225,3 +225,28 @@ model Reglage {
   valeur    String
   modifieLe DateTime @updatedAt
 }
+
+// ---------------------------------------------------------------------------
+//  File d'impression reseau (CloudPRNT)
+//  L'imprimante Star vient chercher son travail ici. La file vit en base et
+//  pas en memoire : en serverless, ce n'est pas la meme instance qui recoit
+//  le depot et le sondage de l'imprimante.
+// ---------------------------------------------------------------------------
+model TravailImpression {
+  id          Int    @id @default(autoincrement())
+  commandeId  Int?   // pas de relation : la file survit a l'anonymisation
+  numero      String @default("")
+  destination String // CLIENT | BUREAU | MAGASIN | ATELIER
+
+  media   String @default("image/png")
+  contenu Bytes
+
+  statut    String    @default("en_attente") // en_attente | remis | imprime
+  creeLe    DateTime  @default(now())
+  remisLe   DateTime?
+  imprimeLe DateTime?
+  erreur    String?
+
+  @@index([statut, id])
+  @@index([commandeId])
+}

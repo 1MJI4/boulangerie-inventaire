@@ -3,8 +3,14 @@
 // et n'ecrase pas un prix corrige a la main depuis l'ecran des tarifs — sauf
 // si on passe --forcer-les-prix.
 //
-//   node prisma/seed-tarifs.mjs
-//   node prisma/seed-tarifs.mjs --forcer-les-prix
+//   npm run db:seed-tarifs
+//   npm run db:seed-tarifs -- --forcer-les-prix
+//
+// La version precedente lisait puis ecrivait article par article : 600 allers
+// -retours vers la base pour 300 produits. Avec une base hebergee outre-
+// Atlantique, chaque aller-retour coute ~100 ms de latence pure et le seed
+// prenait plusieurs minutes. Ici on lit tout d'un coup, on compare en memoire,
+// et on n'ecrit que ce qui change, par lots.
 
 import { PrismaClient } from '@prisma/client';
 import 'dotenv/config';
@@ -13,30 +19,35 @@ import { TARIFS } from '../src/lib/tarifs.mjs';
 const prisma = new PrismaClient();
 const forcerLesPrix = process.argv.includes('--forcer-les-prix');
 
+/** Au-dela, certaines bases refusent la requete groupee. */
+const LOT = 100;
+
 async function main() {
-  let crees = 0;
-  let majs = 0;
+  const debut = Date.now();
+
+  const existants = new Map((await prisma.tarif.findMany()).map((t) => [t.nom, t]));
+
+  const aCreer = [];
+  const aMettreAJour = [];
   let inchanges = 0;
 
   for (const [index, article] of TARIFS.entries()) {
-    const existant = await prisma.tarif.findUnique({ where: { nom: article.nom } });
+    const ordre = index * 10;
+    const existant = existants.get(article.nom);
 
     if (!existant) {
-      await prisma.tarif.create({
-        data: {
-          nom: article.nom,
-          categorie: article.categorie,
-          prixCentimes: article.prixCentimes,
-          poste: article.poste,
-          ordre: index * 10,
-        },
+      aCreer.push({
+        nom: article.nom,
+        categorie: article.categorie,
+        prixCentimes: article.prixCentimes,
+        poste: article.poste,
+        ordre,
       });
-      crees += 1;
       continue;
     }
 
     // Le prix appartient au manager : on ne l'ecrase pas sans le demander.
-    const donnees = { categorie: article.categorie, poste: article.poste, ordre: index * 10 };
+    const donnees = { categorie: article.categorie, poste: article.poste, ordre };
     if (forcerLesPrix) donnees.prixCentimes = article.prixCentimes;
 
     const identique =
@@ -49,13 +60,30 @@ async function main() {
       inchanges += 1;
       continue;
     }
-
-    await prisma.tarif.update({ where: { id: existant.id }, data: donnees });
-    majs += 1;
+    aMettreAJour.push({ id: existant.id, donnees });
   }
 
-  console.log(`Tarifs : ${crees} cree(s), ${majs} mis a jour, ${inchanges} inchange(s).`);
-  if (!forcerLesPrix && majs + crees < TARIFS.length) {
+  if (aCreer.length) {
+    for (let i = 0; i < aCreer.length; i += LOT) {
+      await prisma.tarif.createMany({ data: aCreer.slice(i, i + LOT) });
+    }
+  }
+
+  // Un tableau passe a $transaction part en un seul echange avec la base,
+  // la ou une boucle d'await en ferait un par ligne.
+  for (let i = 0; i < aMettreAJour.length; i += LOT) {
+    await prisma.$transaction(
+      aMettreAJour
+        .slice(i, i + LOT)
+        .map((m) => prisma.tarif.update({ where: { id: m.id }, data: m.donnees }))
+    );
+  }
+
+  const secondes = ((Date.now() - debut) / 1000).toFixed(1);
+  console.log(
+    `Tarifs : ${aCreer.length} cree(s), ${aMettreAJour.length} mis a jour, ${inchanges} inchange(s) en ${secondes}s.`
+  );
+  if (!forcerLesPrix) {
     console.log('Les prix existants ont ete conserves. --forcer-les-prix pour les reecrire.');
   }
 }

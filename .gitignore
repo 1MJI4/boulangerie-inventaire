@@ -132,3 +132,4 @@ build/
 
 # Netlify
 .netlify
+.tickets-recus/
