@@ -3,10 +3,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  lendemainCouvert,
   ligneCouverte,
   memeAccord,
   remiseCouverte,
+  tailleCouverte,
   type AccordEnregistre,
 } from './accords.ts';
 
@@ -22,7 +22,6 @@ const remise: AccordEnregistre = {
   totalTarifCentimes: TOTAL_TARIF,
 };
 const ligne: AccordEnregistre = { type: 'ligne', cle: 'layer-cake|400', par: 'Gérant', le: LE, quantite: 20 };
-const lendemain: AccordEnregistre = { type: 'lendemain', par: 'Gérant', le: LE, dateRetrait: '2026-10-16' };
 
 test('remise inchangée (même total convenu, même total au tarif) → conservée', () => {
   assert.equal(remiseCouverte(remise, { totalCentimes: TOTAL_REMISE, totalTarifCentimes: TOTAL_TARIF }), true);
@@ -57,19 +56,24 @@ test('ligne : 20 → 30 parts, ou prix / produit changé, ou quantité illisible
   assert.equal(ligneCouverte(ligne, { cle: 'layer-cake|400', quantite: null }), false);
 });
 
-test('lendemain : même date conservée, autre date refusée', () => {
-  assert.equal(lendemainCouvert(lendemain, '2026-10-16'), true);
-  assert.equal(lendemainCouvert(lendemain, '2026-10-17'), false);
-});
-
 test('un accord ne couvre jamais un autre type', () => {
   assert.equal(remiseCouverte(ligne, { totalCentimes: TOTAL_REMISE, totalTarifCentimes: TOTAL_TARIF }), false);
-  assert.equal(lendemainCouvert(remise, '2026-10-16'), false);
-  assert.equal(ligneCouverte(lendemain, { cle: 'layer-cake|400', quantite: 20 }), false);
+  assert.equal(ligneCouverte(remise, { cle: 'layer-cake|400', quantite: 20 }), false);
 });
 
 test('memeAccord : même nom et même heure exigés', () => {
   assert.equal(memeAccord(remise, { par: 'Gérant', le: LE.toISOString() }), true);
   assert.equal(memeAccord(remise, { par: 'Autre', le: LE.toISOString() }), false);
   assert.equal(memeAccord(remise, { par: 'Gérant', le: new Date().toISOString() }), false);
+});
+
+test('taille hors standard déjà acceptée : conservée au même produit et à la même quantité seulement', () => {
+  const taille: AccordEnregistre = { type: 'taille', cle: 'gateau-x', par: 'Gérant', le: LE, quantite: 7 };
+  assert.equal(tailleCouverte(taille, { produitId: 'gateau-x', quantite: 7 }), true);
+  assert.equal(tailleCouverte(taille, { produitId: 'gateau-x', quantite: 9 }), false, 'plus grand : gérant');
+  assert.equal(tailleCouverte(taille, { produitId: 'gateau-x', quantite: 5 }), false, 'plus petit : gérant aussi');
+  assert.equal(tailleCouverte(taille, { produitId: 'gateau-y', quantite: 7 }), false);
+  assert.equal(tailleCouverte(taille, { produitId: null, quantite: 7 }), false);
+  assert.equal(memeAccord(taille, { par: 'Gérant', le: LE.toISOString() }), true);
+  assert.equal(memeAccord(taille, { par: 'Autre', le: LE.toISOString() }), false);
 });

@@ -273,22 +273,23 @@ model Commande {
 
   // R56 — date ET heure de prise, automatiques. La route y met l'horloge de
   // la tablette (datePrise + heurePrise du domaine, heure de Bruxelles) ;
-  // defaut now() si absente. Sert de « jour de la saisie » au controle du
-  // lendemain a la creation (declencheur Commande_reglement).
+  // defaut now() si absente. Sert de « jour de la saisie » au controle de
+  // la date passee a la creation (declencheur Commande_reglement).
   priseLe      DateTime @default(now())
   origine      String   @default("comptoir") // comptoir | telephone
   // LOI 3 — niveau persistance : un declencheur refuse toute date lue comme
   // fermee dans la table JourFerme (ERR_JOUR_FERME / ERR_PERIODE_CONGES).
-  // R53 — retrait avant la prise -> ERR_DATE_PASSEE ; retrait au plus tard
-  // le prochain jour ouvert -> ERR_COMMANDE_LENDEMAIN sauf accord trace.
+  // R53 — retrait avant le jour de la prise -> ERR_DATE_PASSEE. Le lendemain
+  // est ACCEPTE sans accord (decision du proprietaire du 15/10/2026).
   retraitLe    DateTime @db.Date
   // R54 — « HH:MM » (CHECK Commande_retrait_heure_format), NULL = non precisee
   // (commande sans patisserie). Le minimum patisserie (9h / 12h) n'est PAS
   // rejoue en base : la famille du produit n'y est pas (voir rapport).
   retraitHeure String?
 
-  // R53 — accord du responsable pour un retrait le lendemain : les deux ou
-  // aucun (CHECK Commande_accord_lendemain_trace). Nom declare, pas de compte.
+  // Ancien accord du responsable pour le lendemain (abandonne le 15/10/2026) :
+  // conserve pour l'historique, ne conditionne plus rien. Les deux ou aucun
+  // (CHECK Commande_accord_lendemain_trace). Nom declare, pas de compte.
   accordLendemainPar String?
   accordLendemainLe  DateTime?
 
@@ -401,6 +402,14 @@ model LigneCommande {
   sousPlancherAutorisePar String? // nom declare de la personne qui deverrouille
   sousPlancherAutoriseLe  DateTime?
 
+  // LOI 11 — taille de gateau simple HORS liste standard (reglement:tailles_gateau) :
+  // exception par le code gerant, tracee (decision du 15/10/2026). Les deux
+  // champs ou aucun, nom non vide (CHECK LigneCommande_taille_trace /
+  // LigneCommande_taille_nom_non_vide, migration 20261015150000). La taille
+  // elle-meme est controlee par le domaine + la route (pas de declencheur).
+  tailleAutoriseePar String?
+  tailleAutoriseeLe  DateTime?
+
   @@index([commandeId])
   @@index([produitCatalogueId])
   @@index([prixProduitId])
@@ -501,9 +510,14 @@ model OptionGateau {
 // migration 20261015140000) : valeur controlee par la base
 // (CHECK Reglage_reglement_valide), jamais supprimee (ERR_CONFIGURATION_SERVEUR).
 //   reglement:acompte_min_pourcent 50 · reglement:heure_fermeture "20:00"
-//   reglement:patisserie_retrait_semaine "09:00" · ..._week_end "12:00"
-//   reglement:jours_week_end_iso [6,7] · reglement:familles_patisserie ["patisserie","viennoiserie"] (HYPOTHÈSE À VALIDER n°50)
-// Lecture : src/lib/serveur/reglages.ts.
+//   reglement:familles_patisserie ["patisserie","viennoiserie"] (HYPOTHÈSE À VALIDER n°50)
+// LOI 11, decisions du 15/10/2026 (migration 20261015150000) :
+//   reglement:patisserie_retrait_par_jour {"1":"09:00",…,"7":"12:00"} — horaire jour par jour (ISO 1 = lundi)
+//   reglement:patisserie_retrait_exceptions [{"date":"AAAA-MM-JJ","heure":"HH:MM"}] — une entree par date
+//   reglement:tailles_gateau [4,6,8,10,15,20,25,30] — tailles standard d'un gateau simple (entiers 1..200, croissants)
+// OBSOLETES (lecture de compatibilite seulement, a supprimer en deux temps) :
+//   reglement:patisserie_retrait_semaine · ..._week_end · reglement:jours_week_end_iso
+// Lecture et ecriture validee : src/lib/serveur/reglages.ts.
 model Reglage {
   cle       String   @id
   valeur    String

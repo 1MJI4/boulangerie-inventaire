@@ -15,6 +15,9 @@ export const CLASSE_TOUCHE =
 export const CLASSE_TOUCHE_SECONDAIRE =
   'h-14 rounded-xl border border-line text-sm font-medium text-ink-2 active:bg-surface-2 disabled:opacity-40';
 
+/** Variante compacte : 48 px (cible tactile minimale), pour tenir à côté du contenu. */
+const COMPACT = (classe: string) => classe.replace('h-14', 'h-12');
+
 const CHIFFRES = ['1', '2', '3', '4', '5', '6', '7', '8', '9'] as const;
 
 export function ClavierPave({
@@ -23,6 +26,7 @@ export function ClavierPave({
   onEffacer,
   onVider,
   desactive = false,
+  taille = 'normal',
 }: {
   /** entier : « Vider » en bas à gauche · decimal : virgule · telephone : « + » et « Espace ». */
   jeu: JeuTouches;
@@ -30,13 +34,17 @@ export function ClavierPave({
   onEffacer: () => void;
   onVider: () => void;
   desactive?: boolean;
+  taille?: 'normal' | 'compact';
 }) {
+  const compact = taille === 'compact';
+  const touche = compact ? COMPACT(CLASSE_TOUCHE) : CLASSE_TOUCHE;
+  const secondaire = compact ? COMPACT(CLASSE_TOUCHE_SECONDAIRE) : CLASSE_TOUCHE_SECONDAIRE;
   const toucheSpeciale = jeu === 'decimal' ? ',' : jeu === 'telephone' ? '+' : null;
 
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div className={`grid grid-cols-3 ${compact ? 'gap-1.5' : 'gap-2'}`}>
       {CHIFFRES.map((c) => (
-        <button key={c} type="button" disabled={desactive} onClick={() => onTouche(c)} className={CLASSE_TOUCHE}>
+        <button key={c} type="button" disabled={desactive} onClick={() => onTouche(c)} className={touche}>
           {c}
         </button>
       ))}
@@ -47,17 +55,17 @@ export function ClavierPave({
           disabled={desactive}
           onClick={() => onTouche(toucheSpeciale)}
           aria-label={toucheSpeciale === ',' ? 'Virgule' : 'Plus (indicatif international)'}
-          className={`${CLASSE_TOUCHE} text-3xl font-bold`}
+          className={`${touche} text-3xl font-bold`}
         >
           {toucheSpeciale}
         </button>
       ) : (
-        <button type="button" disabled={desactive} onClick={onVider} className={CLASSE_TOUCHE_SECONDAIRE}>
+        <button type="button" disabled={desactive} onClick={onVider} className={secondaire}>
           Vider
         </button>
       )}
 
-      <button type="button" disabled={desactive} onClick={() => onTouche('0')} className={CLASSE_TOUCHE}>
+      <button type="button" disabled={desactive} onClick={() => onTouche('0')} className={touche}>
         0
       </button>
 
@@ -66,7 +74,7 @@ export function ClavierPave({
         disabled={desactive}
         onClick={onEffacer}
         aria-label="Effacer le dernier caractère"
-        className="h-14 rounded-xl border border-line text-xl text-ink-2 active:bg-surface-2 disabled:opacity-40"
+        className={`${compact ? 'h-12' : 'h-14'} rounded-xl border border-line text-xl text-ink-2 active:bg-surface-2 disabled:opacity-40`}
       >
         <span aria-hidden>⌫</span>
       </button>
@@ -76,7 +84,7 @@ export function ClavierPave({
           type="button"
           disabled={desactive}
           onClick={() => onTouche(' ')}
-          className={`col-span-2 ${CLASSE_TOUCHE_SECONDAIRE}`}
+          className={`col-span-2 ${secondaire}`}
         >
           Espace
         </button>
@@ -87,7 +95,7 @@ export function ClavierPave({
           type="button"
           disabled={desactive}
           onClick={onVider}
-          className={`${jeu === 'telephone' ? '' : 'col-span-3'} ${CLASSE_TOUCHE_SECONDAIRE}`}
+          className={`${jeu === 'telephone' ? '' : 'col-span-3'} ${secondaire}`}
         >
           Vider
         </button>

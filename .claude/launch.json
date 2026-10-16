@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "recette",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "recette:dev"],
+      "port": 3000
+    }
+  ]
+}

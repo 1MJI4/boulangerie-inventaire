@@ -71,8 +71,12 @@ function parametres(s: S, uniteQuantite: string): Record<string, unknown> {
       return entier(v) === null ? {} : { plancherFormate: euros(v) };
     case 'ERR_HEURE_RETRAIT_TROP_TOT': {
       const m = lireHeure(v);
-      return { heureMin: m === null ? String(v ?? '') : formaterHeure(m), typeJour: 'semaine' };
+      // Seul le libellé du bouton est construit ici : le jour n'y figure pas.
+      return { heureMin: m === null ? String(v ?? '') : formaterHeure(m), jour: '' };
     }
+    case 'ERR_TAILLE_NON_STANDARD':
+      // Une seule taille proposée par bouton (l'écran en montre deux : dessous / dessus).
+      return { parts: 0, inferieure: null, superieure: entier(v) };
     case 'ERR_CHAMP_OBLIGATOIRE':
     case 'ERR_SAISIE_INVALIDE':
       return { champLibelle };
@@ -121,8 +125,6 @@ export function sortieDe(s: S, uniteQuantite = 'pièces'): SortieAffichable {
   }
   if (!sortie) return { avecValeur: false };
   if (sortie.type === 'autre') return { avecValeur: false, autre: sortie.libelle };
-  // ERR_COMMANDE_LENDEMAIN : le bouton du catalogue est « Saisir le code gérant »,
-  // la date proposée est une autre sortie (bouton séparé, cf. écran).
-  const avecValeur = s.valeurProposee !== undefined && s.code !== 'ERR_COMMANDE_LENDEMAIN';
+  const avecValeur = s.valeurProposee !== undefined;
   return { libelle: sortie.libelle, avecValeur, autre: CATALOGUE[code].autreSortie };
 }

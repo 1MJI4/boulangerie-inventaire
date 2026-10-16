@@ -189,6 +189,20 @@ input[type="number"] {
   );
 }
 
+/* Comptage en plein écran (`data-plein-ecran` sur <html>, posé par
+   src/components/inventaire/pleinEcran.ts) : ni barre de navigation, ni
+   marges — seuls les onglets de pages, la grille et le pavé restent. */
+html[data-plein-ecran] [data-barre-navigation] {
+  display: none;
+}
+html[data-plein-ecran] main {
+  max-width: none;
+  padding: 0.5rem;
+}
+html[data-plein-ecran] body {
+  overscroll-behavior: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

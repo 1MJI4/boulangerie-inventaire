@@ -22,7 +22,7 @@ import {
   type ContexteCommande,
   type LigneSaisie,
 } from './commande.ts';
-import { compterSymboles, validerMaximum, validerQuantiteMin } from './minimums.ts';
+import { compterSymboles, taillesProches, validerMaximum, validerQuantiteMin, validerTailleGateau } from './minimums.ts';
 import { prixLigne, validerPrixParPersonne } from './regimes.ts';
 import type { FicheTarifee } from './types.ts';
 
@@ -583,35 +583,48 @@ test('R52 acompte sous 50 % du total → ERR_ACOMPTE_INSUFFISANT, minimum propos
   assert.ok(ok.ok, JSON.stringify(ok));
 });
 
-test('R53 baguettes pour le lendemain → ERR_COMMANDE_LENDEMAIN ; avec accord → accepté et tracé', () => {
+test('R53 baguettes pour le lendemain → acceptées, INFO_COMMANDE_LENDEMAIN, aucun accord tracé', () => {
   const lignes = [{ produitId: ID.baguette, quantite: 30 }];
-  const r = controlerCommande(commande(lignes, { dateRetrait: '2026-10-16' }), ctx);
-  assert.equal(r.ok, false);
-  if (!r.ok) {
-    assert.equal(r.code, 'ERR_COMMANDE_LENDEMAIN');
-    assert.equal(r.valeurProposee, '2026-10-17');
-  }
-  const ok = controlerCommande(commande(lignes, { dateRetrait: '2026-10-16', accordLendemain: GERANT }), ctx);
-  assert.ok(ok.ok);
-  assert.ok(ok.signalements.some((s) => s.code === 'AVERT_COMMANDE_LENDEMAIN_AUTORISEE'));
-  assert.deepEqual(ok.donnees.accordLendemain, GERANT);
+  const ok = controlerCommande(commande(lignes, { dateRetrait: '2026-10-16' }), ctx);
+  assert.ok(ok.ok, JSON.stringify(ok));
+  const info = ok.signalements.filter((s) => s.code === 'INFO_COMMANDE_LENDEMAIN');
+  assert.equal(info.length, 1);
+  assert.equal(info[0]?.niveau, 'information');
+  assert.equal(ok.donnees.accordLendemain, undefined, 'plus d’accord du responsable');
+  // Un ancien accord transmis par l'écran est ignoré : même résultat.
+  const avecAccord = controlerCommande(commande(lignes, { dateRetrait: '2026-10-16', accordLendemain: GERANT }), ctx);
+  assert.ok(avecAccord.ok);
+  assert.equal(avecAccord.donnees.accordLendemain, undefined);
 });
 
-test('R53 + délai : gâteau pour le lendemain avec accord → le délai (2 jours ouvrés) refuse quand même', () => {
-  const r = controlerCommande(
-    commande([{ produitId: ID.layer, quantite: 20 }], { dateRetrait: '2026-10-16', accordLendemain: GERANT, sansEcriture: true }),
-    ctx,
-  );
+test('R53 + délai : retrait le jour même → ERR_DELAI_TROP_COURT, lendemain proposé', () => {
+  const r = controlerCommande(commande([{ produitId: ID.baguette, quantite: 30 }], { dateRetrait: PRISE }), ctx);
   assert.equal(r.ok, false);
   if (!r.ok) {
     assert.equal(r.code, 'ERR_DELAI_TROP_COURT');
-    assert.equal(r.valeurProposee, '2026-10-17');
+    assert.equal(r.valeurProposee, '2026-10-16');
   }
-  const b = blocagesCommande(
+});
+
+test('R53 + délai : gâteau simple (Layer Cake) pour le lendemain → accepté avec information', () => {
+  const ok = controlerCommande(
     commande([{ produitId: ID.layer, quantite: 20 }], { dateRetrait: '2026-10-16', sansEcriture: true }),
     ctx,
   );
-  assert.deepEqual(b.map((e) => e.code), ['ERR_DELAI_TROP_COURT'], 'pas de fausse sortie « code gérant »');
+  assert.ok(ok.ok, JSON.stringify(ok));
+  assert.ok(ok.signalements.some((s) => s.code === 'INFO_COMMANDE_LENDEMAIN'));
+  assert.equal(ok.donnees.delaiJoursOuvres, 1);
+});
+
+test('R53 + délai : pièce montée pour le lendemain → ERR_DELAI_TROP_COURT (5 jours ouvrés, HYPOTHÈSE)', () => {
+  const saisie = commande([{ produitId: ID.pieceMontee, quantite: 60 }], { dateRetrait: '2026-10-16', sansEcriture: true });
+  const r = controlerCommande(saisie, ctx);
+  assert.equal(r.ok, false);
+  if (!r.ok) {
+    assert.equal(r.code, 'ERR_DELAI_TROP_COURT');
+    assert.equal(r.valeurProposee, '2026-10-21', 'ven 16, sam 17, dim 18, lun 19, (mar fermé), mer 21');
+  }
+  assert.deepEqual(blocagesCommande(saisie, ctx).map((e) => e.code), ['ERR_DELAI_TROP_COURT']);
 });
 
 test('R54 gâteau retiré samedi 11:00 → ERR_HEURE_RETRAIT_TROP_TOT, 12:00 proposé ; baguettes à 7:00 acceptées', () => {
@@ -655,4 +668,109 @@ test('R55 case « demande inhabituelle » ou ligne libre → AVERT_COMMANDE_INHA
   );
   assert.ok(libre.ok, JSON.stringify(libre));
   assert.equal(libre.signalements.filter((s) => s.code === 'AVERT_COMMANDE_INHABITUELLE').length, 1);
+});
+
+// ------------------------------------------------------------------ R59 tailles standard
+
+const TAILLES = REGLEMENT_COMMANDE.taillesGateau;
+
+test('taillesProches : strictement en dessous et au-dessus, liste dans le désordre', () => {
+  assert.deepEqual(taillesProches(3, TAILLES), { inferieure: null, superieure: 4 });
+  assert.deepEqual(taillesProches(7, TAILLES), { inferieure: 6, superieure: 8 });
+  assert.deepEqual(taillesProches(12, TAILLES), { inferieure: 10, superieure: 15 });
+  assert.deepEqual(taillesProches(22, TAILLES), { inferieure: 20, superieure: 25 });
+  assert.deepEqual(taillesProches(35, TAILLES), { inferieure: 30, superieure: null });
+  assert.deepEqual(taillesProches(7, [15, 8, 4, 6, 10]), { inferieure: 6, superieure: 8 });
+});
+
+test('Bavarois sur commande 3P → ERR_TAILLE_NON_STANDARD, 4 proposé, aucune taille inférieure', () => {
+  const r = validerTailleGateau(fiche(ID.bavaroisC), 3, TAILLES);
+  assert.equal(r.ok, false);
+  if (!r.ok) {
+    assert.equal(r.code, 'ERR_TAILLE_NON_STANDARD');
+    assert.equal(r.niveau, 'bloquant');
+    assert.equal(r.valeurProposee, 4);
+    assert.match(r.message, /se fait en 4 parts, pas en 3/);
+  }
+});
+
+test('Bavarois sur commande 7P → refusé, 6 et 8 cités, 8 proposé', () => {
+  const r = validerTailleGateau(fiche(ID.bavaroisC), 7, TAILLES);
+  assert.equal(r.ok, false);
+  if (!r.ok) {
+    assert.equal(r.valeurProposee, 8);
+    assert.match(r.message, /Ce gâteau se fait en 6 ou 8 parts/);
+  }
+});
+
+test('Bavarois sur commande 12P → refusé, 10 et 15 cités ; 15P accepté', () => {
+  const r = validerTailleGateau(fiche(ID.bavaroisC), 12, TAILLES);
+  assert.equal(r.ok, false);
+  if (!r.ok) {
+    assert.equal(r.valeurProposee, 15);
+    assert.match(r.message, /10 ou 15 parts/);
+  }
+  const ok = validerTailleGateau(fiche(ID.bavaroisC), 15, TAILLES);
+  assert.ok(ok.ok);
+  assert.equal(ok.signalements.length, 0);
+});
+
+test('Bavarois sur commande 22P → 20 / 25, 25 proposé ; 35P → 30 seulement (pas de supérieure)', () => {
+  const r22 = validerTailleGateau(fiche(ID.bavaroisC), 22, TAILLES);
+  assert.equal(r22.ok, false);
+  if (!r22.ok) {
+    assert.equal(r22.valeurProposee, 25);
+    assert.match(r22.message, /Ce gâteau se fait en 20 ou 25 parts, pas en 22/);
+  }
+  const r35 = validerTailleGateau(fiche(ID.bavaroisC), 35, TAILLES);
+  assert.equal(r35.ok, false);
+  if (!r35.ok) {
+    assert.equal(r35.valeurProposee, 30);
+    assert.match(r35.message, /Ce gâteau se fait en 30 parts, pas en 35/);
+  }
+  assert.ok(validerTailleGateau(fiche(ID.bavaroisC), 20, TAILLES).ok);
+});
+
+test('taille hors standard + code gérant → accepté, AVERT_TAILLE_NON_STANDARD_AUTORISEE tracé', () => {
+  const r = validerTailleGateau(fiche(ID.bavaroisC), 7, TAILLES, GERANT);
+  assert.ok(r.ok);
+  assert.equal(r.signalements[0]?.code, 'AVERT_TAILLE_NON_STANDARD_AUTORISEE');
+  assert.equal(r.signalements[0]?.niveau, 'avertissement');
+  assert.match(r.signalements[0]?.message ?? '', /Karim/);
+  assert.equal(validerTailleGateau(fiche(ID.bavaroisC), 7, TAILLES, { par: ' ', le: '' }).ok, false, 'accord incomplet');
+  const ligne = controlerLigne({ produitId: ID.bavaroisC, quantite: 7, deverrouillageTaille: GERANT }, 0, PRISE, ctx);
+  assert.ok(ligne.ok);
+  if (ligne.ok) {
+    assert.deepEqual(ligne.donnees.autorisationTaille, GERANT);
+    assert.equal(ligne.signalements.some((s) => s.code === 'AVERT_TAILLE_NON_STANDARD_AUTORISEE'), true);
+  }
+  // Un accord de PRIX n'autorise pas une taille.
+  assert.equal(controlerLigne({ produitId: ID.bavaroisC, quantite: 7, deverrouillage: GERANT }, 0, PRISE, ctx).ok, false);
+});
+
+test('tailles standard : Layer 22 parts, Number Cake, mariage, mini, comptoir non concernés', () => {
+  assert.ok(validerTailleGateau(fiche(ID.layer), 22, TAILLES).ok);
+  assert.ok(controlerLigne({ produitId: ID.layer, quantite: 22 }, 0, PRISE, ctx).ok);
+  assert.ok(validerTailleGateau(fiche(ID.number), 31, TAILLES).ok);
+  assert.ok(validerTailleGateau(fiche(ID.mariage), 41, TAILLES).ok);
+  assert.ok(validerTailleGateau(fiche(ID.miniTartelette), 17, TAILLES).ok);
+  assert.ok(validerTailleGateau(fiche(ID.bavarois6pComptoir), 3, TAILLES).ok);
+});
+
+test('controlerLigne : la taille est contrôlée APRÈS le minimum ; la liste est une donnée', () => {
+  const r = controlerLigne({ produitId: ID.bavaroisC, quantite: 7 }, 2, PRISE, ctx);
+  assert.equal(r.ok, false);
+  if (!r.ok) {
+    assert.equal(r.code, 'ERR_TAILLE_NON_STANDARD');
+    assert.equal(r.champ, 'lignes[2].quantite');
+    assert.equal(r.valeurProposee, 8);
+  }
+  const ctx7: ContexteCommande = { ...ctx, reglement: { ...ctx.reglement, taillesGateau: [7, 9] } };
+  assert.ok(controlerLigne({ produitId: ID.bavaroisC, quantite: 7 }, 0, PRISE, ctx7).ok);
+  // Au minimum non atteint, c'est le minimum qui parle (Layer 12 parts).
+  const layer = controlerLigne({ produitId: ID.layer, quantite: 12 }, 0, PRISE, ctx);
+  if (!layer.ok) assert.equal(layer.code, 'ERR_QUANTITE_MIN');
+  const cmd = controlerCommande(commande([{ produitId: ID.bavaroisC, quantite: 7 }], { sansEcriture: true }), ctx);
+  assert.equal(cmd.ok, false);
+  if (!cmd.ok) assert.equal(cmd.code, 'ERR_TAILLE_NON_STANDARD');
 });

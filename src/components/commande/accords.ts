@@ -8,6 +8,7 @@
 // gérant a vu au moment où il l'a donné. Il n'est conservé que si ce qu'il
 // couvre n'a pas bougé dans le sens défavorable au commerce ; sinon le code
 // gérant est redemandé (ERR_DROIT_INSUFFISANT, décidé par la route).
+// Le retrait le lendemain ne demande plus d'accord (LOI 11, 15/10/2026).
 // Fonctions pures, sans base ni écran.
 //
 // Imports relatifs avec extension : module exécuté tel quel par `node --test`.
@@ -23,7 +24,6 @@ export type AccordEnregistre =
       /** Quantité de la ligne au moment de l'accord. */
       quantite: number;
     }
-  | { type: 'lendemain'; par: string; le: Date; /** Date de retrait accordée (AAAA-MM-JJ). */ dateRetrait: string }
   | {
       type: 'remise';
       par: string;
@@ -32,6 +32,20 @@ export type AccordEnregistre =
       totalCentimes: number;
       /** Total au tarif au moment de l'accord (centimes) ; null si inconnu (commande ancienne). */
       totalTarifCentimes: number | null;
+    }
+  | {
+      /**
+       * Taille de gâteau hors standard (LOI 11), tracée sur la ligne
+       * (`tailleAutoriseePar` / `tailleAutoriseeLe`). Distincte de l'accord de
+       * prix : autoriser un prix n'autorise pas une taille.
+       */
+      type: 'taille';
+      /** Clé catalogue du produit. */
+      cle: string;
+      par: string;
+      le: Date;
+      /** Nombre de parts autorisé. */
+      quantite: number;
     };
 
 /** Accord renvoyé par la tablette : nom et horodatage lus tels qu'enregistrés. */
@@ -53,11 +67,6 @@ export function ligneCouverte(a: AccordEnregistre, ligne: { cle: string; quantit
   return q !== null && Number.isSafeInteger(q) && q <= a.quantite;
 }
 
-/** Retrait le lendemain : seulement si la date de retrait ne change pas. */
-export function lendemainCouvert(a: AccordEnregistre, dateRetrait: string): boolean {
-  return a.type === 'lendemain' && a.dateRetrait === dateRetrait;
-}
-
 /**
  * Remise sur le total.
  * HYPOTHÈSE À VALIDER (KO qa-metier) : règle la plus sûre — total convenu ET
@@ -75,4 +84,13 @@ export function remiseCouverte(
     a.totalCentimes === totaux.totalCentimes &&
     a.totalTarifCentimes === totaux.totalTarifCentimes
   );
+}
+
+/**
+ * Taille hors standard déjà acceptée (LOI 11) : même produit, quantité
+ * IDENTIQUE. 7 parts autorisées ne deviennent ni 9 ni 5 sans le gérant :
+ * toute autre taille non standard redemande le code.
+ */
+export function tailleCouverte(a: AccordEnregistre, ligne: { produitId: string | null; quantite: number | null }): boolean {
+  return a.type === 'taille' && ligne.produitId !== null && a.cle === ligne.produitId && a.quantite === ligne.quantite;
 }

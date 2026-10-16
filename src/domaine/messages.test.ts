@@ -98,9 +98,10 @@ const EXEMPLES: Partial<Record<CodeCatalogue, unknown>> = {
   ERR_COMMANDE_FIGEE: { etat: 'annulée' },
   ERR_ACOMPTE_INSUFFISANT: { acompteFormate: 'A €', minimumFormate: 'M €', pourcentage: 50 },
   ERR_COMMANDE_LENDEMAIN: { dateRetrait: 'jeudi 16 octobre' },
-  ERR_HEURE_RETRAIT_TROP_TOT: { heureMin: 'Hh', typeJour: 'week-end' },
+  ERR_HEURE_RETRAIT_TROP_TOT: { heureMin: 'Hh', jour: 'samedi' },
+  ERR_TAILLE_NON_STANDARD: { parts: 7, inferieure: 6, superieure: 8 },
+  AVERT_TAILLE_NON_STANDARD_AUTORISEE: { par: 'Karim' },
   ERR_DECOMPTE_INCOMPLET: { restants: 2 },
-  AVERT_COMMANDE_LENDEMAIN_AUTORISEE: { par: 'Karim' },
   AVERT_COMMANDE_INHABITUELLE: {},
   AVERT_INVENTAIRE_AVANT_FERMETURE: { heureFermeture: 'Hh' },
   ERR_DROIT_INSUFFISANT: { action: 'modifier un tarif', role: 'gérant' },
@@ -123,6 +124,7 @@ const EXEMPLES: Partial<Record<CodeCatalogue, unknown>> = {
   AVERT_PRODUCTION_INHABITUELLE: { produit: 'P', demandee: '12', sens: 'dessus' },
   INFO_TARIF_EN_VIGUEUR: { dateEffet: '01/09/2026' },
   INFO_EN_ATTENTE_ENVOI: { nombre: 3 },
+  INFO_COMMANDE_LENDEMAIN: { dateRetrait: 'vendredi 16 octobre' },
   ERR_TARIF_ABSENT: { produit: 'P', date: '15/10/2026' },
   ERR_CATALOGUE_ABSENT: {},
   ERR_PRODUIT_SANS_REGIME: { produit: 'P' },
@@ -251,24 +253,41 @@ test('règlement intérieur (LOI 11) : un exemple par code, sortie et statut', (
   );
   assert.deepEqual(sortiePour('ERR_ACOMPTE_INSUFFISANT', acompte), { type: 'correction', libelle: 'Mettre l’acompte à M €' });
 
-  const lendemain = { dateRetrait: 'jeudi 16 octobre' };
-  assert.match(messagePour('ERR_COMMANDE_LENDEMAIN', lendemain), /^Retrait le jeudi 16 octobre : .*responsable/);
-  assert.deepEqual(sortiePour('ERR_COMMANDE_LENDEMAIN', lendemain), { type: 'correction', libelle: 'Saisir le code gérant' });
-  assert.equal(CATALOGUE.ERR_COMMANDE_LENDEMAIN.autreSortie, 'Appeler le responsable');
-  assert.equal(
-    messagePour('AVERT_COMMANDE_LENDEMAIN_AUTORISEE', { par: 'Karim' }),
-    'Commande pour le lendemain autorisée par Karim. Ce déverrouillage est enregistré.',
-  );
+  // R53 (15/10/2026) : le lendemain est accepté, simple information sans friction.
+  const lendemain = { dateRetrait: 'vendredi 16 octobre' };
+  assert.equal(messagePour('INFO_COMMANDE_LENDEMAIN', lendemain), 'Commande pour demain : prévenez l’atelier.');
+  assert.equal(CATALOGUE.INFO_COMMANDE_LENDEMAIN.niveau, 'information');
+  assert.equal(niveauDuCode('INFO_COMMANDE_LENDEMAIN'), 'information');
+  assert.ok(!estCodeCatalogue('AVERT_COMMANDE_LENDEMAIN_AUTORISEE'), 'plus d’accord gérant pour le lendemain');
+  // ERR_COMMANDE_LENDEMAIN : obsolète, gardé tant que la base le produit encore.
+  assert.match(messagePour('ERR_COMMANDE_LENDEMAIN', { dateRetrait: 'jeudi 16 octobre' }), /^Retrait le jeudi 16 octobre : .*responsable/);
 
   assert.equal(
-    messagePour('ERR_HEURE_RETRAIT_TROP_TOT', { heureMin: 'Hs', typeJour: 'semaine' }),
-    'Les commandes pâtisserie sont disponibles à partir de Hs en semaine. Choisissez une heure de retrait à partir de Hs.',
+    messagePour('ERR_HEURE_RETRAIT_TROP_TOT', { heureMin: 'Hs', jour: 'samedi' }),
+    'Les commandes pâtisserie sont disponibles à partir de Hs ce samedi. Choisissez une heure de retrait à partir de Hs.',
   );
-  assert.match(messagePour('ERR_HEURE_RETRAIT_TROP_TOT', { heureMin: 'Hw', typeJour: 'week-end' }), /à partir de Hw le week-end\./);
-  assert.deepEqual(sortiePour('ERR_HEURE_RETRAIT_TROP_TOT', { heureMin: 'Hw', typeJour: 'week-end' }), {
+  assert.deepEqual(sortiePour('ERR_HEURE_RETRAIT_TROP_TOT', { heureMin: 'Hw', jour: 'dimanche' }), {
     type: 'correction',
     libelle: 'Passer à Hw',
   });
+
+  // Tailles standard : les deux tailles proches citées, sortie vers la supérieure.
+  assert.equal(
+    messagePour('ERR_TAILLE_NON_STANDARD', { parts: 7, inferieure: 6, superieure: 8 }),
+    'Ce gâteau se fait en 6 ou 8 parts, pas en 7. Choisissez une taille standard ou demandez au gérant de déverrouiller.',
+  );
+  assert.deepEqual(sortiePour('ERR_TAILLE_NON_STANDARD', { parts: 7, inferieure: 6, superieure: 8 }), {
+    type: 'correction',
+    libelle: 'Passer à 8 parts',
+  });
+  assert.match(messagePour('ERR_TAILLE_NON_STANDARD', { parts: 3, inferieure: null, superieure: 4 }), /^Ce gâteau se fait en 4 parts, pas en 3\./);
+  assert.deepEqual(sortiePour('ERR_TAILLE_NON_STANDARD', { parts: 20, inferieure: 15, superieure: null }), {
+    type: 'correction',
+    libelle: 'Passer à 15 parts',
+  });
+  assert.equal(CATALOGUE.ERR_TAILLE_NON_STANDARD.niveau, 'bloquant');
+  assert.equal(CATALOGUE.AVERT_TAILLE_NON_STANDARD_AUTORISEE.niveau, 'avertissement');
+  assert.match(messagePour('AVERT_TAILLE_NON_STANDARD_AUTORISEE', { par: 'Karim' }), /autorisée par Karim.*enregistré/);
 
   assert.deepEqual(sortiePour('AVERT_COMMANDE_INHABITUELLE', {}), {
     type: 'autre',
@@ -290,13 +309,15 @@ test('règlement intérieur (LOI 11) : un exemple par code, sortie et statut', (
   // Aucun chiffre en dur : sans chiffre dans les paramètres, aucun chiffre dans le texte.
   for (const m of [
     messagePour('ERR_COMMANDE_LENDEMAIN', { dateRetrait: 'demain' }),
-    messagePour('ERR_HEURE_RETRAIT_TROP_TOT', { heureMin: 'H', typeJour: 'semaine' }),
+    messagePour('INFO_COMMANDE_LENDEMAIN', { dateRetrait: 'demain' }),
+    messagePour('ERR_HEURE_RETRAIT_TROP_TOT', { heureMin: 'H', jour: 'samedi' }),
+    messagePour('AVERT_TAILLE_NON_STANDARD_AUTORISEE', { par: 'Karim' }),
     messagePour('AVERT_INVENTAIRE_AVANT_FERMETURE', { heureFermeture: 'H' }),
     messagePour('AVERT_COMMANDE_INHABITUELLE', {}),
   ]) assert.doesNotMatch(m, /\d|€|%/, m);
 
   // Refus métier : requête comprise, règle qui refuse.
-  for (const code of ['ERR_ACOMPTE_INSUFFISANT', 'ERR_COMMANDE_LENDEMAIN', 'ERR_HEURE_RETRAIT_TROP_TOT', 'ERR_DECOMPTE_INCOMPLET'] as const) {
+  for (const code of ['ERR_ACOMPTE_INSUFFISANT', 'ERR_COMMANDE_LENDEMAIN', 'ERR_HEURE_RETRAIT_TROP_TOT', 'ERR_DECOMPTE_INCOMPLET', 'ERR_TAILLE_NON_STANDARD'] as const) {
     assert.equal(statutHttp({ code }), 422, code);
   }
 });

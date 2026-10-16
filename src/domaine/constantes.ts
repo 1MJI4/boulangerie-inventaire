@@ -22,12 +22,17 @@ export type DelaisCommande = {
   gateauAEtages: number;
 };
 
-// HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°17) : gâteau de mariage / pièce montée
-// 5 jours ouvrés · gâteau simple 48 h = 2 jours ouvrés · plateau salé 24 h = 1 jour ouvré.
+// Propriétaire, 15/10/2026 : les commandes pour le lendemain sont « généralement
+// acceptées » → plateau salé (B), comptoir commandé (A) et gâteau simple (C) :
+// 1 jour ouvré (le lendemain passe, le jour même reste refusé).
+// HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°17) : gâteau à étages (mariage, pièce
+// montée) gardé à 5 jours ouvrés, par prudence — « généralement » ne dit pas si
+// ces gâteaux sont concernés.
 // HYPOTHÈSE À VALIDER (question à ajouter à QUESTIONS-GERANT) : produit du comptoir commandé
 // (régime A) = 1 jour ouvré, comme le salé — le plus sûr en l'absence de réponse.
 export const DELAIS_HYPOTHESE: DelaisCommande = {
-  parRegime: { A: 1, B: 1, C: 2 },
+  parRegime: { A: 1, B: 1, C: 1 },
+  // HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°17) : 5 jours ouvrés pour un gâteau à étages.
   gateauAEtages: 5,
 };
 
@@ -63,24 +68,39 @@ export const JOURS_AVANT_ARCHIVAGE = 2;
 // Règlement intérieur (LOI 11, REGLEMENT-INTERIEUR.md points 9, 51, 52, 53)
 // ---------------------------------------------------------------------------
 
+/** Jour ISO sous forme de clé : « 1 » = lundi … « 7 » = dimanche. */
+export type JourIsoCle = '1' | '2' | '3' | '4' | '5' | '6' | '7';
+
+/** Clés des jours ISO, dans l'ordre lundi → dimanche (pour parcourir `parJour`). */
+export const JOURS_ISO_CLES: readonly JourIsoCle[] = ['1', '2', '3', '4', '5', '6', '7'];
+
 /**
  * Heures de retrait d'une commande de pâtisserie (« HH:MM », heure locale).
- * Le week-end est une DONNÉE (jours ISO 1 = lundi … 7 = dimanche).
+ * Réglables par le gérant JOUR PAR JOUR et PAR DATE EXCEPTIONNELLE (décision
+ * du 15/10/2026, LOI 11). Lues par `heureMinRetrait` (reglement.ts).
  */
 export type HorairesRetraitPatisserie = {
   /** Familles de vente (`Produit.famille` du catalogue) soumises à ces horaires. */
-  familles: readonly string[];
-  /** Première heure de retrait un jour de semaine. */
-  semaine: string;
-  /** Première heure de retrait un jour de week-end ou un jour férié ouvert. */
-  weekEnd: string;
-  /** Jours ISO comptés comme week-end. */
-  joursWeekEndIso: readonly number[];
+  familles: string[];
+  /** Première heure de retrait pour chaque jour ISO (1 = lundi … 7 = dimanche). */
+  parJour: Record<JourIsoCle, string>;
   /**
-   * Jours fériés OUVERTS connus (« AAAA-MM-JJ »), traités comme le week-end.
-   * S'ajoutent aux lignes `ferie` de la table JourFerme rouvertes par une
-   * `ouverture_exceptionnelle`.
+   * Dates exceptionnelles (« AAAA-MM-JJ ») : l'heure remplace celle du jour
+   * (ex. un samedi à 11:00 au lieu de 12:00). Prioritaire sur tout le reste.
    */
+  exceptions: { date: string; heure: string }[];
+};
+
+/**
+ * ANCIENNE forme des horaires (avant le 15/10/2026) : semaine / week-end.
+ * Gardée uniquement pour `convertirHorairesAncienneForme` (reglement.ts),
+ * le temps que les réglages déjà enregistrés soient migrés.
+ */
+export type HorairesRetraitAncienneForme = {
+  familles: readonly string[];
+  semaine: string;
+  weekEnd: string;
+  joursWeekEndIso: readonly number[];
   feriesOuverts?: readonly string[];
 };
 
@@ -94,6 +114,11 @@ export type ReglementCommande = {
    * « gâteau » pour les suppléments au forfait (R7). Absent → FAMILLES_GATEAU.
    */
   famillesGateau?: readonly string[];
+  /**
+   * Tailles standard (nombre de parts) d'un gâteau simple sur commande (LOI 11,
+   * décision du 15/10/2026). Une autre taille est refusée sauf code gérant.
+   */
+  taillesGateau: number[];
 };
 
 // R7 — suppléments « une fois par gâteau ». Ce qui compte comme gâteau est une
@@ -104,20 +129,24 @@ export const FAMILLES_GATEAU: readonly string[] = ['patisserie'];
 
 // Règlement intérieur 15/10/2026 : « Un acompte de minimum 50% doit être payé pour
 // valider toute commande » · « Les commandes en pâtisserie sont disponibles à partir
-// de 9h en semaine et 12h le week-end ».
-// HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°52) : week-end = samedi et dimanche ; un
-// jour férié ouvert suit l'horaire du week-end (le plus prudent).
+// de 9h en semaine et 12h le week-end » · tailles « bizarres » (3P, 7P…) généralement
+// pas possibles.
+// Horaires réglables jour par jour + dates exceptionnelles (décision du 15/10/2026).
+// HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°52) : semaine = lundi à vendredi (9:00),
+// week-end = samedi et dimanche (12:00) ; un jour férié ouvert suit l'horaire du
+// DIMANCHE (le plus prudent), sauf date exceptionnelle saisie par le gérant.
 export const REGLEMENT_COMMANDE: ReglementCommande = {
   acomptePourcentageMin: 50,
   horairesRetraitPatisserie: {
     // HYPOTHÈSE À VALIDER : viennoiserie soumise aux horaires pâtisserie (question gérant n°50).
     // Le règlement cite pâtisserie et viennoiserie séparément : règle de doute, on inclut.
     familles: ['patisserie', 'viennoiserie'],
-    semaine: '09:00',
-    weekEnd: '12:00',
-    joursWeekEndIso: [6, 7],
-    feriesOuverts: [],
+    parJour: { '1': '09:00', '2': '09:00', '3': '09:00', '4': '09:00', '5': '09:00', '6': '12:00', '7': '12:00' },
+    exceptions: [],
   },
+  // Décision du propriétaire (15/10/2026) : tailles standard 4, 6, 8, 10, 15, 20, 25, 30
+  // parts, liste réglable par le gérant. Le règlement cite 3P et 7P comme tailles « bizarres ».
+  taillesGateau: [4, 6, 8, 10, 15, 20, 25, 30],
 };
 
 // Règlement intérieur, point 9 : « L'inventaire doit être réalisé à 20h00 et jamais avant ».

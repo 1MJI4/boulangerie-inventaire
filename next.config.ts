@@ -37,8 +37,21 @@ const entetesSecurite = [
   { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
 ];
 
+// Développement seulement : origines autorisées à charger les ressources
+// internes de `next dev` (/_next/*, rechargement à chaud) quand une tablette
+// ouvre l'application par l'IP wifi du poste. Limité aux réseaux privés
+// (RFC 1918). Sans effet en production (Next ne le lit que dans `next dev`),
+// et sans lien avec la défense CSRF des écritures (src/lib/auth/origine.ts).
+// Le motif « * » de Next remplace exactement un segment d'adresse.
+const reseauxPrives = [
+  "192.168.*.*",
+  "10.*.*.*",
+  ...Array.from({ length: 16 }, (_, i) => `172.${16 + i}.*.*`),
+];
+
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  allowedDevOrigins: reseauxPrives,
   // La pastille de developpement de Next.js, en bas a gauche. Elle n'apparait
   // jamais en production, mais elle gene la lecture des ecrans de saisie sur
   // un telephone : elle se pose juste sur le total de la barre du bas.

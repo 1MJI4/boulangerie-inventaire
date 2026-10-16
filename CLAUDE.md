@@ -210,8 +210,9 @@ Ces points ont un effet direct sur l'application :
 | Point du règlement | Règle appliquée |
 |---|---|
 | Acompte de **minimum 50 %** pour valider toute commande | Bloquant sous 50 % du total, sortie « Mettre l'acompte à X € » |
-| Commande pour **le lendemain** : contacter le responsable au préalable | Bloquant sauf code gérant, tracé |
-| Commandes pâtisserie disponibles à partir de **9h en semaine, 12h le week-end** | Heure de retrait plus tôt refusée — horaires = **donnée**, jamais en dur |
+| Commande pour **le lendemain** | **Acceptée** (décision du propriétaire, 15/10/2026 : « généralement acceptées ») — simple information « commande pour demain : prévenir l'atelier », sans blocage ni code |
+| Commandes pâtisserie disponibles à partir de **9h en semaine, 12h le week-end** | Heure de retrait plus tôt refusée — horaires = **donnée**, jamais en dur. **Réglable par le gérant, jour par jour** (lundi … dimanche) **et par date exceptionnelle** (ex. un samedi à 11h au lieu de 12h), depuis l'écran des réglages (décision du 15/10/2026) |
+| Tailles de gâteau « bizarres » (Bavarois 3P, 7P…) : généralement pas possibles | Nombre de parts d'un gâteau simple sur commande limité aux **tailles standard** (liste = donnée réglable, par défaut 4, 6, 8, 10, 15, 20, 25, 30 — confirmé par le propriétaire). Une autre taille est **refusée** avec la sortie en un geste vers la taille standard la plus proche en dessous et au-dessus (« Passer à 6 » / « Passer à 8 ») ; exception possible par le code gérant, tracée (décision du 15/10/2026) |
 | Commande inhabituelle (ingrédients, moules spéciaux…) : demander d'abord au responsable | Avertissement avec sortie « Appeler le responsable / passer par WhatsApp » |
 | Toujours indiquer nom, numéro, date et heure de prise de commande | Nom et téléphone obligatoires ; date/heure de prise enregistrées automatiquement |
 | Inventaire à **20h00, jamais avant** | Avertissement si un inventaire est commencé avant l'heure de fermeture (donnée) |

@@ -14,19 +14,47 @@
 // l'enregistrement et ne croit aucun prix envoyé par la tablette (KO-3).
 //
 // Parcours (fiche de l'agent) : client → date et heure de retrait EN PREMIER
-// → produits par régime (B salé, C gâteaux, A comptoir — jamais mélangés) →
-// précisions → total, acompte → valider. Chaque refus s'affiche à la saisie
-// de la ligne, avec le bouton qui corrige en un geste (LOI 7 et 8).
+// → produits → précisions → total, acompte → valider. Chaque refus s'affiche
+// à la saisie de la ligne, avec le bouton qui corrige en un geste (LOI 7 et 8).
 // Tous les chiffres se tapent au pavé de l'application (R37).
+//
+// Disposition tablette (retour du propriétaire, 15/10/2026) : les produits
+// d'un côté (UNE grille + recherche, plus d'onglets par régime) ; le pavé, le
+// bon et le total de l'autre (`DispositionAvecPave`, côté du pouce). Le régime
+// reste lu sur chaque produit (LOI 6), affiché discrètement (« /pers. »).
+// Toucher un produit = +1 (5 touchers = 5) ; sous le minimum, la ligne est
+// refusée à la saisie avec « Passer à N » — jamais pré-remplie en silence.
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import { Bouton, Carte, Chargement, Entete } from '@/components/ui';
 import { useEquipe } from '@/lib/vendeurs';
 import type { Commande, ModePaiement, Origine } from '@/lib/commandes';
 import type { OptionsGateau } from '@/lib/gateaux';
 import { dateDuJour } from '@/lib/dateProduction';
-import { PaveDecimalPoids, PaveEntier, PaveMontant, PaveTelephone, SelecteurDateRetrait } from '@/components/saisie';
+import {
+  BasculeCotePave,
+  DispositionAvecPave,
+  PaveDecimalPoids,
+  PaveEntier,
+  PaveMontant,
+  PaveTelephone,
+  SelecteurDateRetrait,
+  useCotePave,
+} from '@/components/saisie';
+import { ContexteTaillePave } from '@/components/saisie/taillePave';
+import { estDateIso, libelleLong, morceauxDate } from '@/components/saisie/dates';
 import { ListeSignalements, type SignalementAffichable } from '@/components/signalement';
 import { RappelApresAction, RappelChargement } from '@/components/rappels';
 import {
@@ -42,11 +70,12 @@ import { ajouterJoursOuvres, fermetureDuJour, formaterDate, prochainJourOuvert }
 import { formaterEuros, resteDu, somme } from '@/domaine/argent';
 import { formaterQuantite } from '@/domaine/unites';
 import { libelleCorrection } from '@/domaine/messages';
-import { JOURS_AVANT_ARCHIVAGE } from '@/domaine/constantes';
+import { estPatisserie, heureMinRetrait, lireHeure, validerLendemain } from '@/domaine/reglement';
+import { estGateauSimpleSurCommande, taillesProches } from '@/domaine/minimums';
+import { FAMILLES_GATEAU, JOURS_AVANT_ARCHIVAGE } from '@/domaine/constantes';
 import type { Echec, Resultat } from '@/domaine/resultat';
-import type { Deverrouillage, FicheTarifee, RegimePrix } from '@/domaine/types';
+import type { Deverrouillage, FicheTarifee } from '@/domaine/types';
 import {
-  ENTREES,
   champLocal,
   echecReseau,
   estLigneAncienTarif,
@@ -58,6 +87,13 @@ import {
   lireReponse,
   nouvelleCle,
   resoudreLocal,
+  fichesVisibles,
+  majLigneEcran,
+  quantiteAuBon,
+  rayonsDe,
+  estSupplement,
+  gateauxAuBon,
+  toucherProduit,
   versCommandeSaisie,
   type CatalogueCommande,
   type ContexteCalendrier,
@@ -72,11 +108,6 @@ import { AccesGerant } from '@/components/commande/AccesGerant';
 const CHAMP_TEXTE =
   'min-h-12 w-full rounded-xl border-2 border-line-fort bg-surface px-3 text-base text-ink placeholder:text-ink-3';
 const TITRE = 'mb-3 text-base font-semibold text-ink';
-
-/** « Crème fraîche » se cherche en tapant « creme ». */
-function normaliser(valeur: string): string {
-  return valeur.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
-}
 
 /** Unité affichée d'une quantité en pièces : parts pour un prix par personne (donnée du catalogue). */
 function uniteDe(fiche: FicheTarifee | null): string {
@@ -93,7 +124,36 @@ function composantes(l: LigneControlee, unite: string): string {
 }
 
 type DemandeGerant = { raison: string; appliquer: (d: Deverrouillage) => void };
+/** Retour visuel d'un ajout : carte produit, ligne du bon et total en surbrillance brève. */
+type Eclair = { cle: string; produitId: string | null; n: number };
+
+/** Écran étroit (téléphone) : même seuil que `DispositionAvecPave` (pavé en bas). */
+const REQUETE_ETROIT = '(max-width: 639.98px)';
+function abonnerEtroit(rappel: () => void) {
+  const mq = window.matchMedia(REQUETE_ETROIT);
+  mq.addEventListener('change', rappel);
+  return () => mq.removeEventListener('change', rappel);
+}
+function useEcranEtroit(): boolean {
+  return useSyncExternalStore(abonnerEtroit, () => window.matchMedia(REQUETE_ETROIT).matches, () => false);
+}
+
+/** Libellé discret du régime, LU sur le produit (LOI 6). */
+function libelleRegime(fiche: FicheTarifee | null, libre: boolean): string {
+  if (libre) return 'Autre demande — à confirmer par le pâtissier';
+  const regime = fiche?.produit.regimePrix ?? null;
+  return regime === 'B' ? 'Salé sur commande' : regime === 'C' ? 'Gâteau sur commande' : regime === 'A' ? 'Comptoir' : '';
+}
 type Validee = { id: number; numero: string; controlee: CommandeControlee | null };
+
+/** Tablette : espace laissé sous l'espace de travail, en px (la page ne défile jamais). */
+const MARGE_BAS_CADRE_PX = 12;
+
+/** « mercredi 22 octobre 2026 à 14:00 » — pour l'accessibilité du bouton « Retrait ». */
+function libelleCourtRetrait(date: string, heure: string): string {
+  const jour = estDateIso(date) ? libelleLong(date) : date;
+  return heure ? `${jour} à ${heure}` : `${jour}, heure à choisir`;
+}
 
 /* ======================================================================== */
 
@@ -127,11 +187,6 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       ? { par: commande.remiseAutoriseePar, le: commande.remiseAutoriseeLe }
       : null,
   );
-  const [accordLendemain, setAccordLendemain] = useState<Deverrouillage | null>(() =>
-    commande?.accordLendemainPar && commande.accordLendemainLe
-      ? { par: commande.accordLendemainPar, le: commande.accordLendemainLe }
-      : null,
-  );
   const [texteGateau, setTexteGateau] = useState(commande?.texteGateau ?? '');
   const [sansEcriture, setSansEcriture] = useState(commande?.sansEcriture ?? false);
   const [photoWhatsapp, setPhotoWhatsapp] = useState(commande?.photoWhatsapp ?? false);
@@ -141,8 +196,20 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
 
   // --- Interface -----------------------------------------------------------
   const [actif, setActif] = useState<string | null>(null);
-  const [entree, setEntree] = useState<RegimePrix | 'libre'>('B');
   const [recherche, setRecherche] = useState('');
+  const [rayon, setRayon] = useState<string | null>(null);
+  const [rayonsOuverts, setRayonsOuverts] = useState(false);
+  const [eclair, setEclair] = useState<Eclair | null>(null);
+  const [ligneDetail, setLigneDetail] = useState<string | null>(null);
+  const [annonce, setAnnonce] = useState('');
+  const etroit = useEcranEtroit();
+  const [cotePave] = useCotePave();
+  // Tablette : panneau superposé à la grille (jour et heure de retrait). Nouvelle
+  // commande sans date : ouvert d'emblée — la date se choisit EN PREMIER.
+  const [panneauRetrait, setPanneauRetrait] = useState(() => !commande?.retraitLe);
+  // Tablette : hauteur de l'espace de travail = écran − ce qui est au-dessus (mesuré).
+  const cadre = useRef<HTMLDivElement>(null);
+  const [hautCadre, setHautCadre] = useState<number | null>(null);
   const [tentative, setTentative] = useState(false);
   const [refusServeur, setRefusServeur] = useState<Echec | null>(null);
   const [envoi, setEnvoi] = useState(false);
@@ -151,6 +218,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   const [parGerant, setParGerant] = useState<string | null>(null);
   const champClient = useRef<HTMLInputElement>(null);
   const zoneProduits = useRef<HTMLDivElement>(null);
+  const zoneBon = useRef<HTMLDivElement>(null);
 
   // Date des PRIX : celle de la prise de commande (R4). En modification, la
   // date d'origine : une hausse de tarif depuis ne change rien pour le client.
@@ -209,7 +277,6 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     acompteCentimes: acompte,
     totalConvenuCentimes: totalConvenu,
     remise,
-    accordLendemain,
     texteGateau,
     sansEcriture,
     demandeInhabituelle,
@@ -268,7 +335,15 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   const tous: SignalementAffichable[] = [...blocages, ...(succesCommande?.signalements ?? [])];
   const pour = (champs: readonly string[]) => tous.filter((s) => champs.includes(champLocal(s.champ)) && indexLigne(s.champ) === null);
   const signauxClient = tentative ? pour(['client', 'telephone']) : pour(['telephone']).filter((s) => s.niveau !== 'bloquant' || telephone !== '');
-  const signauxDate = dateRetrait || tentative ? pour(['dateRetrait', 'datePrise']) : [];
+  // Retrait le lendemain : ACCEPTÉ (LOI 11, 15/10/2026), simple information
+  // « prévenir l'atelier » donnée par le domaine dès le choix de la date.
+  const lendemain = dateRetrait && cal ? validerLendemain(dateRetrait, cal.aujourdhui, cal.joursFermes) : null;
+  const infoLendemain = lendemain?.ok ? lendemain.signalements : [];
+  const signauxDateDomaine = dateRetrait || tentative ? pour(['dateRetrait', 'datePrise']) : [];
+  const signauxDate = [
+    ...signauxDateDomaine,
+    ...infoLendemain.filter((i) => !signauxDateDomaine.some((s) => s.code === i.code)),
+  ];
   const signauxHeure = (dateRetrait && lignes.length > 0) || tentative ? pour(['heureRetrait', 'heurePrise']) : [];
   const signauxProduits = tentative || ancienTarif ? pour(['lignes']) : [];
   const signauxPrecisions = pour(['texteGateau', 'demandeInhabituelle']);
@@ -277,7 +352,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
 
   // --- Actions -----------------------------------------------------------------
   const majLigne = (i: number, partiel: Partial<LigneEcran>) =>
-    setLignes((ls) => ls.map((l, j) => (j === i ? { ...l, ...partiel } : l)));
+    setLignes((ls) => ls.map((l, j) => (j === i ? majLigneEcran(l, partiel) : l)));
   const retirerLigne = (i: number) => setLignes((ls) => ls.filter((_, j) => j !== i));
 
   const avecGerant = (raison: string, appliquer: (d: Deverrouillage) => void) => {
@@ -288,12 +363,21 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     setDemande({ raison, appliquer });
   };
 
-  const ajouterProduit = (f: FicheCatalogue) => {
-    const ligne = ligneVide(f.produit.id);
-    setLignes((ls) => [...ls, ligne]);
-    // Number Cake : le nombre de symboles d'abord (il fixe le minimum de parts).
-    setActif(f.prix.minParSymbole !== null ? `${ligne.cle}.symboles` : `${ligne.cle}.quantite`);
-    setRecherche('');
+  /** Un toucher = +1 (pièces ou parts) ; au kilo : pavé du poids. Le domaine juge la ligne aussitôt. */
+  const toucher = (f: FicheCatalogue) => {
+    const t = toucherProduit(lignes, f);
+    setLignes(t.lignes);
+    setActif(`${t.cle}.${t.champ}`);
+    setEclair((e) => ({ cle: t.cle, produitId: f.produit.id, n: (e?.n ?? 0) + 1 }));
+    const ligne = t.lignes.find((l) => l.cle === t.cle);
+    const fiche = ficheDe(catalogue, f.produit.id);
+    setAnnonce(
+      t.champ === 'taille'
+        ? `${libelleProduit(f)} au bon : choisissez la taille`
+        : ligne?.quantite != null && f.produit.unite !== 'kg'
+          ? `${libelleProduit(f)} : ${ligne.quantite} ${uniteDe(fiche)} au bon`
+          : `${libelleProduit(f)} ajouté au bon : saisissez le poids`,
+    );
   };
 
   const ajouterLigneLibre = () => {
@@ -301,8 +385,46 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     ligne.libelleLibre = recherche.trim();
     setLignes((ls) => [...ls, ligne]);
     setActif(`${ligne.cle}.quantite`);
+    setLigneDetail(ligne.cle);
+    setEclair((e) => ({ cle: ligne.cle, produitId: null, n: (e?.n ?? 0) + 1 }));
+    setAnnonce('Autre demande ajoutée au bon');
     setRecherche('');
   };
+
+  // Surbrillance brève (ni son ni fenêtre) : elle s'éteint seule.
+  useEffect(() => {
+    if (!eclair) return;
+    const t = window.setTimeout(() => setEclair(null), 1200);
+    return () => window.clearTimeout(t);
+  }, [eclair]);
+
+  // Tablette : la ligne touchée est amenée à l'écran DANS la colonne du bon
+  // (défilement interne, la page ne bouge pas). Téléphone : on ne bouge pas la
+  // page — la pastille sur la carte produit suffit, les produits restent sous le doigt.
+  useEffect(() => {
+    if (!eclair || etroit) return;
+    document.getElementById(`bon-${eclair.cle}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [eclair, etroit]);
+
+  // Tablette : l'espace de travail tient exactement dans l'écran (aucun
+  // défilement de la page) ; seules la grille et la colonne du bon défilent.
+  // Sa hauteur = 100dvh − position de son bord haut (barre de navigation
+  // comprise, mesurée : elle peut passer sur deux lignes).
+  const pret = cal !== null && catalogue !== null;
+  useLayoutEffect(() => {
+    const el = cadre.current;
+    if (etroit || !pret || !el) return;
+    const mesurer = () => setHautCadre(el.getBoundingClientRect().top + window.scrollY);
+    mesurer();
+    window.addEventListener('resize', mesurer);
+    const barre = document.querySelector('[data-barre-navigation]');
+    const obs = barre && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(mesurer) : null;
+    if (barre) obs?.observe(barre);
+    return () => {
+      window.removeEventListener('resize', mesurer);
+      obs?.disconnect();
+    };
+  }, [etroit, pret]);
 
   /** Applique la sortie proposée par le domaine (un geste). */
   const corriger = (s: SignalementAffichable, v: unknown) => {
@@ -310,10 +432,9 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     const champ = champLocal(s.champ);
     const ligne = i !== null ? lignes[i] : undefined;
 
-    if (s.code === 'ERR_DROIT_INSUFFISANT' || s.code === 'ERR_COMMANDE_LENDEMAIN') {
-      if (s.code === 'ERR_COMMANDE_LENDEMAIN') {
-        avecGerant('Retrait le lendemain : accord du responsable.', (d) => setAccordLendemain(d));
-      } else if (i === null && champ === 'lignes') {
+    // Retrait le lendemain : accepté sans le gérant (LOI 11, 15/10/2026) — plus d'accord demandé ici.
+    if (s.code === 'ERR_DROIT_INSUFFISANT') {
+      if (i === null && champ === 'lignes') {
         // Commande prise avec l'ancien tarif : le gérant ouvre son accès, puis accorde chaque ligne.
         setDemande({ raison: 'Commande prise avec l’ancien tarif : code du gérant pour la modifier.', appliquer: () => {} });
       } else if (ligne && ligne.produitId === null) {
@@ -349,7 +470,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         return;
       case 'heureRetrait':
         if (typeof v === 'string') setHeureRetrait(v);
-        else setActif('heure');
+        else if (etroit) setActif('heure');
+        else setPanneauRetrait(true);
         return;
       case 'acompte':
         if (typeof v === 'number') setAcompte(v);
@@ -366,7 +488,11 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         setActif('telephone');
         return;
       case 'lignes':
-        zoneProduits.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (etroit) zoneProduits.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        else {
+          setPanneauRetrait(false);
+          zoneProduits.current?.scrollTo({ top: 0, behavior: 'smooth' });
+        }
         return;
       case 'statut':
         router.push('/commandes/nouvelle');
@@ -396,6 +522,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         prefixeId={prefixe}
         signalements={liste}
         libelleCorrectionPour={(s) => {
+          // Taille hors standard : DEUX sorties (dessous / dessus), rendues plus bas.
+          if (s.code === 'ERR_TAILLE_NON_STANDARD') return undefined;
           const so = sortieDe(s, unite);
           return so.avecValeur ? so.libelle : undefined;
         }}
@@ -403,6 +531,35 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         autreSortiePour={(s) => {
           const so = sortieDe(s, unite);
           const boutons: ReactNode[] = [];
+          const iLigne = indexLigne(s.champ);
+          // LOI 11 : taille de gâteau hors standard. Les deux tailles standard les
+          // plus proches (jamais une seule : on ne pousse pas le vendeur vers le
+          // haut), puis l'exception par le code gérant, tracée sur la ligne.
+          if (s.code === 'ERR_TAILLE_NON_STANDARD' && iLigne !== null && cal) {
+            const parts = lignes[iLigne]?.quantite ?? 0;
+            const { inferieure, superieure } = taillesProches(parts, cal.reglement.taillesGateau);
+            for (const t of [inferieure, superieure]) {
+              if (t === null) continue;
+              boutons.push(
+                <BoutonSortie key={`taille-${t}`} onClick={() => majLigne(iLigne, { quantite: t })}>
+                  {sortieDe({ ...s, valeurProposee: t }, unite).libelle ?? `${t}`}
+                </BoutonSortie>,
+              );
+            }
+            boutons.push(
+              <BoutonSortie
+                key="gerant"
+                onClick={() =>
+                  avecGerant(`Gâteau en ${parts} parts, hors des tailles standard.`, (d) =>
+                    majLigne(iLigne, { deverrouillageTaille: d }),
+                  )
+                }
+              >
+                {libelleCorrection('ERR_DROIT_INSUFFISANT', { action: '', role: 'gérant' })}
+              </BoutonSortie>,
+            );
+            return <>{boutons}</>;
+          }
           if (so.libelle && !so.avecValeur) {
             boutons.push(
               <BoutonSortie key="action" onClick={() => corriger(s, undefined)}>
@@ -410,17 +567,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
               </BoutonSortie>,
             );
           }
-          // Lendemain refusé : l'autre sortie est le premier jour qui n'est plus « le lendemain ».
-          if (s.code === 'ERR_COMMANDE_LENDEMAIN' && typeof s.valeurProposee === 'string') {
-            const date = s.valeurProposee;
-            boutons.push(
-              <BoutonSortie key="date" onClick={() => setDateRetrait(date)}>
-                {libelleCorrection('ERR_DELAI_TROP_COURT', { delaiJoursOuvres: 0, premiereDate: formaterDate(date) })}
-              </BoutonSortie>,
-            );
-          }
           // Sous le plancher : l'autre sortie est l'accord du gérant.
-          const iLigne = indexLigne(s.champ);
           if (s.code === 'ERR_SOUS_PLANCHER' && iLigne !== null) {
             boutons.push(
               <BoutonSortie
@@ -466,7 +613,6 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         acompteCentimes: acompte ?? 0,
         totalConvenuCentimes: totalConvenu,
         remise,
-        accordLendemain,
         texteGateau: texteGateau || null,
         sansEcriture,
         photoWhatsapp,
@@ -517,10 +663,531 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
 
   const chargement = !refusChargement && (!cal || !catalogue);
 
+  // Suppléments au forfait (Photo, Écriture) : offerts seulement s'il y a un
+  // gâteau au bon — compté par le domaine sur les données, jamais par le nom.
+  const nbGateaux = cal ? gateauxAuBon(lignes, catalogue, cal.reglement.famillesGateau ?? FAMILLES_GATEAU) : 0;
+  const sansGateau = nbGateaux === 0;
+
+  /** Le pavé ouvert (un seul à la fois), affiché dans la colonne du pavé. */
+  const paveOuvert = (): ReactNode | null => {
+    if (!actif || !cal) return null;
+    if (actif === 'telephone') {
+      return <PaveTelephone libelle="Téléphone du client" telephone={telephone} onChange={setTelephone} onValider={() => setActif(null)} />;
+    }
+    if (actif === 'acompte') {
+      return (
+        <PaveMontant
+          libelle="Acompte versé"
+          sousTitre={`au moins ${cal.reglement.acomptePourcentageMin} % du total`}
+          centimes={acompte}
+          onChange={setAcompte}
+          onValider={() => setActif(null)}
+          champ="acompte"
+        />
+      );
+    }
+    if (actif === 'total') {
+      return remise ? (
+        <PaveMontant
+          libelle="Prix convenu avec le client"
+          sousTitre={`Tarif : ${formaterEuros(totalTarif)}`}
+          centimes={totalConvenu}
+          onChange={setTotalConvenu}
+          onValider={() => setActif(null)}
+          champ="total"
+        />
+      ) : null;
+    }
+    const point = actif.indexOf('.');
+    if (point < 0) return null;
+    const cle = actif.slice(0, point);
+    const champ = actif.slice(point + 1);
+    const i = lignes.findIndex((l) => l.cle === cle);
+    // « taille » : choix aux boutons des tailles standard, sur la ligne (pas de pavé).
+    if (i < 0 || champ === 'taille') return null;
+    return (
+      <PaveDeLigne
+        ligne={lignes[i]}
+        fiche={ficheDe(catalogue, lignes[i].produitId)}
+        champ={champ}
+        onChange={(p) => majLigne(i, p)}
+        ouvrir={(c) => setActif(c === null ? null : `${cle}.${c}`)}
+      />
+    );
+  };
+  const pave = paveOuvert();
+  const blocPave = pave ? (
+    <div key={actif ?? ''} className="grid gap-1">
+      {pave}
+      <button type="button" onClick={() => setActif(null)} className="min-h-12 rounded-xl text-sm text-ink-2 underline underline-offset-2">
+        Fermer le pavé
+      </button>
+    </div>
+  ) : null;
+
+  /* ----------------------------------------------- Le bon (lignes saisies) */
+  const bon =
+    cal && catalogue ? (
+      <div ref={zoneBon}>
+        <h2 className="mb-2 text-base font-semibold text-ink">
+          Le bon {lignes.length > 0 ? `(${lignes.length} ligne${lignes.length > 1 ? 's' : ''})` : ''}
+        </h2>
+        {lignes.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-line-fort p-3 text-sm text-ink-2">
+            Touchez un produit pour l’ajouter. Chaque toucher ajoute 1.
+          </p>
+        ) : (
+          <ul className="grid gap-2">
+            {lignes.map((ligne, i) => {
+              const fiche = ficheDe(catalogue, ligne.produitId);
+              const r = resultatsLignes[i];
+              const unite = uniteDe(fiche);
+              // Refus qui portent sur PLUSIEURS lignes (suppléments…) : `controlerLigne`
+              // ne les voit pas, `blocagesCommande` si. Affichés sur la ligne dès sa
+              // saisie, sans doubler le refus propre à la ligne.
+              const blocagesLigne = r ? blocages.filter((b) => indexLigne(b.champ) === i && (r.ok || b.code !== r.code)) : [];
+              // Ancien tarif : l'accord manquant n'est pas répété sur chaque ligne (refus unique plus haut).
+              const accordAncien = ancienTarif && r && !r.ok && r.code === 'ERR_DROIT_INSUFFISANT' && sansAccord(i);
+              const signaux: SignalementAffichable[] = [
+                ...(r && !accordAncien ? (r.ok ? r.signalements : [r]) : []),
+                ...blocagesLigne,
+                ...tous.filter((s) => indexLigne(s.champ) === i && s.code === 'AVERT_PRODUIT_EN_DOUBLE'),
+              ];
+              const eclaire = eclair?.cle === ligne.cle;
+              return (
+                <li
+                  key={ligne.cle}
+                  id={`bon-${ligne.cle}`}
+                  style={{ scrollMarginTop: 8 }}
+                  className={`rounded-xl border-2 p-2.5 transition-colors duration-500 ${
+                    eclaire ? 'border-accent bg-accent-doux' : 'border-line bg-surface'
+                  }`}
+                >
+                  <LigneDuBon
+                    ligne={ligne}
+                    fiche={fiche}
+                    resultat={r}
+                    unite={unite}
+                    actif={actif}
+                    setActif={setActif}
+                    detail={ligneDetail === ligne.cle}
+                    basculerDetail={() => setLigneDetail(ligneDetail === ligne.cle ? null : ligne.cle)}
+                    options={options}
+                    tailles={cal.reglement.taillesGateau}
+                    onChange={(p) => majLigne(i, p)}
+                    onRetirer={() => retirerLigne(i)}
+                    onGerantLibre={() =>
+                      avecGerant(`Prix d’une demande hors catalogue : « ${ligne.libelleLibre || 'ligne libre'} ».`, (d) =>
+                        majLigne(i, { deverrouillage: d }),
+                      )
+                    }
+                  />
+                  {rendre(signaux, unite, `ligne-${ligne.cle}`)}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {lignesOk.length > 1 ? (
+          <p className="chiffres mt-2 text-sm font-medium text-ink">
+            {lignesOk.map((l) => formaterEuros(l.totalCentimes)).join(' + ')} = {formaterEuros(totalTarif)}
+          </p>
+        ) : null}
+      </div>
+    ) : null;
+
+  /* ------------------------------------- Montants : convenu, acompte, reste */
+  const paiement =
+    cal && catalogue ? (
+      <div className="grid gap-3">
+        <div>
+          {remise ? (
+            <ChampPave
+              libelle={`Prix convenu (accord de ${remise.par})`}
+              valeur={totalConvenu === null ? null : formaterEuros(totalConvenu)}
+              ouvert={actif === 'total'}
+              onBasculer={() => setActif(actif === 'total' ? null : 'total')}
+            />
+          ) : (
+            <button
+              type="button"
+              className="min-h-12 text-left text-sm text-ink-2 underline underline-offset-2"
+              onClick={() => avecGerant('Prix convenu sous le tarif (remise).', (d) => { setRemise(d); setActif('total'); })}
+            >
+              Prix convenu avec le client (accord du gérant)
+            </button>
+          )}
+        </div>
+        <div>
+          <ChampPave
+            libelle="Acompte"
+            valeur={acompte === null ? null : formaterEuros(acompte)}
+            ouvert={actif === 'acompte'}
+            onBasculer={() => setActif(actif === 'acompte' ? null : 'acompte')}
+            enErreur={signauxMontants.some((s) => s.niveau === 'bloquant' && champLocal(s.champ) === 'acompte')}
+          />
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Choix actif={modePaiement === 'especes'} onClick={() => setModePaiement('especes')}>Espèces</Choix>
+            <Choix actif={modePaiement === 'virement'} onClick={() => setModePaiement('virement')}>Virement</Choix>
+          </div>
+        </div>
+        {rendre(signauxMontants)}
+      </div>
+    ) : null;
+
+  const libelleValider = envoi ? 'Enregistrement…' : modification ? 'Enregistrer les changements' : 'Valider la commande';
+
+  /** Téléphone : montants, reste et validation en fin de page. */
+  const montants =
+    cal && catalogue ? (
+      <div className="grid gap-3">
+        {paiement}
+        <div className="flex items-baseline justify-between border-t border-line pt-3">
+          <span className="text-base text-ink-2">Reste à payer au retrait</span>
+          <span className="chiffres text-xl font-semibold text-ink">{formaterEuros(reste)}</span>
+        </div>
+        {refusServeur ? rendre([refusServeur]) : null}
+        <Bouton variante="principal" className="min-h-14 w-full text-lg" disabled={envoi} onClick={() => void valider()}>
+          {libelleValider}
+        </Bouton>
+      </div>
+    ) : null;
+
+  const totalAnnonce = (
+    <div className="flex items-baseline justify-between gap-2" aria-live="polite">
+      <span className="text-sm text-ink-2">Total à annoncer</span>
+      <span
+        className={`chiffres rounded-lg px-1.5 text-4xl font-bold leading-tight transition-colors duration-500 ${
+          eclair ? 'bg-accent-doux text-accent' : 'text-ink'
+        }`}
+      >
+        {formaterEuros(total)}
+      </span>
+    </div>
+  );
+
+  /* ------------------------------------------------------------ Précisions */
+  const precisions = (
+    <>
+      <h2 className={TITRE}>Précisions</h2>
+      <label className="block">
+        <span className="mb-1 block text-sm text-ink-2">Écriture sur le gâteau</span>
+        <input
+          className={CHAMP_TEXTE}
+          value={texteGateau}
+          disabled={sansEcriture}
+          onChange={(e) => setTexteGateau(e.target.value)}
+          placeholder="JOYEUX ANNIVERSAIRE MARIAM"
+          autoComplete="off"
+        />
+      </label>
+      <p className="mt-1 text-sm text-ink-3">
+        Relisez-le au client à voix haute : il est imprimé tel quel. Le supplément « écriture » se prend dans les
+        produits.
+      </p>
+      <Case coche={sansEcriture} onChange={(v) => { setSansEcriture(v); if (v) setTexteGateau(''); }}>
+        Pas d’écriture sur le gâteau
+      </Case>
+      <Case coche={photoWhatsapp} onChange={setPhotoWhatsapp}>
+        Photo d’exemple envoyée sur WhatsApp
+      </Case>
+      {/* Pas de gâteau au bon : la photo n'est pas offerte (déjà cochée : on peut la décocher). */}
+      <Case
+        coche={photoImprimee}
+        onChange={setPhotoImprimee}
+        desactive={sansGateau && !photoImprimee}
+        aide={sansGateau ? 'Ajoutez d’abord un gâteau' : undefined}
+      >
+        Photo à imprimer sur le gâteau (ajoutez aussi le supplément « Photo » dans les produits)
+      </Case>
+      <Case coche={demandeInhabituelle} onChange={setDemandeInhabituelle}>
+        Demande inhabituelle (ingrédient particulier, moule spécial…)
+      </Case>
+      {rendre(signauxPrecisions)}
+      <label className="mt-3 block">
+        <span className="mb-1 block text-sm text-ink-2">Remarques</span>
+        <textarea className={`${CHAMP_TEXTE} min-h-20 py-2`} value={remarques} onChange={(e) => setRemarques(e.target.value)} />
+      </label>
+    </>
+  );
+
+  /* ------------------------------------------------ Jour et heure de retrait */
+  const selecteurDate = cal ? (
+    <SelecteurDateRetrait
+      valeur={dateRetrait}
+      onChange={(d) => {
+        setDateRetrait(d);
+        // Tablette : date ET heure connues → le panneau se referme, place aux produits.
+        if (heureRetrait) setPanneauRetrait(false);
+      }}
+      aujourdhui={cal.aujourdhui}
+      premiereDate={premiereDate}
+      estJourFerme={(iso) => {
+        const f = fermetureDuJour(iso, cal.joursFermes);
+        return f ? { ferme: true, libelle: f.nature === 'hebdomadaire' ? undefined : f.libelle } : { ferme: false };
+      }}
+      enErreur={signauxDate.some((s) => s.niveau === 'bloquant')}
+    />
+  ) : null;
+  // LOI 11 : première heure de retrait pâtisserie du jour choisi (réglages du
+  // gérant : jour par jour + dates exceptionnelles), calculée par le domaine.
+  // Tant qu'aucun produit n'est au bon, on ne sait pas s'il y aura de la
+  // pâtisserie : l'horaire s'applique (le plus sûr). Le domaine juge de toute façon.
+  const avecPatisserie =
+    !!cal &&
+    (lignes.length === 0 ||
+      lignes.some((l) =>
+        estPatisserie(ficheDe(catalogue, l.produitId)?.produit ?? null, cal.reglement.horairesRetraitPatisserie.familles),
+      ));
+  let heureMin: string | null = null;
+  if (cal && dateRetrait && avecPatisserie) {
+    try {
+      heureMin = heureMinRetrait(dateRetrait, cal.reglement, cal.joursFermes);
+    } catch {
+      heureMin = null; // réglage illisible : le domaine refusera, avec son message
+    }
+  }
+  const choixHeure = (
+    <ChoixHeure
+      heureMin={heureMin}
+      valeur={heureRetrait}
+      onChange={(h, fini) => {
+        setHeureRetrait(h);
+        if (fini) {
+          setActif(null);
+          if (dateRetrait) setPanneauRetrait(false);
+        }
+      }}
+    />
+  );
+
+  const grille = (tablette: boolean, enTete?: ReactNode) =>
+    catalogue ? (
+      <GrilleProduits
+        tablette={tablette}
+        zone={tablette ? zoneProduits : undefined}
+        enTete={enTete}
+        catalogue={catalogue}
+        lignes={lignes}
+        recherche={recherche}
+        onRecherche={setRecherche}
+        rayon={rayon}
+        onRayon={setRayon}
+        rayonsOuverts={rayonsOuverts}
+        onRayonsOuverts={setRayonsOuverts}
+        eclair={eclair}
+        sansGateau={sansGateau}
+        onToucher={toucher}
+        onAutreDemande={ajouterLigneLibre}
+      />
+    ) : null;
+
+  const accesGerant = demande ? (
+    <AccesGerant
+      raison={demande.raison}
+      onAccorde={(par) => {
+        setParGerant(par);
+        demande.appliquer({ par, le: new Date().toISOString() });
+        setDemande(null);
+      }}
+      onAnnuler={() => setDemande(null)}
+    />
+  ) : null;
+
+  const titre = modification ? `Modifier la commande ${commande.numero}` : 'Nouvelle commande';
+
+  const enTeteChargement = (
+    <>
+      {refusChargement ? <div className="mb-4">{rendre([refusChargement])}</div> : null}
+      {chargement ? (
+        <div className="grid gap-3">
+          <Chargement libelle="Chargement du tarif et du calendrier…" />
+          <RappelChargement />
+        </div>
+      ) : null}
+    </>
+  );
+
+  /* ======================================================== Rendu tablette */
+  // Tout tient dans l'écran (1180×820 paysage comme 820×1180 portrait) :
+  //   bande client (nom · téléphone · retrait · comptoir/téléphone) — 1 ligne en paysage
+  //   ├─ produits : recherche + familles fixes, grille qui défile en interne
+  //   │  (le panneau « retrait » et l'accord du gérant se superposent à la grille)
+  //   └─ colonne du pavé : pavé compact (si un champ est actif), bon qui défile,
+  //      total et « Valider » toujours visibles en bas.
+  // Calcul à 820 px de haut (barre ≈ 61 px) : cadre = 820 − 77 − 12 = 731 px ;
+  // bande 48 + 8 → zone de travail ≈ 675 px ; colonne : pavé compact ≈ 390,
+  // pied (total + Valider) ≈ 130 → le bon garde ≈ 150 px et défile.
+  if (!etroit) {
+    const gauche = cotePave === 'gauche';
+    const enErreurRetrait = [...signauxDate, ...signauxHeure].some((s) => s.niveau === 'bloquant');
+    const jour = dateRetrait && estDateIso(dateRetrait) ? morceauxDate(dateRetrait) : null;
+    const signauxRetraitBande = panneauRetrait ? [] : [...signauxDate, ...signauxHeure];
+    const styleCadre: CSSProperties = {
+      // Pleine largeur de la tablette (la page est limitée à max-w-5xl), plafonnée à 90rem.
+      marginInline: 'max(calc(50% - 50vw + 1rem), calc(50% - 45rem))',
+      ...(hautCadre === null ? {} : { height: `calc(100dvh - ${Math.ceil(hautCadre) + MARGE_BAS_CADRE_PX}px)` }),
+    };
+    return (
+      <>
+        <p className="sr-only" aria-live="polite">{annonce}</p>
+        {cal && catalogue ? null : (
+          <>
+            <Entete titre={titre} actions={<Bouton onClick={() => router.push('/commandes')}>Annuler</Bouton>} />
+            {enTeteChargement}
+          </>
+        )}
+        {cal && catalogue ? (
+          <div ref={cadre} style={styleCadre} className="-mb-8 -mt-4 flex min-h-[28rem] flex-col gap-2">
+            {/* -------------------------------------------- Bande client */}
+            <div className="flex flex-none flex-wrap items-center gap-2">
+              <div className="min-w-0 max-w-[12rem] shrink-0">
+                <h1 className="truncate text-lg font-semibold leading-tight tracking-tight text-ink" title={titre}>
+                  {modification ? `Commande ${commande.numero}` : 'Nouvelle commande'}
+                </h1>
+                <p className="truncate text-xs text-ink-2">
+                  {modification ? 'Changements enregistrés et datés' : <>Prise par <span className="font-medium text-ink">{vendeur}</span></>}
+                </p>
+              </div>
+              <input
+                ref={champClient}
+                className="min-h-12 min-w-[8rem] flex-[1_1_10rem] rounded-xl border-2 border-line-fort bg-surface px-3 text-base text-ink placeholder:text-ink-3"
+                value={client}
+                onChange={(e) => setClient(e.target.value)}
+                placeholder="Nom du client"
+                aria-label="Nom du client"
+                autoComplete="off"
+              />
+              <BoutonBande
+                libelle="Tél."
+                valeur={telephone || null}
+                vide="Toucher"
+                actif={actif === 'telephone'}
+                enErreur={signauxClient.some((s) => s.niveau === 'bloquant')}
+                onClick={() => setActif(actif === 'telephone' ? null : 'telephone')}
+                className="flex-[1_1_10rem]"
+                ariaLabel={`Téléphone du client${telephone ? ` : ${telephone}` : ''}`}
+              />
+              <BoutonBande
+                libelle="Retrait"
+                valeur={jour ? `${jour.jour} ${jour.numero} ${jour.mois} · ${heureRetrait || 'heure ?'}` : null}
+                vide="Choisir le jour"
+                actif={panneauRetrait}
+                enErreur={enErreurRetrait}
+                aFaire={!dateRetrait || !heureRetrait}
+                onClick={() => setPanneauRetrait(!panneauRetrait)}
+                className="flex-[2_1_14rem]"
+                ariaLabel={`Jour et heure de retrait${dateRetrait ? ` : ${libelleCourtRetrait(dateRetrait, heureRetrait)}` : ''}`}
+              />
+              <div role="group" aria-label="Commande prise" className="flex shrink-0 gap-0.5 rounded-xl border-2 border-line-fort bg-surface p-0.5">
+                <Segment actif={origine === 'comptoir'} onClick={() => { setOrigine('comptoir'); setModePaiement('especes'); }}>
+                  Comptoir
+                </Segment>
+                <Segment actif={origine === 'telephone'} onClick={() => { setOrigine('telephone'); setModePaiement('virement'); }}>
+                  Téléphone
+                </Segment>
+              </div>
+              <Bouton className="shrink-0" onClick={() => router.push('/commandes')}>Annuler</Bouton>
+            </div>
+
+            {/* Signalements qui ne tiennent pas dans la bande (rares : ils prennent sur la grille, jamais sur la page). */}
+            {refusChargement || signauxStatut.length > 0 || signauxClient.length > 0 || signauxRetraitBande.length > 0 ? (
+              <div className="max-h-[40%] flex-none overflow-y-auto overscroll-contain">
+                {refusChargement ? rendre([refusChargement]) : null}
+                {rendre(signauxStatut)}
+                {rendre(signauxClient)}
+                {rendre(signauxRetraitBande)}
+              </div>
+            ) : null}
+
+            {/* ------------------------------------------ Zone de travail */}
+            <div className={`flex min-h-0 flex-1 gap-3 ${gauche ? 'flex-row-reverse' : 'flex-row'}`}>
+              {/* Produits */}
+              <section aria-label="Produits" className="relative flex min-h-0 min-w-0 flex-1 flex-col rounded-2xl border border-line bg-surface">
+                {grille(true, signauxProduits.length > 0 ? rendre(signauxProduits) : null)}
+
+                {accesGerant || panneauRetrait ? (
+                  <div className="absolute inset-0 z-20 overflow-y-auto overscroll-contain rounded-2xl border-2 border-accent bg-surface p-4 shadow-lg">
+                    {accesGerant ?? (
+                      <div role="group" aria-label="Jour et heure de retrait">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <h2 className="text-lg font-semibold text-ink">Retrait</h2>
+                          <Bouton onClick={() => setPanneauRetrait(false)}>Voir les produits</Bouton>
+                        </div>
+                        <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+                          <div className="min-w-0">
+                            {selecteurDate}
+                            {rendre(signauxDate)}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="mb-2 text-base font-semibold text-ink">
+                              Heure de retrait{heureRetrait ? ` : ${heureRetrait}` : ''}
+                            </p>
+                            {choixHeure}
+                            {rendre(signauxHeure)}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </section>
+
+              {/* Colonne du pavé : pavé, bon (défile), total + Valider (toujours visibles) */}
+              <aside
+                aria-label="Le bon et le pavé de saisie"
+                className="flex min-h-0 w-72 shrink-0 flex-col overflow-hidden rounded-2xl border-2 border-line-fort bg-surface lg:w-80"
+              >
+                {blocPave ? (
+                  <div className="flex-none border-b border-line p-3 pb-1">
+                    <ContexteTaillePave.Provider value="compact">{blocPave}</ContexteTaillePave.Provider>
+                  </div>
+                ) : null}
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
+                  {bon}
+                  <section className="mt-4 border-t border-line pt-3">{precisions}</section>
+                  <section className="mt-4 border-t border-line pt-3">
+                    <h2 className={TITRE}>Paiement</h2>
+                    {paiement}
+                  </section>
+                  <div className="mt-4 border-t border-line pt-3">
+                    <BasculeCotePave />
+                  </div>
+                </div>
+                <div className="flex-none border-t border-line bg-surface p-3">
+                  <div className="flex items-end justify-between gap-2" aria-live="polite">
+                    <div className="min-w-0 text-sm leading-tight text-ink-2">
+                      <div>Total à annoncer</div>
+                      <div className="chiffres truncate">
+                        {lignes.length === 0 ? 'aucun produit' : `reste ${formaterEuros(reste)}`}
+                      </div>
+                    </div>
+                    <span
+                      className={`chiffres shrink-0 rounded-lg px-1.5 text-3xl font-bold leading-tight transition-colors duration-500 ${
+                        eclair ? 'bg-accent-doux text-accent' : 'text-ink'
+                      }`}
+                    >
+                      {formaterEuros(total)}
+                    </span>
+                  </div>
+                  {refusServeur ? <div className="max-h-48 overflow-y-auto">{rendre([refusServeur])}</div> : null}
+                  <Bouton variante="principal" className="mt-2 min-h-14 w-full text-lg" disabled={envoi} onClick={() => void valider()}>
+                    {libelleValider}
+                  </Bouton>
+                </div>
+              </aside>
+            </div>
+          </div>
+        ) : null}
+      </>
+    );
+  }
+
+  /* ======================================================= Rendu téléphone */
   return (
     <>
       <Entete
-        titre={modification ? `Modifier la commande ${commande.numero}` : 'Nouvelle commande'}
+        titre={titre}
         sousTitre={
           modification ? (
             <>Chaque changement est enregistré et daté. Prix au tarif du jour de la prise de commande.</>
@@ -530,38 +1197,21 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         }
         actions={<Bouton onClick={() => router.push('/commandes')}>Annuler</Bouton>}
       />
+      <p className="sr-only" aria-live="polite">{annonce}</p>
 
-      {refusChargement ? <div className="mb-4">{rendre([refusChargement])}</div> : null}
-      {chargement ? (
-        <div className="grid gap-3">
-          <Chargement libelle="Chargement du tarif et du calendrier…" />
-          <RappelChargement />
-        </div>
-      ) : null}
+      {enTeteChargement}
 
-      {demande ? (
-        <div className="mb-4">
-          <AccesGerant
-            raison={demande.raison}
-            onAccorde={(par) => {
-              setParGerant(par);
-              demande.appliquer({ par, le: new Date().toISOString() });
-              setDemande(null);
-            }}
-            onAnnuler={() => setDemande(null)}
-          />
-        </div>
-      ) : null}
+      {accesGerant ? <div className="mb-4">{accesGerant}</div> : null}
 
       {cal && catalogue ? (
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 pb-28 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start lg:pb-0">
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
+        <DispositionAvecPave pave={blocPave}>
+          <div className={`grid grid-cols-[minmax(0,1fr)] gap-4 ${!blocPave ? 'pb-24' : ''}`}>
             {signauxStatut.length > 0 ? rendre(signauxStatut) : null}
 
             {/* ---------------------------------------------------- Client */}
             <Carte className="p-4">
               <h2 className={TITRE}>Client</h2>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 md:grid-cols-2">
                 <label className="block">
                   <span className="mb-1 block text-sm text-ink-2">Nom</span>
                   <input
@@ -578,14 +1228,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                   ouvert={actif === 'telephone'}
                   onBasculer={() => setActif(actif === 'telephone' ? null : 'telephone')}
                   className="self-end"
-                >
-                  <PaveTelephone
-                    libelle="Téléphone du client"
-                    telephone={telephone}
-                    onChange={setTelephone}
-                    onValider={() => setActif(null)}
-                  />
-                </ChampPave>
+                />
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Choix actif={origine === 'comptoir'} onClick={() => { setOrigine('comptoir'); setModePaiement('especes'); }}>
@@ -600,23 +1243,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
 
             {/* ----------------------------------- Date et heure de retrait */}
             <Carte className="p-4">
-              <SelecteurDateRetrait
-                valeur={dateRetrait}
-                onChange={(d) => {
-                  setDateRetrait(d);
-                  setAccordLendemain(null);
-                }}
-                aujourdhui={cal.aujourdhui}
-                premiereDate={premiereDate}
-                estJourFerme={(iso) => {
-                  const f = fermetureDuJour(iso, cal.joursFermes);
-                  return f ? { ferme: true, libelle: f.nature === 'hebdomadaire' ? undefined : f.libelle } : { ferme: false };
-                }}
-                enErreur={signauxDate.some((s) => s.niveau === 'bloquant')}
-              />
-              {accordLendemain ? (
-                <p className="mt-2 text-sm text-ink-2">Retrait le lendemain accordé par {accordLendemain.par}.</p>
-              ) : null}
+              {selecteurDate}
               {rendre(signauxDate)}
 
               <div className="mt-4">
@@ -628,13 +1255,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                   onBasculer={() => setActif(actif === 'heure' ? null : 'heure')}
                   enErreur={signauxHeure.some((s) => s.niveau === 'bloquant')}
                 >
-                  <ChoixHeure
-                    valeur={heureRetrait}
-                    onChange={(h, fini) => {
-                      setHeureRetrait(h);
-                      if (fini) setActif(null);
-                    }}
-                  />
+                  {choixHeure}
                 </ChampPave>
                 {rendre(signauxHeure)}
               </div>
@@ -643,214 +1264,26 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
             {/* -------------------------------------------------- Produits */}
             <div ref={zoneProduits}>
               <Carte className="p-4">
-                <h2 className={TITRE}>Produits</h2>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="tablist">
-                  {ENTREES.map((e) => (
-                    <Onglet key={e.regime} actif={entree === e.regime} onClick={() => setEntree(e.regime)} titre={e.titre} detail={e.detail} />
-                  ))}
-                  <Onglet actif={entree === 'libre'} onClick={() => setEntree('libre')} titre="Autre demande" detail="Hors catalogue, prix avec le gérant" />
-                </div>
-
-                <input
-                  value={recherche}
-                  onChange={(e) => setRecherche(e.target.value)}
-                  placeholder={entree === 'libre' ? 'Décrire la demande (libellé)' : 'Chercher un produit…'}
-                  aria-label="Chercher un produit"
-                  autoComplete="off"
-                  className={`${CHAMP_TEXTE} mt-3`}
-                />
-
-                {entree === 'libre' ? (
-                  <div className="mt-3">
-                    <p className="text-sm text-ink-2">
-                      Les affiches sont « non exhaustives » : toute demande hors liste se prend ici, avec un prix fixé avec le
-                      gérant, et la mention « à confirmer par le pâtissier » sur le bon.
-                    </p>
-                    <Bouton variante="principal" className="mt-2" disabled={recherche.trim() === ''} onClick={ajouterLigneLibre}>
-                      Ajouter « {recherche.trim() || '…'} »
-                    </Bouton>
-                  </div>
-                ) : (
-                  <ListeProduits catalogue={catalogue} regime={entree} recherche={recherche} onChoisir={ajouterProduit} />
-                )}
+                {grille(false)}
                 {rendre(signauxProduits)}
               </Carte>
             </div>
 
-            {lignes.length > 0 ? (
-              <Carte className="p-4">
-                <h2 className={TITRE}>Le bon ({lignes.length} ligne{lignes.length > 1 ? 's' : ''})</h2>
-                <ul className="grid gap-4">
-                  {lignes.map((ligne, i) => {
-                    const fiche = ficheDe(catalogue, ligne.produitId);
-                    const r = resultatsLignes[i];
-                    const unite = uniteDe(fiche);
-                    const ouvertIci = actif?.startsWith(`${ligne.cle}.`) ?? false;
-                    // Refus qui portent sur PLUSIEURS lignes (suppléments…) : `controlerLigne`
-                    // ne les voit pas, `blocagesCommande` si. Affichés sur la ligne dès sa
-                    // saisie, sans doubler le refus propre à la ligne.
-                    const blocagesLigne = r
-                      ? blocages.filter((b) => indexLigne(b.champ) === i && (r.ok || b.code !== r.code))
-                      : [];
-                    // Ancien tarif : l'accord manquant n'est pas répété sur chaque ligne (refus unique plus haut).
-                    const accordAncien = ancienTarif && r && !r.ok && r.code === 'ERR_DROIT_INSUFFISANT' && sansAccord(i);
-                    const signaux: SignalementAffichable[] = [
-                      ...(r && !accordAncien ? (r.ok ? r.signalements : [r]) : []),
-                      ...blocagesLigne,
-                      ...tous.filter((s) => indexLigne(s.champ) === i && s.code === 'AVERT_PRODUIT_EN_DOUBLE'),
-                    ];
-                    return (
-                      <li key={ligne.cle} className="rounded-xl border border-line p-3">
-                        <LigneEditable
-                          ligne={ligne}
-                          fiche={fiche}
-                          resultat={r}
-                          unite={unite}
-                          actif={actif}
-                          setActif={setActif}
-                          options={options}
-                          onChange={(p) => majLigne(i, p)}
-                          onRetirer={() => retirerLigne(i)}
-                          onGerantLibre={() =>
-                            avecGerant(`Prix d’une demande hors catalogue : « ${ligne.libelleLibre || 'ligne libre'} ».`, (d) =>
-                              majLigne(i, { deverrouillage: d }),
-                            )
-                          }
-                        />
-                        {ouvertIci ? null : rendre(signaux, unite, `ligne-${ligne.cle}`)}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </Carte>
-            ) : null}
-
-            {/* ------------------------------------------------ Précisions */}
             <Carte className="p-4">
-              <h2 className={TITRE}>Précisions</h2>
-              <label className="block">
-                <span className="mb-1 block text-sm text-ink-2">Écriture sur le gâteau</span>
-                <input
-                  className={CHAMP_TEXTE}
-                  value={texteGateau}
-                  disabled={sansEcriture}
-                  onChange={(e) => setTexteGateau(e.target.value)}
-                  placeholder="JOYEUX ANNIVERSAIRE MARIAM"
-                  autoComplete="off"
-                />
-              </label>
-              <p className="mt-1 text-sm text-ink-3">
-                Relisez-le au client à voix haute : il est imprimé tel quel. Le supplément « écriture » se prend dans
-                « Gâteaux sur commande ».
-              </p>
-              <Case coche={sansEcriture} onChange={(v) => { setSansEcriture(v); if (v) setTexteGateau(''); }}>
-                Pas d’écriture sur le gâteau
-              </Case>
-              <Case coche={photoWhatsapp} onChange={setPhotoWhatsapp}>
-                Photo d’exemple envoyée sur WhatsApp
-              </Case>
-              <Case coche={photoImprimee} onChange={setPhotoImprimee}>
-                Photo à imprimer sur le gâteau (ajoutez le supplément « Photo » dans « Gâteaux sur commande »)
-              </Case>
-              <Case coche={demandeInhabituelle} onChange={setDemandeInhabituelle}>
-                Demande inhabituelle (ingrédient particulier, moule spécial…)
-              </Case>
-              {rendre(signauxPrecisions)}
-              <label className="mt-3 block">
-                <span className="mb-1 block text-sm text-ink-2">Remarques</span>
-                <textarea className={`${CHAMP_TEXTE} min-h-20 py-2`} value={remarques} onChange={(e) => setRemarques(e.target.value)} />
-              </label>
+              {totalAnnonce}
+              <div className="mt-3">{bon}</div>
             </Carte>
+
+            <Carte className="p-4">{precisions}</Carte>
+
+            <Carte className="p-4">{montants}</Carte>
           </div>
-
-          {/* ------------------------------------------------------ Total */}
-          <Carte className="p-4 lg:sticky lg:top-4">
-            <div className="text-sm text-ink-2">Total à annoncer</div>
-            <div className="chiffres text-5xl font-bold leading-tight text-ink">{formaterEuros(total)}</div>
-            {lignesOk.length > 0 ? (
-              <ul className="mt-2 grid gap-0.5 text-sm text-ink-2">
-                {lignesOk.map((l, k) => (
-                  <li key={k} className="chiffres">
-                    {l.libelle} : {composantes(l, l.basePrix === 'personne' ? 'parts' : 'pièces')}
-                  </li>
-                ))}
-                {lignesOk.length > 1 ? (
-                  <li className="chiffres font-medium text-ink">
-                    {lignesOk.map((l) => formaterEuros(l.totalCentimes)).join(' + ')} = {formaterEuros(totalTarif)}
-                  </li>
-                ) : null}
-              </ul>
-            ) : null}
-
-            <div className="mt-3">
-              {remise ? (
-                <ChampPave
-                  libelle={`Prix convenu (accord de ${remise.par})`}
-                  valeur={totalConvenu === null ? null : formaterEuros(totalConvenu)}
-                  ouvert={actif === 'total'}
-                  onBasculer={() => setActif(actif === 'total' ? null : 'total')}
-                >
-                  <PaveMontant
-                    libelle="Prix convenu avec le client"
-                    sousTitre={`Tarif : ${formaterEuros(totalTarif)}`}
-                    centimes={totalConvenu}
-                    onChange={setTotalConvenu}
-                    onValider={() => setActif(null)}
-                    champ="total"
-                  />
-                </ChampPave>
-              ) : (
-                <button
-                  type="button"
-                  className="text-sm text-ink-2 underline underline-offset-2"
-                  onClick={() => avecGerant('Prix convenu sous le tarif (remise).', (d) => { setRemise(d); setActif('total'); })}
-                >
-                  Prix convenu avec le client (accord du gérant)
-                </button>
-              )}
-            </div>
-
-            <div className="mt-4">
-              <ChampPave
-                libelle="Acompte"
-                valeur={acompte === null ? null : formaterEuros(acompte)}
-                ouvert={actif === 'acompte'}
-                onBasculer={() => setActif(actif === 'acompte' ? null : 'acompte')}
-                enErreur={signauxMontants.some((s) => s.niveau === 'bloquant' && champLocal(s.champ) === 'acompte')}
-              >
-                <PaveMontant
-                  libelle="Acompte versé"
-                  sousTitre={`au moins ${cal.reglement.acomptePourcentageMin} % du total`}
-                  centimes={acompte}
-                  onChange={setAcompte}
-                  onValider={() => setActif(null)}
-                  champ="acompte"
-                />
-              </ChampPave>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Choix actif={modePaiement === 'especes'} onClick={() => setModePaiement('especes')}>Espèces</Choix>
-                <Choix actif={modePaiement === 'virement'} onClick={() => setModePaiement('virement')}>Virement</Choix>
-              </div>
-            </div>
-            {rendre(signauxMontants)}
-
-            <div className="mt-3 flex items-baseline justify-between border-t border-line pt-3">
-              <span className="text-base text-ink-2">Reste à payer au retrait</span>
-              <span className="chiffres text-xl font-semibold text-ink">{formaterEuros(reste)}</span>
-            </div>
-
-            {refusServeur ? rendre([refusServeur]) : null}
-
-            <Bouton variante="principal" className="mt-4 min-h-14 w-full text-lg" disabled={envoi} onClick={() => void valider()}>
-              {envoi ? 'Enregistrement…' : modification ? 'Enregistrer les changements' : 'Valider la commande'}
-            </Bouton>
-          </Carte>
-        </div>
+        </DispositionAvecPave>
       ) : null}
 
-      {/* Sur téléphone : total et validation toujours à portée de pouce. */}
-      {cal && catalogue ? (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-4 py-2.5 backdrop-blur lg:hidden">
+      {/* Téléphone, pavé fermé : total et validation toujours à portée de pouce. */}
+      {cal && catalogue && !blocPave ? (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-4 py-2.5 backdrop-blur">
           <div className="mx-auto flex max-w-3xl items-center gap-3">
             <div className="min-w-0 flex-1">
               <div className="chiffres text-2xl font-bold leading-tight text-ink">{formaterEuros(total)}</div>
@@ -871,6 +1304,12 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
 
 /* ================================================== Lignes d'une commande */
 
+/** Accord de taille enregistré sur une ligne (colonnes `tailleAutoriseePar` / `tailleAutoriseeLe`). */
+function accordTaille(l: Commande['lignes'][number]): Deverrouillage | null {
+  const t = l as typeof l & { tailleAutoriseePar?: string | null; tailleAutoriseeLe?: string | null };
+  return t.tailleAutoriseePar && t.tailleAutoriseeLe ? { par: t.tailleAutoriseePar, le: t.tailleAutoriseeLe } : null;
+}
+
 /** Commande enregistrée → lignes de l'écran (prix appliqués et accords conservés). */
 function lignesDepuisCommande(c: Commande): LigneEcran[] {
   return c.lignes.map((l) => {
@@ -889,18 +1328,106 @@ function lignesDepuisCommande(c: Commande): LigneEcran[] {
       nbObjets: l.nbObjets ?? null,
       precision: l.precision ?? '',
       deverrouillage: accordPar && accordLe ? { par: accordPar, le: accordLe } : null,
+      // Taille hors standard déjà accordée (LOI 11) : renvoyée telle quelle, le
+      // serveur ne la conserve que pour ce produit à cette quantité exacte.
+      deverrouillageTaille: accordTaille(l),
     };
   });
 }
 
-function LigneEditable({
+/** Le pavé d'un champ chiffré d'une ligne (symboles, quantité/poids, prix, objets). */
+function PaveDeLigne({
+  ligne,
+  fiche,
+  champ,
+  onChange,
+  ouvrir,
+}: {
+  ligne: LigneEcran;
+  fiche: FicheTarifee | null;
+  champ: string;
+  onChange: (p: Partial<LigneEcran>) => void;
+  /** Champ suivant à ouvrir, ou null pour fermer le pavé. */
+  ouvrir: (champ: string | null) => void;
+}) {
+  const libre = ligne.produitId === null;
+  const unite = uniteDe(fiche);
+  const plancher = fiche?.produit.regimePrix === 'C' && fiche.prix.prixEstPlancher === true;
+  const nom = fiche ? libelleProduit(fiche) : ligne.libelleLibre || 'Autre demande';
+
+  if (champ === 'symboles') {
+    return (
+      <PaveEntier
+        libelle={`${nom} — chiffres ou lettres (« 25 » = 2)`}
+        contexte="commande"
+        libelleUnite="symboles"
+        quantite={ligne.nbSymboles}
+        onChange={(n) => onChange({ nbSymboles: n })}
+        onValider={() => ouvrir('quantite')}
+        champ="nbSymboles"
+      />
+    );
+  }
+  if (champ === 'quantite') {
+    return fiche?.produit.unite === 'kg' ? (
+      <PaveDecimalPoids
+        libelle={nom}
+        contexte="commande"
+        grammes={ligne.quantite}
+        onChange={(g) => onChange({ quantite: g })}
+        onValider={() => ouvrir(null)}
+      />
+    ) : (
+      <PaveEntier
+        libelle={nom}
+        contexte="commande"
+        libelleUnite={unite}
+        quantite={ligne.quantite}
+        onChange={(q) => onChange({ quantite: q })}
+        onValider={() => ouvrir(plancher || libre ? 'prix' : fiche?.prix.maxParUnite ? 'objets' : null)}
+      />
+    );
+  }
+  if (champ === 'prix' && (plancher || libre)) {
+    return (
+      <PaveMontant
+        libelle={libre ? `${nom} — prix fixé avec le gérant` : `${nom} — prix par personne`}
+        sousTitre={plancher && fiche ? `à partir de ${formaterEuros(fiche.prix.prixCentimes)}, modifiable vers le haut` : undefined}
+        centimes={ligne.prixUnitaireCentimes ?? (plancher && fiche ? fiche.prix.prixCentimes : null)}
+        onChange={(c) => onChange({ prixUnitaireCentimes: c, deverrouillage: libre ? ligne.deverrouillage : null })}
+        onValider={() => ouvrir(null)}
+        champ="prixCentimes"
+      />
+    );
+  }
+  if (champ === 'objets' && fiche?.prix.maxParUnite) {
+    return (
+      <PaveEntier
+        libelle={`${nom} — nombre total demandé`}
+        contexte="commande"
+        libelleUnite={fiche.prix.maxParUnite.objet || 'sandwichs'}
+        quantite={ligne.nbObjets}
+        onChange={(n) => onChange({ nbObjets: n })}
+        onValider={() => ouvrir(null)}
+        champ="nbObjets"
+      />
+    );
+  }
+  return null;
+}
+
+/** Une ligne du bon, compacte : champs chiffrés (pavé dans la colonne), total de ligne, précision repliable. */
+function LigneDuBon({
   ligne,
   fiche,
   resultat,
   unite,
   actif,
   setActif,
+  detail,
+  basculerDetail,
   options,
+  tailles,
   onChange,
   onRetirer,
   onGerantLibre,
@@ -911,20 +1438,27 @@ function LigneEditable({
   unite: string;
   actif: string | null;
   setActif: (a: string | null) => void;
+  detail: boolean;
+  basculerDetail: () => void;
   options: OptionsGateau | null;
+  /** Tailles standard des gâteaux simples (réglages du gérant, LOI 11). */
+  tailles: readonly number[];
   onChange: (p: Partial<LigneEcran>) => void;
   onRetirer: () => void;
   onGerantLibre: () => void;
 }) {
   const id = (champ: string) => `${ligne.cle}.${champ}`;
   const basculer = (champ: string) => setActif(actif === id(champ) ? null : id(champ));
-  const fermer = () => setActif(null);
   const libre = ligne.produitId === null;
   const regime = fiche?.produit.regimePrix ?? null;
   const plancher = regime === 'C' && fiche?.prix.prixEstPlancher === true;
   const auKilo = fiche?.produit.unite === 'kg';
   const controlee = resultat?.ok ? resultat.donnees : null;
   const suggestions = regime === 'B' ? options?.garnitures : regime === 'C' ? options?.parfums : undefined;
+  // LOI 11 : gâteau simple sur commande (données de la fiche, jugées par le
+  // domaine) → la taille se choisit d'abord aux boutons des tailles standard.
+  const parTailles = fiche !== null && estGateauSimpleSurCommande(fiche) && tailles.length > 0;
+  const taillesTriees = [...tailles].sort((a, b) => a - b);
 
   const [signalementTarif, setSignalementTarif] = useState<Echec | 'ok' | null>(null);
   const signalerAuGerant = async () => {
@@ -953,80 +1487,75 @@ function LigneEditable({
               value={ligne.libelleLibre}
               onChange={(e) => onChange({ libelleLibre: e.target.value })}
               aria-label="Libellé de la demande"
+              placeholder="Décrire la demande"
               className={CHAMP_TEXTE}
             />
           ) : (
-            <p className="text-lg font-semibold text-ink">{fiche ? libelleProduit(fiche) : 'Produit absent du tarif'}</p>
+            <p className="text-base font-semibold leading-snug text-ink">{fiche ? libelleProduit(fiche) : 'Produit absent du tarif'}</p>
           )}
-          <p className="text-sm text-ink-2">
-            {libre
-              ? 'Autre demande — à confirmer par le pâtissier'
-              : regime === 'B'
-                ? 'Salé sur commande'
-                : regime === 'C'
-                  ? 'Gâteau sur commande'
-                  : 'Catalogue comptoir'}
-          </p>
+          <p className="text-xs text-ink-2">{libelleRegime(fiche, libre)}</p>
         </div>
         <button
           type="button"
           onClick={onRetirer}
-          className="min-h-12 min-w-12 rounded-xl border border-line text-2xl leading-none text-ink-3 hover:text-bloquant"
+          className="min-h-12 min-w-12 shrink-0 rounded-xl border border-line text-2xl leading-none text-ink-3 hover:text-bloquant"
           aria-label="Retirer la ligne"
         >
           ×
         </button>
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <div className="mt-2 grid gap-1.5">
         {fiche?.prix.minParSymbole != null ? (
           <ChampPave
             libelle="Chiffres ou lettres"
             valeur={ligne.nbSymboles === null ? null : `${ligne.nbSymboles}`}
             ouvert={actif === id('symboles')}
             onBasculer={() => basculer('symboles')}
-          >
-            <PaveEntier
-              libelle="Nombre de chiffres ou lettres (« 25 » = 2)"
-              contexte="commande"
-              libelleUnite="symboles"
-              quantite={ligne.nbSymboles}
-              onChange={(n) => onChange({ nbSymboles: n })}
-              onValider={() => setActif(id('quantite'))}
-              champ="nbSymboles"
-            />
-          </ChampPave>
+          />
         ) : null}
-
-        <ChampPave
-          libelle={auKilo ? 'Poids' : unite === 'parts' ? 'Parts' : 'Quantité'}
-          valeur={ligne.quantite === null ? null : auKilo ? formaterQuantite('kg', ligne.quantite) : `${ligne.quantite} ${unite}`}
-          ouvert={actif === id('quantite')}
-          onBasculer={() => basculer('quantite')}
-        >
-          {auKilo ? (
-            <PaveDecimalPoids
-              libelle={fiche ? libelleProduit(fiche) : 'Poids'}
-              contexte="commande"
-              grammes={ligne.quantite}
-              onChange={(g) => onChange({ quantite: g })}
-              onValider={fermer}
-            />
-          ) : (
-            <PaveEntier
-              libelle={fiche ? libelleProduit(fiche) : ligne.libelleLibre || 'Quantité'}
-              contexte="commande"
-              libelleUnite={unite}
-              quantite={ligne.quantite}
-              onChange={(q) => onChange({ quantite: q })}
-              onValider={() => (plancher || libre ? setActif(id('prix')) : fermer())}
-            />
-          )}
-        </ChampPave>
-
+        {parTailles ? (
+          <div role="group" aria-label="Taille du gâteau (parts)" className="grid grid-cols-5 gap-1">
+            {taillesTriees.map((t) => (
+              <button
+                key={t}
+                type="button"
+                aria-pressed={ligne.quantite === t}
+                onClick={() => {
+                  onChange({ quantite: t });
+                  setActif(null);
+                }}
+                className={`chiffres min-h-11 rounded-lg border-2 text-base font-semibold ${
+                  ligne.quantite === t ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+            <button
+              type="button"
+              aria-expanded={actif === id('quantite')}
+              onClick={() => basculer('quantite')}
+              className={`min-h-11 rounded-lg border-2 text-sm ${
+                ligne.quantite !== null && !taillesTriees.includes(ligne.quantite)
+                  ? 'chiffres border-accent bg-accent-doux font-semibold text-accent'
+                  : 'border-line bg-surface text-ink-2'
+              }`}
+            >
+              {ligne.quantite !== null && !taillesTriees.includes(ligne.quantite) ? ligne.quantite : 'Autre'}
+            </button>
+          </div>
+        ) : (
+          <ChampPave
+            libelle={auKilo ? 'Poids' : unite === 'parts' ? 'Parts' : 'Quantité'}
+            valeur={ligne.quantite === null ? null : auKilo ? formaterQuantite('kg', ligne.quantite) : `${ligne.quantite} ${unite}`}
+            ouvert={actif === id('quantite')}
+            onBasculer={() => basculer('quantite')}
+          />
+        )}
         {plancher || libre ? (
           <ChampPave
-            libelle={libre ? 'Prix unitaire' : unite === 'parts' ? 'Prix par personne' : 'Prix à la pièce'}
+            libelle={libre ? 'Prix unitaire' : unite === 'parts' ? 'Prix / pers.' : 'Prix à la pièce'}
             valeur={
               ligne.prixUnitaireCentimes !== null
                 ? formaterEuros(ligne.prixUnitaireCentimes)
@@ -1036,72 +1565,70 @@ function LigneEditable({
             }
             ouvert={actif === id('prix')}
             onBasculer={() => basculer('prix')}
-          >
-            <PaveMontant
-              libelle={libre ? 'Prix fixé avec le gérant' : 'Prix par personne'}
-              sousTitre={plancher && fiche ? `à partir de ${formaterEuros(fiche.prix.prixCentimes)}, modifiable vers le haut` : undefined}
-              centimes={ligne.prixUnitaireCentimes ?? (plancher && fiche ? fiche.prix.prixCentimes : null)}
-              onChange={(c) => onChange({ prixUnitaireCentimes: c, deverrouillage: libre ? ligne.deverrouillage : null })}
-              onValider={fermer}
-              champ="prixCentimes"
-            />
-          </ChampPave>
+          />
         ) : null}
-
         {fiche?.prix.maxParUnite ? (
           <ChampPave
             libelle={`Nombre de ${fiche.prix.maxParUnite.objet || 'sandwichs'}`}
             valeur={ligne.nbObjets === null ? null : `${ligne.nbObjets}`}
             ouvert={actif === id('objets')}
             onBasculer={() => basculer('objets')}
-          >
-            <PaveEntier
-              libelle="Nombre total demandé"
-              contexte="commande"
-              libelleUnite={fiche.prix.maxParUnite.objet || 'sandwichs'}
-              quantite={ligne.nbObjets}
-              onChange={(n) => onChange({ nbObjets: n })}
-              onValider={fermer}
-              champ="nbObjets"
-            />
-          </ChampPave>
+          />
         ) : null}
       </div>
 
       {controlee ? (
-        <p className="chiffres mt-2 text-lg font-semibold text-ink">{composantes(controlee, unite)}</p>
+        <p className="chiffres mt-1.5 text-base font-semibold text-ink">{composantes(controlee, unite)}</p>
       ) : ligne.quantite === null ? (
-        <p className="mt-2 text-sm text-ink-2">Touchez « {auKilo ? 'Poids' : unite === 'parts' ? 'Parts' : 'Quantité'} » pour saisir.</p>
+        <p className="mt-1.5 text-sm text-ink-2">
+          {parTailles ? 'Touchez une taille (parts).' : `Saisissez ${auKilo ? 'le poids' : 'la quantité'} au pavé.`}
+        </p>
       ) : null}
 
       {ligne.deverrouillage ? (
         <p className="mt-1 text-sm text-ink-2">Accord de {ligne.deverrouillage.par} enregistré avec la commande.</p>
       ) : null}
+      {ligne.deverrouillageTaille ? (
+        <p className="mt-1 text-sm text-ink-2">Taille accordée par {ligne.deverrouillageTaille.par}.</p>
+      ) : null}
 
-      <input
-        value={ligne.precision}
-        onChange={(e) => onChange({ precision: e.target.value })}
-        placeholder={regime === 'B' ? 'Garnitures, répartition…' : 'Parfum, forme, précision…'}
-        aria-label="Précision imprimée sur le bon"
-        className={`${CHAMP_TEXTE} mt-2`}
-      />
-      {suggestions && suggestions.length > 0 ? (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {suggestions.map((o) => (
-            <button
-              key={o.id}
-              type="button"
-              onClick={() => onChange({ precision: ligne.precision ? `${ligne.precision}, ${o.nom}` : o.nom })}
-              className="min-h-10 rounded-full border border-line-fort bg-surface px-3 text-sm text-ink-2"
-            >
-              {o.nom}
-            </button>
-          ))}
+      <button
+        type="button"
+        onClick={basculerDetail}
+        aria-expanded={detail}
+        className="mt-1 min-h-10 max-w-full truncate text-left text-sm text-ink-2 underline underline-offset-2"
+      >
+        {ligne.precision ? `Précision : ${ligne.precision}` : regime === 'B' ? 'Garnitures, précision…' : 'Parfum, précision…'}
+      </button>
+
+      {detail ? (
+        <div>
+          <input
+            value={ligne.precision}
+            onChange={(e) => onChange({ precision: e.target.value })}
+            placeholder={regime === 'B' ? 'Garnitures, répartition…' : 'Parfum, forme, précision…'}
+            aria-label="Précision imprimée sur le bon"
+            className={`${CHAMP_TEXTE} mt-1`}
+          />
+          {suggestions && suggestions.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {suggestions.map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  onClick={() => onChange({ precision: ligne.precision ? `${ligne.precision}, ${o.nom}` : o.nom })}
+                  className="min-h-10 rounded-full border border-line-fort bg-surface px-3 text-sm text-ink-2"
+                >
+                  {o.nom}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
       {libre ? (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           {ligne.deverrouillage ? null : (
             <Bouton variante="secondaire" onClick={onGerantLibre}>
               Accord du gérant pour ce prix
@@ -1137,63 +1664,213 @@ function LigneEditable({
 
 /* ========================================================= Choix produits */
 
-function ListeProduits({
+const MAX_CARTES = 60;
+
+/**
+ * UNE grille de produits (plus d'onglets par régime), une recherche, des
+ * filtres légers par rayon (repliés). Le régime de chaque produit est LU sur
+ * la fiche et rappelé discrètement (« dès … /pers. », minimum).
+ */
+function GrilleProduits({
+  tablette,
+  zone,
+  enTete,
   catalogue,
-  regime,
+  lignes,
   recherche,
-  onChoisir,
+  onRecherche,
+  rayon,
+  onRayon,
+  rayonsOuverts,
+  onRayonsOuverts,
+  eclair,
+  sansGateau,
+  onToucher,
+  onAutreDemande,
 }: {
+  /** Tablette : familles toujours visibles, grille dense qui défile en interne (la page, jamais). */
+  tablette: boolean;
+  /** Zone qui défile (tablette) : sert à y revenir en haut depuis une sortie. */
+  zone?: Ref<HTMLDivElement>;
+  /** Affiché entre la barre de recherche et la grille (signalements des produits). */
+  enTete?: ReactNode;
   catalogue: CatalogueCommande;
-  regime: RegimePrix;
+  lignes: LigneEcran[];
   recherche: string;
-  onChoisir: (f: FicheCatalogue) => void;
+  onRecherche: (r: string) => void;
+  rayon: string | null;
+  onRayon: (r: string | null) => void;
+  rayonsOuverts: boolean;
+  onRayonsOuverts: (o: boolean) => void;
+  eclair: Eclair | null;
+  sansGateau: boolean;
+  onToucher: (f: FicheCatalogue) => void;
+  onAutreDemande: () => void;
 }) {
-  const mots = normaliser(recherche).split(' ').filter(Boolean);
-  const fiches = catalogue.fiches.filter(
-    (f) =>
-      f.produit.regimePrix === regime &&
-      mots.every((m) => normaliser(`${f.produit.produit} ${f.produit.sousCategorie ?? ''} ${f.produit.categorie}`).includes(m)),
-  );
-  // Comptoir : favoris d'abord quand on ne cherche rien (liste d'accès rapide, LOI 4).
-  const visibles = regime === 'A' && mots.length === 0 ? fiches.filter((f) => f.produit.estFavori) : fiches;
+  const rayons = rayonsDe(catalogue);
+  const fiches = fichesVisibles(catalogue, recherche, rayon);
+  const libre = recherche.trim() === '' && rayon === null;
+  const pucesVisibles = tablette || rayonsOuverts;
 
-  if (visibles.length === 0) {
-    return (
-      <p className="mt-3 text-sm text-ink-2">
-        {mots.length > 0 ? 'Aucun produit trouvé. Une demande hors liste se prend dans « Autre demande ».' : 'Aucun produit dans ce tarif.'}
-      </p>
-    );
-  }
-
-  return (
-    <ul className="mt-3 grid max-h-96 gap-1.5 overflow-y-auto overscroll-contain sm:grid-cols-2">
-      {visibles.slice(0, 60).map((f) => (
-        <li key={f.produit.id}>
+  const barre = (
+    <div className={tablette ? 'flex-none p-3 pb-2' : ''}>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={recherche}
+          onChange={(e) => onRecherche(e.target.value)}
+          placeholder="Chercher un produit…"
+          aria-label="Chercher un produit"
+          autoComplete="off"
+          className={`${CHAMP_TEXTE} min-w-0 flex-1 basis-48`}
+        />
+        {tablette ? null : (
           <button
             type="button"
-            onClick={() => onChoisir(f)}
-            className="flex min-h-14 w-full items-center justify-between gap-3 rounded-xl border border-line bg-surface px-3 py-2 text-left hover:bg-surface-2"
+            aria-expanded={rayonsOuverts}
+            onClick={() => onRayonsOuverts(!rayonsOuverts)}
+            className={`min-h-12 rounded-xl border-2 px-3 text-sm font-medium ${rayon ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink-2'}`}
           >
-            <span className="min-w-0">
-              <span className="block text-base text-ink">{libelleProduit(f)}</span>
-              <span className="block text-sm text-ink-3">
-                {f.produit.categorie}
-                {f.prix.minParSymbole !== null
-                  ? ` · min. ${f.prix.minParSymbole} parts par chiffre ou lettre`
-                  : f.prix.minQuantite !== null
-                    ? ` · min. ${f.prix.minQuantite} ${f.prix.basePrix === 'personne' ? 'parts' : 'pièces'}`
-                    : ''}
-              </span>
-            </span>
-            <span className="chiffres shrink-0 text-base text-ink-2">
-              {f.prix.prixEstPlancher ? 'dès ' : ''}
-              {formaterEuros(f.prix.prixCentimes)}
-              {f.prix.basePrix === 'kg' ? '/kg' : f.prix.basePrix === 'personne' ? '/pers.' : ''}
-            </span>
+            {rayon ?? 'Familles'} {rayonsOuverts ? '▴' : '▾'}
           </button>
-        </li>
-      ))}
-    </ul>
+        )}
+        <button
+          type="button"
+          onClick={onAutreDemande}
+          className="min-h-12 rounded-xl border-2 border-line-fort bg-surface px-3 text-sm font-medium text-ink"
+        >
+          Autre demande
+        </button>
+      </div>
+
+      {pucesVisibles ? (
+        // Tablette : une seule rangée de familles, qui glisse horizontalement si besoin.
+        <div
+          role="group"
+          aria-label="Familles"
+          className={`mt-2 flex gap-1.5 ${tablette ? 'overflow-x-auto overscroll-x-contain pb-0.5' : 'flex-wrap'}`}
+        >
+          <Puce actif={rayon === null} onClick={() => onRayon(null)}>Tout</Puce>
+          {rayons.map((r) => (
+            <Puce key={r} actif={rayon === r} onClick={() => onRayon(rayon === r ? null : r)}>
+              {r}
+            </Puce>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const liste =
+    fiches.length === 0 ? (
+      <p className={`text-sm text-ink-2 ${tablette ? '' : 'mt-3'}`}>
+        Aucun produit trouvé. Une demande hors liste se prend avec « Autre demande »
+        {recherche.trim() ? ` (« ${recherche.trim()} » sera repris comme libellé)` : ''}.
+      </p>
+    ) : (
+      <ul
+        className={
+          tablette
+            ? 'grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2'
+            : 'mt-3 grid grid-cols-2 gap-2 lg:grid-cols-3'
+        }
+      >
+        {fiches.slice(0, MAX_CARTES).map((f) => {
+          const q = quantiteAuBon(lignes, f.produit.id);
+          const auKilo = f.produit.unite === 'kg';
+          const eclaire = eclair?.produitId === f.produit.id;
+          const indisponible = estSupplement(f) && sansGateau;
+          const pastille = q === null ? null : auKilo ? formaterQuantite('kg', q) : String(q);
+          return (
+            <li key={f.produit.id}>
+              <button
+                type="button"
+                disabled={indisponible}
+                onClick={() => onToucher(f)}
+                aria-label={`${libelleProduit(f)}${pastille ? `, ${pastille} au bon` : ''}${indisponible ? ', ajoutez d’abord un gâteau' : ''}`}
+                className={`relative flex w-full flex-col justify-between rounded-xl border-2 text-left transition duration-300 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 ${
+                  tablette ? 'h-full min-h-16 gap-0.5 px-2.5 py-1.5' : 'min-h-20 gap-1 px-3 py-2'
+                } ${
+                  eclaire
+                    ? 'border-accent bg-accent-doux ring-4 ring-accent/40'
+                    : q !== null
+                      ? 'border-accent bg-surface'
+                      : 'border-line bg-surface hover:bg-surface-2'
+                }`}
+              >
+                <span
+                  className={`line-clamp-2 pr-6 font-medium text-ink ${tablette ? 'text-[15px] leading-tight' : 'text-base leading-snug'}`}
+                >
+                  {libelleProduit(f)}
+                </span>
+                <span className="chiffres text-sm leading-tight text-ink-2">
+                  {indisponible ? (
+                    'Ajoutez d’abord un gâteau'
+                  ) : (
+                    <>
+                      <span className="font-semibold text-ink">
+                        {f.prix.prixEstPlancher ? 'dès ' : ''}
+                        {formaterEuros(f.prix.prixCentimes)}
+                        {f.prix.basePrix === 'kg' ? '/kg' : f.prix.basePrix === 'personne' ? '/pers.' : ''}
+                      </span>
+                      {f.prix.minParSymbole !== null
+                        ? ` · min. ${f.prix.minParSymbole} parts/chiffre`
+                        : f.prix.minQuantite !== null
+                          ? ` · min. ${f.prix.minQuantite}`
+                          : ''}
+                    </>
+                  )}
+                </span>
+                {pastille ? (
+                  <span
+                    className={`chiffres absolute -right-2 -top-2 flex h-8 min-w-8 items-center justify-center rounded-full bg-accent px-2 text-base font-bold text-white shadow transition-transform duration-300 ${
+                      eclaire ? 'scale-125' : 'scale-100'
+                    }`}
+                    aria-hidden
+                  >
+                    {pastille}
+                  </span>
+                ) : null}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    );
+
+  const pied = (
+    <>
+      {fiches.length > MAX_CARTES ? (
+        <p className="mt-2 text-sm text-ink-2">
+          {fiches.length - MAX_CARTES} autres produits : affinez la recherche ou choisissez une famille.
+        </p>
+      ) : null}
+      {libre ? (
+        <p className="mt-2 text-sm text-ink-3">Comptoir : seuls les favoris sont affichés. Cherchez ou choisissez une famille pour les autres.</p>
+      ) : null}
+    </>
+  );
+
+  if (!tablette) {
+    return (
+      <div>
+        {barre}
+        {enTete}
+        {liste}
+        {pied}
+      </div>
+    );
+  }
+  // Tablette : barre et familles fixes ; la grille seule défile. La pastille
+  // déborde de 8 px en haut à droite : marges internes pour ne pas la rogner.
+  return (
+    <>
+      {barre}
+      {enTete ? <div className="max-h-[40%] flex-none overflow-y-auto overscroll-contain px-3">{enTete}</div> : null}
+      <div ref={zone} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3 pt-2">
+        {liste}
+        {pied}
+      </div>
+    </>
   );
 }
 
@@ -1256,20 +1933,45 @@ function Confirmation({
 
 /* ================================================================ Morceaux */
 
-/** Heure de retrait au doigt : heures puis quarts d'heure. Aucune heure n'est interdite ici (le domaine juge). */
-function ChoixHeure({ valeur, onChange }: { valeur: string; onChange: (h: string, fini: boolean) => void }) {
+/**
+ * Heure de retrait au doigt : heures puis quarts d'heure. Les heures avant
+ * `heureMin` (première heure pâtisserie du jour, donnée par le domaine) sont
+ * grisées ; le domaine rejuge de toute façon (ERR_HEURE_RETRAIT_TROP_TOT).
+ */
+function ChoixHeure({
+  valeur,
+  onChange,
+  heureMin = null,
+}: {
+  valeur: string;
+  onChange: (h: string, fini: boolean) => void;
+  heureMin?: string | null;
+}) {
   const [hh, mm] = valeur ? valeur.split(':') : ['', ''];
   const heures = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0'));
   const minutes = ['00', '15', '30', '45'];
+  const min = heureMin ? lireHeure(heureMin) : null;
+  const tropTot = (h: string, m: string) => {
+    const v = lireHeure(`${h}:${m}`);
+    return min !== null && v !== null && v < min;
+  };
+  // Heure choisie : minutes ramenées à la première permise si besoin.
+  const minuteDe = (h: string) => {
+    const voulue = mm || '00';
+    if (!tropTot(h, voulue)) return voulue;
+    return minutes.find((m) => !tropTot(h, m)) ?? voulue;
+  };
   return (
     <div className="grid gap-3">
+      {heureMin ? <p className="text-sm text-ink-2">Pâtisserie : à partir de {heureMin} ce jour-là.</p> : null}
       <div className="grid grid-cols-6 gap-1.5">
         {heures.map((h) => (
           <button
             key={h}
             type="button"
-            onClick={() => onChange(`${h}:${mm || '00'}`, false)}
-            className={`chiffres min-h-12 rounded-xl border-2 text-lg ${h === hh ? 'border-sortie bg-sortie text-sortie-texte' : 'border-line-fort bg-surface text-ink'}`}
+            disabled={tropTot(h, '45')}
+            onClick={() => onChange(`${h}:${minuteDe(h)}`, false)}
+            className={`chiffres min-h-12 rounded-xl border-2 text-lg disabled:border-line disabled:bg-surface-2 disabled:text-ink-3 disabled:opacity-50 ${h === hh ? 'border-sortie bg-sortie text-sortie-texte' : 'border-line-fort bg-surface text-ink'}`}
           >
             {h}h
           </button>
@@ -1280,7 +1982,7 @@ function ChoixHeure({ valeur, onChange }: { valeur: string; onChange: (h: string
           <button
             key={m}
             type="button"
-            disabled={!hh}
+            disabled={!hh || tropTot(hh, m)}
             onClick={() => onChange(`${hh}:${m}`, true)}
             className={`chiffres min-h-12 rounded-xl border-2 text-lg disabled:opacity-50 ${m === mm ? 'border-sortie bg-sortie text-sortie-texte' : 'border-line-fort bg-surface text-ink'}`}
           >
@@ -1304,21 +2006,6 @@ function BoutonSortie({ onClick, children }: { onClick: () => void; children: Re
   );
 }
 
-function Onglet({ actif, onClick, titre, detail }: { actif: boolean; onClick: () => void; titre: string; detail: string }) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={actif}
-      onClick={onClick}
-      className={`min-h-16 rounded-xl border-2 px-3 py-2 text-left ${actif ? 'border-accent bg-accent-doux' : 'border-line-fort bg-surface'}`}
-    >
-      <span className="block text-base font-semibold text-ink">{titre}</span>
-      <span className="block text-xs text-ink-2">{detail}</span>
-    </button>
-  );
-}
-
 function Choix({ actif, onClick, children }: { actif: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
@@ -1333,11 +2020,106 @@ function Choix({ actif, onClick, children }: { actif: boolean; onClick: () => vo
   );
 }
 
-function Case({ coche, onChange, children }: { coche: boolean; onChange: (v: boolean) => void; children: ReactNode }) {
+function Case({
+  coche,
+  onChange,
+  desactive = false,
+  aide,
+  children,
+}: {
+  coche: boolean;
+  onChange: (v: boolean) => void;
+  desactive?: boolean;
+  /** Petit texte sous la case (ex. « Ajoutez d’abord un gâteau »). */
+  aide?: string;
+  children: ReactNode;
+}) {
   return (
-    <label className="mt-3 flex min-h-12 items-center gap-3 text-base text-ink">
-      <input type="checkbox" checked={coche} onChange={(e) => onChange(e.target.checked)} className="h-6 w-6 shrink-0 accent-[var(--accent)]" />
-      <span>{children}</span>
+    <label className={`mt-3 flex min-h-12 items-center gap-3 text-base ${desactive ? 'text-ink-3' : 'text-ink'}`}>
+      <input
+        type="checkbox"
+        checked={coche}
+        disabled={desactive}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-6 w-6 shrink-0 accent-[var(--accent)] disabled:opacity-50"
+      />
+      <span>
+        {children}
+        {aide ? <span className="block text-sm text-ink-2">{aide}</span> : null}
+      </span>
     </label>
+  );
+}
+
+/** Champ de la bande client (tablette) : libellé court + valeur, 48 px de haut. */
+function BoutonBande({
+  libelle,
+  valeur,
+  vide,
+  actif,
+  enErreur = false,
+  aFaire = false,
+  onClick,
+  className = '',
+  ariaLabel,
+}: {
+  libelle: string;
+  valeur: string | null;
+  vide: string;
+  actif: boolean;
+  enErreur?: boolean;
+  /** Encore à renseigner : mis en avant (bord accent). */
+  aFaire?: boolean;
+  onClick: () => void;
+  className?: string;
+  ariaLabel: string;
+}) {
+  const bord = enErreur
+    ? 'border-bloquant bg-bloquant-doux'
+    : actif
+      ? 'border-accent bg-accent-doux'
+      : aFaire
+        ? 'border-accent bg-surface'
+        : 'border-line-fort bg-surface';
+  return (
+    <button
+      type="button"
+      aria-expanded={actif}
+      aria-label={ariaLabel}
+      onClick={onClick}
+      className={`flex min-h-12 min-w-0 items-center gap-2 rounded-xl border-2 px-3 text-left ${bord} ${className}`}
+    >
+      <span className="shrink-0 text-sm text-ink-2">{libelle}</span>
+      <span className={`chiffres min-w-0 flex-1 truncate text-right text-base font-semibold ${valeur === null ? 'text-accent' : 'text-ink'}`}>
+        {valeur ?? vide}
+      </span>
+    </button>
+  );
+}
+
+/** Un des deux boutons d'un choix segmenté (Comptoir / Téléphone). */
+function Segment({ actif, onClick, children }: { actif: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={actif}
+      onClick={onClick}
+      className={`min-h-10 rounded-lg px-3 text-sm ${actif ? 'bg-accent-doux font-semibold text-accent' : 'text-ink-2'}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Puce({ actif, onClick, children }: { actif: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={actif}
+      onClick={onClick}
+      className={`min-h-10 shrink-0 whitespace-nowrap rounded-full border-2 px-3 text-sm ${actif ? 'border-accent bg-accent-doux font-medium text-accent' : 'border-line-fort bg-surface text-ink-2'}`}
+    >
+      {children}
+    </button>
   );
 }

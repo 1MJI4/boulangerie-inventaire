@@ -14,6 +14,8 @@ import type { DateISO, Deverrouillage, FicheTarifee, PrixRegle, ProduitRegle, Re
 import type { CommandeSaisie, LigneSaisie, ResoudreProduit } from '../../domaine/commande.ts';
 import { resoudreDepuisCatalogue } from '../../domaine/commande.ts';
 import { signaler } from '../../domaine/messages.ts';
+import { gateauxDeLigne } from '../../domaine/supplements.ts';
+import { estGateauSimpleSurCommande } from '../../domaine/minimums.ts';
 import type { JourFerme } from '../../domaine/calendrier.ts';
 import type { DelaisCommande, ReglementCommande } from '../../domaine/constantes.ts';
 
@@ -39,12 +41,123 @@ export type ContexteCalendrier = {
   gerant: boolean;
 };
 
-/** Les trois entrées de saisie, jamais mélangées (LOI 6). Le régime est lu sur le produit. */
-export const ENTREES: readonly { regime: RegimePrix; titre: string; detail: string }[] = [
-  { regime: 'B', titre: 'Salé sur commande', detail: 'Prix fixe à la pièce, minimums bloquants' },
-  { regime: 'C', titre: 'Gâteaux sur commande', detail: 'Prix par personne « à partir de »' },
-  { regime: 'A', titre: 'Catalogue comptoir', detail: 'Prix du comptoir, à la pièce ou au kilo' },
-];
+// ---------------------------------------------------------------------------
+// Grille unique de produits (retour du propriétaire, 15/10/2026)
+// ---------------------------------------------------------------------------
+// Plus d'onglets par régime : une seule grille, une recherche, des filtres
+// légers par rayon (`categorie`, donnée du catalogue). Le régime reste LU sur
+// chaque produit (LOI 6) — jamais déduit du nom ni de la place dans la grille.
+
+/** « Crème fraîche » se cherche en tapant « creme ». */
+export function normaliserRecherche(valeur: string): string {
+  return valeur.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+
+/** Rayons présents au catalogue de commande, dans l'ordre du catalogue (puces de filtre). */
+export function rayonsDe(catalogue: CatalogueCommande): string[] {
+  const vus: string[] = [];
+  for (const f of catalogue.fiches) {
+    if (f.produit.regimePrix !== null && !vus.includes(f.produit.categorie)) vus.push(f.produit.categorie);
+  }
+  return vus;
+}
+
+/**
+ * Produits affichés dans la grille. Sans recherche ni rayon choisi : tout le
+ * sur-commande (B, C) et, du comptoir (A), les seuls favoris — liste d'accès
+ * rapide (LOI 4 : un produit = une fiche, un favori n'apparaît jamais deux fois).
+ * Produit sans régime : jamais proposé (il ne peut pas être vendu).
+ */
+export function fichesVisibles(catalogue: CatalogueCommande, recherche: string, rayon: string | null): FicheCatalogue[] {
+  const mots = normaliserRecherche(recherche).split(/\s+/).filter(Boolean);
+  return catalogue.fiches.filter((f) => {
+    if (f.produit.regimePrix === null) return false;
+    if (rayon !== null && f.produit.categorie !== rayon) return false;
+    if (mots.length === 0 && rayon === null && f.produit.regimePrix === 'A' && !f.produit.estFavori) return false;
+    const texte = normaliserRecherche(`${f.produit.produit} ${f.produit.sousCategorie ?? ''} ${f.produit.categorie}`);
+    return mots.every((m) => texte.includes(m));
+  });
+}
+
+/**
+ * Un toucher sur une carte produit. 1 toucher = 1, 5 touchers = 5 (pièces ou
+ * parts) : la ligne existante du produit est augmentée de 1, sinon une ligne
+ * est créée à 1. AUCUN pré-remplissage au minimum : sous le seuil, le domaine
+ * refuse la ligne à la saisie avec sa sortie « Passer à N » (LOI 7).
+ * Produit au kilo (LOI 2) : jamais de « +1 » — la ligne est créée sans
+ * quantité et le pavé du POIDS s'ouvre.
+ * Gâteau simple sur commande (tailles standard, LOI 11 — données de la fiche,
+ * jugées par le domaine) : pas de « +1 » non plus, la taille se choisit aux
+ * boutons des tailles standard (champ « taille », sans pavé).
+ * Retourne les lignes, la clé de la ligne touchée et le champ à ouvrir au pavé.
+ */
+export function toucherProduit(
+  lignes: readonly LigneEcran[],
+  fiche: FicheCatalogue,
+): { lignes: LigneEcran[]; cle: string; champ: 'quantite' | 'symboles' | 'taille' } {
+  if (estGateauSimpleSurCommande(fiche)) {
+    let deja: LigneEcran | undefined;
+    for (const l of lignes) if (l.produitId === fiche.produit.id) deja = l;
+    if (deja) return { lignes: [...lignes], cle: deja.cle, champ: 'taille' };
+    const ligne = ligneVide(fiche.produit.id);
+    return { lignes: [...lignes, ligne], cle: ligne.cle, champ: 'taille' };
+  }
+  const auKilo = fiche.produit.unite === 'kg';
+  const symboles = fiche.prix.minParSymbole !== null;
+  let existante: LigneEcran | undefined;
+  for (const l of lignes) if (l.produitId === fiche.produit.id) existante = l;
+
+  if (existante) {
+    const cle = existante.cle;
+    const champ = symboles && existante.nbSymboles === null ? 'symboles' : 'quantite';
+    if (auKilo) return { lignes: [...lignes], cle, champ };
+    const suivante = (existante.quantite ?? 0) + 1;
+    return { lignes: lignes.map((l) => (l.cle === cle ? { ...l, quantite: suivante } : l)), cle, champ };
+  }
+  const ligne: LigneEcran = { ...ligneVide(fiche.produit.id), quantite: auKilo ? null : 1 };
+  // Number Cake : le nombre de symboles d'abord (il fixe le minimum de parts).
+  return { lignes: [...lignes, ligne], cle: ligne.cle, champ: symboles ? 'symboles' : 'quantite' };
+}
+
+/**
+ * Supplément au forfait (Photo, Écriture…) : défini par la DONNÉE `basePrix =
+ * 'forfait'`, comme le domaine (src/domaine/supplements.ts) — jamais par le nom.
+ */
+export function estSupplement(fiche: FicheTarifee): boolean {
+  return fiche.prix.basePrix === 'forfait';
+}
+
+/**
+ * Nombre de gâteaux au bon, compté par le DOMAINE (`gateauxDeLigne`) sur les
+ * données de chaque produit. Une ligne encore refusée (Layer Cake sous le
+ * minimum) compte déjà : le gâteau est bien demandé, les suppléments s'offrent.
+ * 0 → l'écran n'offre pas les suppléments (« Ajoutez d'abord un gâteau »).
+ */
+export function gateauxAuBon(
+  lignes: readonly LigneEcran[],
+  catalogue: CatalogueCommande | null,
+  famillesGateau: readonly string[],
+): number {
+  let n = 0;
+  for (const l of lignes) {
+    const f = ficheDe(catalogue, l.produitId);
+    if (!f) continue;
+    n += gateauxDeLigne(
+      { regimePrix: f.produit.regimePrix, basePrix: f.prix.basePrix, quantite: l.quantite ?? 0, famille: f.produit.famille },
+      famillesGateau,
+    );
+  }
+  return n;
+}
+
+/** Quantité déjà au bon pour un produit (pastille de la carte) : pièces/parts, ou grammes au kilo. */
+export function quantiteAuBon(lignes: readonly LigneEcran[], produitId: string): number | null {
+  let total: number | null = null;
+  for (const l of lignes) {
+    if (l.produitId === produitId && l.quantite !== null) total = (total ?? 0) + l.quantite;
+  }
+  return total;
+}
 
 /** `ResoudreProduit` du domaine branché sur le catalogue reçu (une seule date : celle de la prise). */
 export function resoudreLocal(catalogue: CatalogueCommande): ResoudreProduit {
@@ -87,6 +200,8 @@ export type LigneEcran = {
   precision: string;
   /** Accord du gérant (sous plancher ou ligne libre). */
   deverrouillage: Deverrouillage | null;
+  /** Accord du gérant pour une taille de gâteau hors standard (LOI 11) — distinct du prix. */
+  deverrouillageTaille: Deverrouillage | null;
 };
 
 let compteur = 0;
@@ -106,6 +221,7 @@ export function ligneVide(produitId: string | null): LigneEcran {
     nbObjets: null,
     precision: '',
     deverrouillage: null,
+    deverrouillageTaille: null,
   };
 }
 
@@ -122,6 +238,7 @@ export function versLigneSaisie(l: LigneEcran, fiche: FicheTarifee | null): Lign
     nbSymboles: l.nbSymboles,
     nbObjets: l.nbObjets,
     deverrouillage: l.deverrouillage,
+    deverrouillageTaille: l.deverrouillageTaille,
   };
   if (!l.produitId) return { ...base, libelle: l.libelleLibre, prixUnitaireCentimes: l.prixUnitaireCentimes };
   if (!fiche) return base;
@@ -138,7 +255,6 @@ export type EtatFormulaire = {
   acompteCentimes: number | null;
   totalConvenuCentimes: number | null;
   remise: Deverrouillage | null;
-  accordLendemain: Deverrouillage | null;
   texteGateau: string;
   sansEcriture: boolean;
   demandeInhabituelle: boolean;
@@ -157,7 +273,6 @@ export function versCommandeSaisie(
     heurePrise: prise.heurePrise,
     dateRetrait: e.dateRetrait ?? '',
     heureRetrait: e.heureRetrait || null,
-    accordLendemain: e.accordLendemain,
     lignes: e.lignes.map((l) => versLigneSaisie(l, ficheDe(catalogue, l.produitId))),
     acompteCentimes: e.acompteCentimes ?? 0,
     totalConvenuCentimes: e.totalConvenuCentimes,
@@ -284,4 +399,17 @@ export function refusAncienTarif(): Echec {
     { action: 'modifier les produits, la date ou les montants d’une commande prise avec l’ancien tarif', role: 'gérant' },
     { champ: 'lignes' },
   );
+}
+
+/**
+ * Mise à jour d'une ligne de l'écran. Un accord de taille (LOI 11) porte sur
+ * UNE quantité : si la quantité change sans nouvel accord, il tombe (le
+ * domaine redemandera le code gérant pour une autre taille hors standard).
+ */
+export function majLigneEcran(l: LigneEcran, partiel: Partial<LigneEcran>): LigneEcran {
+  const suivante = { ...l, ...partiel };
+  if ('quantite' in partiel && partiel.quantite !== l.quantite && !('deverrouillageTaille' in partiel)) {
+    suivante.deverrouillageTaille = null;
+  }
+  return suivante;
 }

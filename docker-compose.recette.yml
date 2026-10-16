@@ -1,0 +1,37 @@
+# docker-compose.recette.yml — agent `deploiement`
+#
+# Base de RECETTE locale (PostgreSQL 15, même version majeure que Supabase).
+# Elle ne contient que des données de test et n'a AUCUN lien avec la
+# production. Guide : docs/RECETTE.md. Ne pas lancer à la main : passer par
+#   npm run recette:base | recette:arreter | recette:effacer
+#
+# Identifiants ci-dessous : valeurs de test locales, sans valeur réelle.
+# La base n'écoute que sur 127.0.0.1 (jamais exposée au wifi du magasin) et
+# sur un port non standard (55432) pour ne jamais être confondue avec une
+# autre base PostgreSQL.
+
+name: pain-recette
+
+services:
+  base:
+    image: postgres:15-alpine
+    container_name: pain-recette-base
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pain_recette
+      POSTGRES_USER: recette
+      POSTGRES_PASSWORD: recette_locale_sans_valeur
+      TZ: Europe/Brussels
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - pain_recette_donnees:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U recette -d pain_recette"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pain_recette_donnees:
+    name: pain_recette_donnees

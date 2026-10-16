@@ -9,7 +9,7 @@
 //
 // Ordre des contrôles = ordre des champs à l'écran : statut/modification,
 // client, téléphone, date et heure de prise (automatiques), date de retrait,
-// heure de retrait, lignes (une par une), délai, lendemain, prix convenu,
+// heure de retrait, lignes (une par une : quantité, minimum, taille standard, prix), délai, lendemain, prix convenu,
 // acompte, puis les signalements non bloquants (écriture, commande inhabituelle).
 
 import type { Echec, Resultat, Signalement } from './resultat.ts';
@@ -21,7 +21,7 @@ import type { JourFerme } from './calendrier.ts';
 import { FAMILLES_GATEAU } from './constantes.ts';
 import type { DelaisCommande, ReglementCommande } from './constantes.ts';
 import { controlerSupplements, gateauxDeLigne } from './supplements.ts';
-import { validerQuantiteMin, validerMaximum } from './minimums.ts';
+import { validerQuantiteMin, validerMaximum, validerTailleGateau } from './minimums.ts';
 import { deverrouillageValide, prixLigne } from './regimes.ts';
 import { validerQuantite } from './unites.ts';
 import {
@@ -79,6 +79,11 @@ export type LigneSaisie = {
   nbObjets?: number | null;
   /** Accord du gérant : prix sous plancher (C) ou prix d'une ligne libre. */
   deverrouillage?: Deverrouillage | null;
+  /**
+   * Accord du gérant pour une taille de gâteau hors des tailles standard (LOI 11).
+   * Distinct de `deverrouillage` : autoriser un prix n'autorise pas une taille.
+   */
+  deverrouillageTaille?: Deverrouillage | null;
 };
 
 export type LigneControlee = {
@@ -101,7 +106,8 @@ export type LigneControlee = {
   nbGateaux: number;
   versionCode?: string;
   /** Prix sous plancher ou ligne libre : qui a autorisé, quand (à tracer en base). */
-  autorisation?: Deverrouillage;
+  autorisation?: Deverrouillage;  /** Taille hors standard : qui a autorisé, quand (à tracer en base). */
+  autorisationTaille?: Deverrouillage;
 };
 
 export type CommandeSaisie = {
@@ -117,7 +123,10 @@ export type CommandeSaisie = {
   dateRetrait: DateISO;
   /** Heure de retrait « HH:MM ». Obligatoire si la commande contient de la pâtisserie (R54). */
   heureRetrait?: string | null;
-  /** Accord du responsable pour un retrait le lendemain (R53), tracé. */
+  /**
+   * @deprecated R53 : le lendemain est accepté sans accord depuis le 15/10/2026.
+   * Champ IGNORÉ par le domaine, gardé le temps que l'écran et la route le retirent.
+   */
   accordLendemain?: Deverrouillage | null;
   lignes: readonly LigneSaisie[];
   acompteCentimes?: number | null;
@@ -163,7 +172,10 @@ export type CommandeControlee = {
   dateRetrait: DateISO;
   /** « HH:MM », ou null si non précisée (commande sans pâtisserie). */
   heureRetrait: string | null;
-  /** Retrait le lendemain accordé par le responsable (à tracer en base). */
+  /**
+   * @deprecated R53 : plus jamais renseigné (lendemain accepté sans accord,
+   * 15/10/2026). Gardé le temps que la route et la base retirent le champ.
+   */
   accordLendemain?: Deverrouillage;
   /** Veille ouvrée du retrait (fiche de production). */
   dateProduction: DateISO | null;
@@ -248,6 +260,11 @@ function controlerLigneSansPrefixe(
   const min = validerQuantiteMin(fiche, saisie.quantite, { nbSymboles });
   if (!min.ok) return min;
 
+  // Tailles standard (LOI 11) : après le minimum, gâteaux simples seulement.
+  const taille = validerTailleGateau(fiche, saisie.quantite, ctx.reglement.taillesGateau, saisie.deverrouillageTaille);
+  if (!taille.ok) return taille;
+  signalements.push(...taille.signalements);
+
   const prixFixe = !(fiche.produit.regimePrix === 'C' && fiche.prix.prixEstPlancher);
   if (prixFixe && saisie.prixUnitaireCentimes != null && saisie.prixUnitaireCentimes !== fiche.prix.prixCentimes) {
     // L'écran affichait un autre prix que le catalogue à cette date : tablette
@@ -296,6 +313,9 @@ function controlerLigneSansPrefixe(
   };
   if (fiche.prix.versionCode) ligne.versionCode = fiche.prix.versionCode;
   if (prix.donnees.sousPlancher) ligne.autorisation = prix.donnees.sousPlancher;
+  if (taille.signalements.length > 0 && saisie.deverrouillageTaille) {
+    ligne.autorisationTaille = { par: saisie.deverrouillageTaille.par.trim(), le: saisie.deverrouillageTaille.le };
+  }
   return succes(ligne, ...signalements);
 }
 
@@ -403,22 +423,15 @@ function analyser(c: CommandeSaisie, ctx: ContexteCommande): Analyse {
   if (lignesOk) blocages.push(...controlerSupplements(lignes));
   signalements.push(...reperesDoublons(lignes.map((l) => ({ produitId: l.produitId, libelle: l.libelle }))));
 
-  // Délai (n°17) puis lendemain (R53) : le plus restrictif s'applique. Le
-  // lendemain n'est contrôlé que si le délai passe — le code gérant ne lève pas
-  // le délai, le proposer serait une fausse sortie (HYPOTHÈSE, question n°49).
+  // Délai (n°17) puis lendemain (R53). Le délai refuse le jour même (et un
+  // gâteau à étages trop tôt) ; le lendemain, s'il passe le délai, est ACCEPTÉ
+  // avec une simple information (décision du propriétaire du 15/10/2026).
   const delai = lignes.length > 0 ? Math.max(...lignes.map((l) => l.delaiJoursOuvres)) : 0;
   let delaiOk = true;
   if (dateRetrait && lignes.length > 0) {
     delaiOk = garder(validerDelai(dateRetrait, aujourdhui, delai, ctx.joursFermes)) !== undefined;
   }
-  let accordLendemain: Deverrouillage | undefined;
-  if (dateRetrait && delaiOk) {
-    const r = validerLendemain(dateRetrait, aujourdhui, ctx.joursFermes, c.accordLendemain);
-    garder(r);
-    if (r.ok && r.signalements.length > 0 && c.accordLendemain) {
-      accordLendemain = { par: c.accordLendemain.par.trim(), le: c.accordLendemain.le };
-    }
-  }
+  if (dateRetrait && delaiOk) garder(validerLendemain(dateRetrait, aujourdhui, ctx.joursFermes));
 
   const totalTarif = somme(lignes.map((l) => l.totalCentimes));
   let total = totalTarif;
@@ -456,7 +469,6 @@ function analyser(c: CommandeSaisie, ctx: ContexteCommande): Analyse {
     dateProduction: veilleOuvree(dateRetrait, ctx.joursFermes),
     delaiJoursOuvres: delai,
   };
-  if (accordLendemain) donnees.accordLendemain = accordLendemain;
   if (total < totalTarif && c.remise) donnees.remise = { par: c.remise.par.trim(), le: c.remise.le };
   return { blocages, signalements, donnees };
 }

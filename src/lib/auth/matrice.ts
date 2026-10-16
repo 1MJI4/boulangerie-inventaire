@@ -28,6 +28,7 @@ export const MATRICE_ACCES: Record<string, Partial<Record<Methode, EntreeMatrice
   'src/app/api/calendrier/route.ts': {
     GET: { role: 'tablette', action: 'consulter le calendrier' },
   },
+  'src/app/api/reglages/route.ts': { GET: { role: 'tablette', action: 'consulter les réglages' }, PUT: { role: 'gerant', action: 'modifier les réglages' } },
   'src/app/api/inventaires/route.ts': {
     GET: { role: 'tablette', action: 'consulter un inventaire' },
     POST: { role: 'tablette', action: 'saisir un inventaire' },

@@ -288,7 +288,16 @@ const CHECKS: Record<string, CibleCheck> = {
   LigneCommande_deverrouillage_nom_non_vide: { code: 'ERR_SAISIE_INVALIDE', champ: 'sousPlancherAutorisePar', champLibelle: 'nom du gérant' },
   LigneCommande_nbObjets_positif: { code: 'ERR_QUANTITE_INVALIDE', champ: 'nbObjets' },
   LigneCommande_nbSymboles_positif: { code: 'ERR_SAISIE_INVALIDE', champ: 'nbSymboles', champLibelle: 'chiffres ou lettres' },
-  Reglage_reglement_valide: { code: 'ERR_CONFIGURATION_SERVEUR' },
+  // Accord du gérant pour une taille de gâteau hors liste (migration 20261015150000).
+  LigneCommande_taille_trace: { code: 'ERR_DROIT_INSUFFISANT', champ: 'tailleAutoriseePar' },
+  LigneCommande_taille_nom_non_vide: { code: 'ERR_SAISIE_INVALIDE', champ: 'tailleAutoriseePar', champLibelle: 'nom du gérant' },
+  // L'écran des réglages ÉCRIT dans Reglage : une valeur refusée par le CHECK
+  // (fonction "reglage_valeur_valide", étendue par 20261015150000 ; le nom de
+  // la contrainte, lui, reste "Reglage_reglement_valide") est une saisie mal
+  // formée du gérant, pas une panne. Pas de champLibelle : la contrainte ne dit
+  // pas quelle clé est fautive → message générique « vérifiez la saisie ».
+  // La suppression d'une clé reste ERR_CONFIGURATION_SERVEUR (déclencheur P0001).
+  Reglage_reglement_valide: { code: 'ERR_SAISIE_INVALIDE', champ: 'reglages' },
 };
 
 /** Liste exposée pour les tests (un cas par contrainte répertoriée). */

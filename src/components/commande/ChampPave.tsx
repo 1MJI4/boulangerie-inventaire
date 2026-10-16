@@ -3,9 +3,10 @@
 // src/components/commande/ChampPave.tsx
 //
 // Un champ chiffré de la commande, fermé : un gros bouton qui affiche la
-// valeur. Touché, il déplie le pavé de l'application (src/components/saisie)
-// juste en dessous — jamais le clavier du système (R37). Un seul pavé ouvert
-// à la fois : c'est l'écran qui décide lequel (`ouvert`).
+// valeur. Touché, il ouvre le pavé de l'application (src/components/saisie) —
+// jamais le clavier du système (R37). Un seul pavé ouvert à la fois : c'est
+// l'écran qui décide lequel (`ouvert`). Sans `children`, le pavé s'affiche
+// ailleurs (colonne du pavé, `DispositionAvecPave`) ; avec, juste en dessous.
 
 import type { ReactNode } from 'react';
 
@@ -26,8 +27,8 @@ export function ChampPave({
   ouvert: boolean;
   onBasculer: () => void;
   enErreur?: boolean;
-  /** Le pavé, rendu seulement quand `ouvert`. */
-  children: ReactNode;
+  /** Contenu déplié sous le champ quand `ouvert` (sinon le pavé vit dans la colonne du pavé). */
+  children?: ReactNode;
   className?: string;
 }) {
   const bord = enErreur ? 'border-bloquant bg-bloquant-doux' : ouvert ? 'border-accent' : 'border-line-fort';
@@ -44,7 +45,7 @@ export function ChampPave({
           {valeur ?? vide}
         </span>
       </button>
-      {ouvert ? <div className="mt-2">{children}</div> : null}
+      {ouvert && children ? <div className="mt-2">{children}</div> : null}
     </div>
   );
 }

@@ -11,12 +11,14 @@
 // fermeture ni calcul de jour de semaine hors de `src/domaine/`). Il ne sait
 // pas non plus le délai de préparation : `premiereDate` le lui donne.
 //
-// Présentation en liste de jours (et non en grille de calendrier) : de grosses
-// cases de 64 px, le nom du jour écrit en toutes lettres, rien à aligner sur
-// des colonnes lun→dim.
+// Présentation : 2 semaines sur 2 rangées de 7 cases (réglable), sans faire
+// défiler la page. Les semaines suivantes s'affichent par les flèches ou en
+// glissant le doigt horizontalement sur la grille. Chaque rangée commence le
+// même jour que la date du jour : les colonnes restent alignées, le nom du
+// jour est écrit dans chaque case.
 
-import { useState } from 'react';
-import { aujourdhuiIso, joursSuccessifs, libelleLong, libelleMois, morceauxDate } from './dates';
+import { useRef, useState, type PointerEvent } from 'react';
+import { aujourdhuiIso, decalagePour, fenetreSemaines, libelleLong, libelleMois, morceauxDate } from './dates';
 
 export type EtatJour = { ferme: boolean; libelle?: string };
 
@@ -31,7 +33,9 @@ export type PropsSelecteurDateRetrait = {
   aujourdhui?: string;
   /** Première date autorisée (délai de préparation, calculé par le domaine). */
   premiereDate?: string;
-  /** Nombre de jours affichés au départ (défaut 21). Un bouton en ajoute. */
+  /** Nombre de rangées de 7 jours affichées à la fois (défaut 2). */
+  semainesVisibles?: number;
+  /** @deprecated Ignoré depuis l'affichage par semaines : utiliser `semainesVisibles`. */
   nombreJours?: number;
   /** Titre du groupe (défaut « Jour de retrait »). */
   titre?: string;
@@ -39,7 +43,10 @@ export type PropsSelecteurDateRetrait = {
   decritPar?: string;
 };
 
-const PAS_SUPPLEMENTAIRE = 21;
+/** On ne prend pas de commande à plus d'un an (garde-fou d'affichage, pas une règle). */
+const SEMAINES_MAX = 52;
+/** Distance minimale d'un glissement horizontal pour changer de semaine. */
+const SEUIL_GLISSEMENT_PX = 48;
 
 export function SelecteurDateRetrait({
   valeur,
@@ -47,24 +54,64 @@ export function SelecteurDateRetrait({
   estJourFerme,
   aujourdhui,
   premiereDate,
-  nombreJours = 21,
+  semainesVisibles = 2,
   titre = 'Jour de retrait',
   enErreur = false,
   decritPar,
 }: PropsSelecteurDateRetrait) {
   const [aujourdhuiAppareil] = useState(() => aujourdhuiIso());
-  const [nombre, setNombre] = useState(nombreJours);
-
   const debut = aujourdhui ?? aujourdhuiAppareil;
-  const jours = joursSuccessifs(debut, nombre);
-  const valeurPlusLoin = valeur !== null && valeur > jours[jours.length - 1];
+  const rangees = Math.max(1, Math.floor(semainesVisibles));
+  const decalageMax = Math.max(0, SEMAINES_MAX - rangees);
+
+  // Au montage : la semaine de la date déjà choisie (commande rouverte).
+  const [decalage, setDecalage] = useState(() =>
+    valeur !== null && valeur >= debut ? Math.min(decalagePour(debut, valeur), decalageMax) : 0,
+  );
+
+  const jours = fenetreSemaines(debut, decalage, rangees);
+  const premier = jours[0];
+  const dernier = jours[jours.length - 1];
+  const valeurHorsVue = valeur !== null && valeur >= debut && (valeur < premier || valeur > dernier);
+
+  const moisPremier = libelleMois(premier);
+  const moisDernier = libelleMois(dernier);
+  const titrePeriode = moisPremier === moisDernier ? moisPremier : `${moisPremier} – ${moisDernier}`;
+
+  function allerA(d: number) {
+    setDecalage(Math.min(Math.max(0, d), decalageMax));
+  }
+
+  // Glissement horizontal : une semaine de plus ou de moins. Le « clic » qui
+  // suit un glissement est ignoré, sinon on choisirait le jour sous le doigt.
+  const depart = useRef<{ x: number; y: number } | null>(null);
+  const aGlisse = useRef(false);
+
+  function auPose(e: PointerEvent<HTMLUListElement>) {
+    depart.current = { x: e.clientX, y: e.clientY };
+    aGlisse.current = false;
+  }
+  function auLever(e: PointerEvent<HTMLUListElement>) {
+    const d = depart.current;
+    depart.current = null;
+    if (!d) return;
+    const dx = e.clientX - d.x;
+    const dy = e.clientY - d.y;
+    if (Math.abs(dx) >= SEUIL_GLISSEMENT_PX && Math.abs(dx) > Math.abs(dy)) {
+      aGlisse.current = true;
+      allerA(decalage + (dx < 0 ? 1 : -1));
+    }
+  }
+
+  const classeFleche =
+    'inline-flex h-12 min-w-12 items-center justify-center rounded-xl border border-line-fort bg-surface px-3 text-2xl font-semibold leading-none text-ink hover:bg-surface-2 active:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40';
 
   return (
     <fieldset aria-describedby={decritPar} aria-invalid={enErreur || undefined} className="min-w-0">
       <legend className="mb-2 text-base font-semibold text-ink">{titre}</legend>
 
       {valeur ? (
-        <p className="mb-3 text-base text-ink" aria-live="polite">
+        <p className="mb-2 text-base text-ink" aria-live="polite">
           Choisi : <strong className="font-semibold">{libelleLong(valeur)}</strong>
           {valeur < debut ? (
             <span className="ml-2 font-semibold text-bloquant">— date passée, choisissez un autre jour</span>
@@ -72,38 +119,82 @@ export function SelecteurDateRetrait({
         </p>
       ) : null}
 
+      <div className="mb-2 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => allerA(decalage - 1)}
+          disabled={decalage === 0}
+          aria-label="Semaine précédente"
+          className={classeFleche}
+        >
+          <span aria-hidden>‹</span>
+        </button>
+        <p
+          className="min-w-0 flex-1 truncate text-center text-sm font-semibold uppercase tracking-wide text-ink-2"
+          aria-live="polite"
+        >
+          {titrePeriode}
+        </p>
+        <button
+          type="button"
+          onClick={() => allerA(decalage + 1)}
+          disabled={decalage >= decalageMax}
+          aria-label="Semaine suivante"
+          className={classeFleche}
+        >
+          <span aria-hidden>›</span>
+        </button>
+      </div>
+
       <ul
-        className={`grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 ${
+        onPointerDown={auPose}
+        onPointerUp={auLever}
+        onPointerCancel={() => {
+          depart.current = null;
+        }}
+        onClickCapture={(e) => {
+          if (aGlisse.current) {
+            aGlisse.current = false;
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }}
+        // pan-y : le défilement vertical reste au navigateur, l'horizontal change de semaine.
+        style={{ touchAction: 'pan-y' }}
+        className={`grid select-none grid-cols-7 gap-1 sm:gap-1.5 ${
           enErreur ? 'rounded-xl outline-2 outline-offset-4 outline-bloquant' : ''
         }`}
       >
-        {jours.map((iso, i) => {
-          const nouveauMois = i === 0 || iso.slice(0, 7) !== jours[i - 1].slice(0, 7);
-          return (
-            <JourItem
-              key={iso}
-              iso={iso}
-              enteteMois={nouveauMois ? libelleMois(iso) : null}
-              estAujourdhui={iso === debut}
-              choisi={iso === valeur}
-              tropTot={premiereDate !== undefined && iso < premiereDate}
-              etat={estJourFerme(iso)}
-              onChoisir={onChange}
-            />
-          );
-        })}
+        {jours.map((iso, i) => (
+          <JourItem
+            key={iso}
+            iso={iso}
+            afficherMois={i === 0 || iso.endsWith('-01')}
+            estAujourdhui={iso === debut}
+            choisi={iso === valeur}
+            tropTot={premiereDate !== undefined && iso < premiereDate}
+            etat={estJourFerme(iso)}
+            onChoisir={onChange}
+          />
+        ))}
       </ul>
 
-      <button
-        type="button"
-        onClick={() => setNombre((n) => n + PAS_SUPPLEMENTAIRE)}
-        className="mt-3 inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-line-fort bg-surface px-4 text-base font-medium text-ink hover:bg-surface-2 sm:w-auto"
-      >
-        Voir les jours suivants
-      </button>
-
-      {valeurPlusLoin ? (
-        <p className="mt-2 text-sm text-ink-2">La date choisie est plus loin : « Voir les jours suivants » pour l’afficher.</p>
+      {valeurHorsVue ? (
+        <button
+          type="button"
+          onClick={() => allerA(decalagePour(debut, valeur))}
+          className="mt-2 inline-flex min-h-12 items-center justify-center rounded-xl border border-line-fort bg-surface px-4 text-sm font-medium text-ink hover:bg-surface-2"
+        >
+          Revoir le jour choisi
+        </button>
+      ) : decalage > 0 ? (
+        <button
+          type="button"
+          onClick={() => allerA(0)}
+          className="mt-2 inline-flex min-h-12 items-center justify-center rounded-xl px-2 text-sm font-medium text-ink-2 underline underline-offset-4 hover:text-ink"
+        >
+          Revenir à aujourd’hui
+        </button>
       ) : null}
     </fieldset>
   );
@@ -111,7 +202,7 @@ export function SelecteurDateRetrait({
 
 function JourItem({
   iso,
-  enteteMois,
+  afficherMois,
   estAujourdhui,
   choisi,
   tropTot,
@@ -119,7 +210,7 @@ function JourItem({
   onChoisir,
 }: {
   iso: string;
-  enteteMois: string | null;
+  afficherMois: boolean;
   estAujourdhui: boolean;
   choisi: boolean;
   tropTot: boolean;
@@ -142,40 +233,31 @@ function JourItem({
   }
 
   return (
-    <>
-      {enteteMois ? (
-        <li aria-hidden className="col-span-full mt-2 text-sm font-semibold uppercase tracking-wide text-ink-2 first:mt-0">
-          {enteteMois}
-        </li>
-      ) : null}
-      <li>
-        <button
-          type="button"
-          disabled={indisponible}
-          aria-pressed={choisi}
-          aria-label={`${libelleLong(iso)}${raison ? ` — ${raison}${etat.libelle ? ` (${etat.libelle})` : ''}` : ''}`}
-          onClick={() => {
-            if (!indisponible) onChoisir(iso);
-          }}
-          className={`flex min-h-16 w-full flex-col items-center justify-center rounded-xl border-2 px-1 py-1.5 text-center ${classes}`}
-        >
-          <span className="text-sm font-medium leading-tight">
-            {jour}
-            {estAujourdhui ? ' · auj.' : ''}
+    <li className="min-w-0">
+      <button
+        type="button"
+        disabled={indisponible}
+        aria-pressed={choisi}
+        aria-current={estAujourdhui ? 'date' : undefined}
+        aria-label={`${libelleLong(iso)}${raison ? ` — ${raison}${etat.libelle ? ` (${etat.libelle})` : ''}` : ''}`}
+        title={etat.libelle}
+        onClick={() => {
+          if (!indisponible) onChoisir(iso);
+        }}
+        className={`flex min-h-14 w-full flex-col items-center justify-center rounded-xl border-2 px-0.5 py-1 text-center ${classes}`}
+      >
+        <span className="text-xs font-medium leading-tight">{estAujourdhui ? 'auj.' : jour}</span>
+        <span className={`chiffres text-xl font-semibold leading-tight ${indisponible ? 'line-through' : ''}`}>
+          {numero}
+        </span>
+        {raison ? (
+          <span className="max-w-full truncate rounded bg-surface px-1 text-[0.6875rem] font-bold uppercase leading-tight text-ink">
+            {raison}
           </span>
-          <span className={`chiffres text-2xl font-semibold leading-tight ${indisponible ? 'line-through' : ''}`}>
-            {numero}
-          </span>
-          {raison ? (
-            <span className="rounded bg-surface px-1.5 text-xs font-bold uppercase leading-tight text-ink">
-              {raison}
-              {etat.ferme && etat.libelle ? ` · ${etat.libelle}` : ''}
-            </span>
-          ) : (
-            <span className="text-xs leading-tight opacity-80">{mois}</span>
-          )}
-        </button>
-      </li>
-    </>
+        ) : (
+          <span className="text-[0.6875rem] leading-tight opacity-80">{afficherMois ? mois : ' '}</span>
+        )}
+      </button>
+    </li>
   );
 }

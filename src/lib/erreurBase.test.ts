@@ -448,8 +448,13 @@ const CAS_CHECK: CasCheck[] = [
     message: messagePour('ERR_QUANTITE_INVALIDE', { unite: 'piece' }), statut: 422 },
   { contrainte: 'LigneCommande_nbSymboles_positif', code: 'ERR_SAISIE_INVALIDE', champ: 'nbSymboles',
     message: messagePour('ERR_SAISIE_INVALIDE', { champLibelle: 'chiffres ou lettres' }), statut: 422 },
-  { contrainte: 'Reglage_reglement_valide', code: 'ERR_CONFIGURATION_SERVEUR',
-    message: (reference) => messagePour('ERR_CONFIGURATION_SERVEUR', { reference }), statut: 500 },
+  { contrainte: 'LigneCommande_taille_trace', code: 'ERR_DROIT_INSUFFISANT', champ: 'tailleAutoriseePar',
+    message: messagePour('ERR_DROIT_INSUFFISANT', {}), statut: 403 },
+  { contrainte: 'LigneCommande_taille_nom_non_vide', code: 'ERR_SAISIE_INVALIDE', champ: 'tailleAutoriseePar',
+    message: messagePour('ERR_SAISIE_INVALIDE', { champLibelle: 'nom du gérant' }), statut: 422 },
+  // Écran des réglages : valeur refusée par le CHECK = saisie du gérant, pas une panne.
+  { contrainte: 'Reglage_reglement_valide', code: 'ERR_SAISIE_INVALIDE', champ: 'reglages',
+    message: messagePour('ERR_SAISIE_INVALIDE', {}), statut: 422 },
 ];
 
 test('chaque CHECK répertorié a un cas de test', () => {
@@ -461,7 +466,8 @@ for (const c of CAS_CHECK) {
     const lignes: LigneJournal[] = [];
     const retablir = definirDestination((l) => lignes.push(l));
     try {
-      const { corps, statut } = traiterErreur(erreurCheck(c.contrainte), 'POST /api/commandes');
+      // Table réelle = préfixe du nom de contrainte (Commande, LigneCommande, Reglage).
+      const { corps, statut } = traiterErreur(erreurCheck(c.contrainte, c.contrainte.split('_')[0]), 'POST /api/commandes');
       verifierRefus(corps, c, statut);
       // Le nom de contrainte ne va qu'au journal.
       assert.ok(!JSON.stringify(corps).includes(c.contrainte));

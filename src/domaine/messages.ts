@@ -123,13 +123,28 @@ export type ParametresMessages = {
    * d'`acompteFormate` ; chacun peut manquer → variante générique.
    */
   ERR_ACOMPTE_INSUFFISANT: { acompteFormate?: string; minimumFormate?: string; pourcentage?: number };
-  /** LOI 11 — commande pour le lendemain sans accord du responsable. `dateRetrait` déjà formatée (absente si refus de la base). */
+  /**
+   * OBSOLÈTE (R53 : lendemain accepté depuis le 15/10/2026, plus émis par le domaine).
+   * Gardé tant que le déclencheur de la base (migration 20261015140000) et
+   * src/lib/erreurBase.ts le produisent encore. À retirer avec eux.
+   */
   ERR_COMMANDE_LENDEMAIN: { dateRetrait?: string };
   /**
    * LOI 11 — heure de retrait avant l'ouverture des commandes pâtisserie.
    * `heureMin` déjà formatée (« 9h00 ») ; horaires = donnée fournie par l'appelant.
    */
-  ERR_HEURE_RETRAIT_TROP_TOT: { heureMin: string; typeJour: 'semaine' | 'week-end' };
+  /**
+   * `heureMin` : première heure de retrait, déjà formatée (« 12h00 »).
+   * `jour` : nom du jour de retrait (« samedi »), fourni par regles-metier.
+   * Horaires réglables jour par jour et par date exceptionnelle (15/10/2026).
+   */
+  ERR_HEURE_RETRAIT_TROP_TOT: { heureMin: string; jour: string };
+  /**
+   * LOI 11 — gâteau simple sur commande hors des tailles standard (donnée réglable).
+   * `parts` : taille demandée ; `inferieure` / `superieure` : tailles standard les
+   * plus proches, `null` s'il n'y en a pas de ce côté.
+   */
+  ERR_TAILLE_NON_STANDARD: { parts: number; inferieure: number | null; superieure: number | null };
   /** LOI 11 — décompte des articles devant le client non terminé à la remise. */
   ERR_DECOMPTE_INCOMPLET: { restants: number };
 
@@ -158,8 +173,8 @@ export type ParametresMessages = {
   /** `par` : nom déclaré du gérant qui a déverrouillé. */
   AVERT_SOUS_PLANCHER_AUTORISE: { produit: string; par: string };
   AVERT_REMISE_AUTORISEE: { par: string };
-  /** LOI 11 — commande pour le lendemain déverrouillée par code gérant (tracé). */
-  AVERT_COMMANDE_LENDEMAIN_AUTORISEE: { par: string };
+  /** LOI 11 — taille de gâteau hors standard, déverrouillée par le gérant (tracé). */
+  AVERT_TAILLE_NON_STANDARD_AUTORISEE: { par: string };
   /** LOI 11 — commande inhabituelle (ingrédients, moules spéciaux…). */
   AVERT_COMMANDE_INHABITUELLE: Record<string, never>;
   /** LOI 11 — inventaire commencé avant l'heure de fermeture. `heureFermeture` déjà formatée (donnée). */
@@ -175,6 +190,8 @@ export type ParametresMessages = {
   /** `dateEffet` : date déjà formatée. */
   INFO_TARIF_EN_VIGUEUR: { dateEffet: string };
   INFO_EN_ATTENTE_ENVOI: { nombre: number };
+  /** LOI 11 — retrait le premier jour ouvert suivant : accepté, l'atelier est prévenu. `dateRetrait` déjà formatée. */
+  INFO_COMMANDE_LENDEMAIN: { dateRetrait: string };
 
   // --- Données incohérentes (famille 5) ---------------------------------------
   ERR_TARIF_ABSENT: { produit: string; date: string };
@@ -528,7 +545,7 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
   },
   ERR_COMMANDE_LENDEMAIN: {
     niveau: 'bloquant',
-    cas: 'Commande pour le lendemain sans accord préalable du responsable (règlement intérieur, LOI 11).',
+    cas: 'OBSOLÈTE — refus du lendemain encore émis par la base ; le domaine l’accepte depuis le 15/10/2026 (LOI 11).',
     message: (p) =>
       (p.dateRetrait
         ? `Retrait le ${p.dateRetrait} : une commande pour le lendemain doit d’abord être acceptée par le responsable. `
@@ -541,9 +558,26 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     niveau: 'bloquant',
     cas: 'Heure de retrait avant l’heure d’ouverture des commandes pâtisserie (horaires = donnée, LOI 11).',
     message: (p) =>
-      `Les commandes pâtisserie sont disponibles à partir de ${p.heureMin} ` +
-      `${p.typeJour === 'semaine' ? 'en semaine' : 'le week-end'}. Choisissez une heure de retrait à partir de ${p.heureMin}.`,
+      `Les commandes pâtisserie sont disponibles à partir de ${p.heureMin} ce ${p.jour}. ` +
+      `Choisissez une heure de retrait à partir de ${p.heureMin}.`,
     correction: (p) => `Passer à ${p.heureMin}`,
+  },
+  ERR_TAILLE_NON_STANDARD: {
+    niveau: 'bloquant',
+    cas: 'Gâteau simple sur commande dans une taille hors des tailles standard (liste = donnée, LOI 11). Déverrouillable par le gérant.',
+    message: (p) => {
+      const proches = [p.inferieure, p.superieure].filter((t): t is number => t !== null);
+      const tailles = proches.length > 0 ? proches.join(' ou ') : null;
+      return tailles
+        ? `Ce gâteau se fait en ${tailles} parts, pas en ${p.parts}. ` +
+            `Choisissez une taille standard ou demandez au gérant de déverrouiller.`
+        : `Ce gâteau ne se fait pas en ${p.parts} parts. ` +
+            `Choisissez une taille standard ou demandez au gérant de déverrouiller.`;
+    },
+    correction: (p) => {
+      const t = p.superieure ?? p.inferieure;
+      return t === null ? 'Choisir une taille standard' : `Passer à ${t} parts`;
+    },
   },
   ERR_DECOMPTE_INCOMPLET: {
     niveau: 'bloquant',
@@ -653,10 +687,10 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     cas: 'Prix convenu sous le total du tarif, déverrouillé par le gérant (tracé).',
     message: (p) => `Remise sur le total autorisée par ${p.par}. Ce déverrouillage est enregistré.`,
   },
-  AVERT_COMMANDE_LENDEMAIN_AUTORISEE: {
+  AVERT_TAILLE_NON_STANDARD_AUTORISEE: {
     niveau: 'avertissement',
-    cas: 'Commande pour le lendemain déverrouillée par code gérant (tracé, LOI 11).',
-    message: (p) => `Commande pour le lendemain autorisée par ${p.par}. Ce déverrouillage est enregistré.`,
+    cas: 'Gâteau simple dans une taille hors standard, déverrouillé par le gérant (tracé, LOI 11).',
+    message: (p) => `Taille de gâteau hors standard autorisée par ${p.par}. Ce déverrouillage est enregistré.`,
   },
   AVERT_COMMANDE_INHABITUELLE: {
     niveau: 'avertissement',
@@ -709,6 +743,11 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     message: (p) =>
       `${p.nombre} ${pluriel(p.nombre, 'ligne en attente', 'lignes en attente')} d’envoi. ` +
       `Elles partiront toutes seules au retour du réseau.`,
+  },
+  INFO_COMMANDE_LENDEMAIN: {
+    niveau: 'information',
+    cas: 'Retrait le premier jour ouvert suivant la prise : accepté, l’atelier doit être prévenu (LOI 11, décision du 15/10/2026).',
+    message: () => `Commande pour demain : prévenez l’atelier.`,
   },
 
   // --- Données incohérentes -----------------------------------------------------------

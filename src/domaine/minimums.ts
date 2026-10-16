@@ -15,7 +15,8 @@
 import type { Resultat } from './resultat.ts';
 import { succes } from './resultat.ts';
 import { signaler } from './messages.ts';
-import type { FicheTarifee } from './types.ts';
+import { deverrouillageValide } from './regimes.ts';
+import type { Deverrouillage, FicheTarifee } from './types.ts';
 
 function libelleUnite(fiche: FicheTarifee, n: number): string {
   if (fiche.prix.basePrix === 'personne') return n > 1 ? 'parts' : 'part';
@@ -106,5 +107,88 @@ export function validerMaximum(fiche: FicheTarifee, nbPains: number, nbObjets: n
       { maximum: max.valeur, demande: nbObjets },
       { champ: 'quantite', valeurProposee: painsNecessaires },
     ),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// R59 — tailles standard d'un gâteau simple sur commande (LOI 11, 15/10/2026)
+// ---------------------------------------------------------------------------
+
+/**
+ * Tailles standard les plus proches de `parts`, strictement en dessous et
+ * strictement au-dessus (`null` s'il n'y en a pas). Les tailles invalides
+ * (non entières, ≤ 0) de la liste sont ignorées ; l'ordre de la liste est libre.
+ */
+export function taillesProches(
+  parts: number,
+  tailles: readonly number[],
+): { inferieure: number | null; superieure: number | null } {
+  let inferieure: number | null = null;
+  let superieure: number | null = null;
+  for (const t of tailles) {
+    if (!Number.isSafeInteger(t) || t <= 0) continue;
+    if (t < parts && (inferieure === null || t > inferieure)) inferieure = t;
+    if (t > parts && (superieure === null || t < superieure)) superieure = t;
+  }
+  return { inferieure, superieure };
+}
+
+/**
+ * Le produit est-il un « gâteau simple sur commande », soumis aux tailles
+ * standard ? Lu dans les DONNÉES de la fiche, jamais dans le nom :
+ * régime C, prix par personne, SANS minimum particulier (ni `minQuantite`, ni
+ * `minParSymbole`), sans étages, sans maximum par unité.
+ * Layer Cake (minimum 20), Number Cake (minimum par symbole), gâteau de
+ * mariage et pièce montée (minimum + étages) gardent leurs propres règles (LOI 7).
+ * HYPOTHÈSE À VALIDER (QUESTIONS-GERANT, tailles standard) : « gâteau simple »
+ * = cette combinaison de données ; un gâteau à minimum n'a pas de taille imposée.
+ */
+export function estGateauSimpleSurCommande(fiche: FicheTarifee): boolean {
+  const { produit, prix } = fiche;
+  return (
+    produit.regimePrix === 'C' &&
+    prix.basePrix === 'personne' &&
+    prix.minQuantite === null &&
+    prix.minParSymbole === null &&
+    !(typeof prix.etages === 'number' && prix.etages > 0) &&
+    prix.maxParUnite === null
+  );
+}
+
+/**
+ * Règle R59 (règlement intérieur, décision du 15/10/2026) : un gâteau simple
+ * sur commande se fait dans une des tailles standard (`tailles`, donnée
+ * réglable — défaut REGLEMENT_COMMANDE.taillesGateau).
+ * Niveau : BLOQUANT (ERR_TAILLE_NON_STANDARD), à la saisie de la ligne, avec la
+ * sortie en un geste vers la taille standard supérieure (ou inférieure s'il
+ * n'y a pas de supérieure) ; le message cite les deux tailles proches.
+ * Avec le déverrouillage du gérant { par, le } → accepté,
+ * AVERT_TAILLE_NON_STANDARD_AUTORISEE tracé.
+ * Contrôlé APRÈS le minimum (validerQuantiteMin).
+ * N'interdit pas : une taille de la liste ; un produit qui n'est pas un gâteau
+ * simple (Layer 22 parts, mini-pâtisseries, comptoir, salé).
+ * HYPOTHÈSE À VALIDER : liste vide → aucune taille imposée (le gérant a retiré
+ * la règle) ; refuser tous les gâteaux sans proposition ferait perdre la vente.
+ */
+export function validerTailleGateau(
+  fiche: FicheTarifee,
+  parts: number,
+  tailles: readonly number[],
+  deverrouillage?: Deverrouillage | null,
+): Resultat<number> {
+  if (!estGateauSimpleSurCommande(fiche)) return succes(parts);
+  const valides = tailles.filter((t) => Number.isSafeInteger(t) && t > 0);
+  if (valides.length === 0 || valides.includes(parts)) return succes(parts);
+  if (deverrouillageValide(deverrouillage)) {
+    return succes(
+      parts,
+      signaler('AVERT_TAILLE_NON_STANDARD_AUTORISEE', { par: deverrouillage.par.trim() }, { champ: 'quantite' }),
+    );
+  }
+  const { inferieure, superieure } = taillesProches(parts, valides);
+  return signaler(
+    'ERR_TAILLE_NON_STANDARD',
+    { parts, inferieure, superieure },
+    { champ: 'quantite', valeurProposee: superieure ?? inferieure },
   );
 }

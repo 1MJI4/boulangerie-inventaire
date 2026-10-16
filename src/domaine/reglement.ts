@@ -24,9 +24,14 @@ import {
   validerDateRetrait,
 } from './calendrier.ts';
 import type { JourFerme } from './calendrier.ts';
-import type { HorairesRetraitPatisserie } from './constantes.ts';
-import { deverrouillageValide } from './regimes.ts';
-import type { DateISO, Deverrouillage, ProduitRegle } from './types.ts';
+import { JOURS_ISO_CLES } from './constantes.ts';
+import type {
+  HorairesRetraitAncienneForme,
+  HorairesRetraitPatisserie,
+  JourIsoCle,
+  ReglementCommande,
+} from './constantes.ts';
+import type { DateISO, ProduitRegle } from './types.ts';
 
 // ---------------------------------------------------------------------------
 // Heures « HH:MM »
@@ -66,50 +71,35 @@ export function heureChamp(minutes: number): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Règle R53 : une commande à retirer le jour même ou le premier jour OUVERT
- * qui suit la prise de commande (« le lendemain ») demande l'accord préalable
- * du responsable.
- * Niveau : BLOQUANT (règlement : « contacter le responsable au préalable »),
- * sorties : code gérant (→ accepté, AVERT_COMMANDE_LENDEMAIN_AUTORISEE tracé)
- * ou `valeurProposee` = premier jour ouvert qui n'est plus « le lendemain ».
+ * Règle R53 (LOI 11, décision du propriétaire du 15/10/2026) : une commande à
+ * retirer le premier jour OUVERT qui suit la prise de commande (« le
+ * lendemain ») est ACCEPTÉE ; l'employé est simplement invité à prévenir
+ * l'atelier.
+ * Niveau : INFORMATION (INFO_COMMANDE_LENDEMAIN) — aucune friction, aucun code
+ * gérant, aucun accord à tracer : le propriétaire accepte ces commandes.
  * Le lendemain se compte en jours OUVERTS : prise lundi, mardi fermé → le
  * retrait du mercredi est « le lendemain ».
- * Vérifier que `par` est bien le gérant relève de `securite` (route).
  *
- * HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°49) : cette règle s'AJOUTE au délai
- * minimum (`validerDelai`, délais n°17) ; le plus restrictif s'applique. Le code
- * gérant lève la règle du lendemain, PAS le délai : un gâteau (2 jours ouvrés)
- * pour le lendemain reste refusé même avec l'accord du responsable.
- * HYPOTHÈSE À VALIDER : `aujourdhui` = jour de la saisie ; une modification
- * faite la veille du retrait repasse donc par l'accord du responsable.
- *
- * N'interdit pas : un retrait au-delà du premier jour ouvert suivant.
+ * N'interdit RIEN. Le jour même n'est pas « le lendemain » (aucune information
+ * ici) : il est refusé par le délai minimum (`validerDelai`, ERR_DELAI_TROP_COURT),
+ * contrôlé avant par `controlerCommande`. Un gâteau à étages pour le lendemain
+ * reste refusé par son délai (DELAIS_HYPOTHESE).
+ * HYPOTHÈSE À VALIDER : `aujourdhui` = jour de la saisie (une modification faite
+ * la veille du retrait affiche donc l'information).
  */
 export function validerLendemain(
   dateRetrait: DateISO,
   aujourdhui: DateISO,
   joursFermes: readonly JourFerme[],
-  deverrouillage?: Deverrouillage | null,
   champ = 'dateRetrait',
 ): Resultat<DateISO> {
   const base = validerDateRetrait(dateRetrait, joursFermes, aujourdhui, champ);
   if (!base.ok) return base;
   const lendemain = prochainJourOuvert(decalerJours(aujourdhui, 1), joursFermes);
-  // Aucun jour ouvert dans l'horizon : on ne sait pas dire, on bloque.
-  if (lendemain === null) return signaler('ERR_SAISIE_INVALIDE', { champLibelle: 'date de retrait' }, { champ });
-  if (dateRetrait > lendemain) return succes(dateRetrait);
-
-  if (deverrouillageValide(deverrouillage)) {
-    return succes(
-      dateRetrait,
-      signaler('AVERT_COMMANDE_LENDEMAIN_AUTORISEE', { par: deverrouillage.par.trim() }, { champ }),
-    );
-  }
-  const suivant = prochainJourOuvert(decalerJours(lendemain, 1), joursFermes);
-  return signaler(
-    'ERR_COMMANDE_LENDEMAIN',
-    { dateRetrait: formaterDate(dateRetrait) },
-    suivant ? { champ, valeurProposee: suivant } : { champ },
+  if (lendemain === null || dateRetrait !== lendemain) return succes(dateRetrait);
+  return succes(
+    dateRetrait,
+    signaler('INFO_COMMANDE_LENDEMAIN', { dateRetrait: formaterDate(dateRetrait) }, { champ }),
   );
 }
 
@@ -133,24 +123,87 @@ export function estPatisserie(produit: ReperePatisserie | null, familles: readon
 }
 
 /**
- * Le retrait tombe-t-il un « week-end » au sens des horaires pâtisserie ?
- * Jours de week-end = donnée ; un férié ouvert (liste `feriesOuverts`, ou ligne
- * `ferie` de JourFerme) suit l'horaire du week-end.
- * HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°52).
+ * Compatibilité : convertit l'ANCIENNE forme des horaires (semaine / weekEnd /
+ * joursWeekEndIso / feriesOuverts) en la forme jour par jour. Les jours listés
+ * en week-end prennent `weekEnd`, les autres `semaine` ; chaque férié ouvert
+ * connu devient une date exceptionnelle à l'heure du week-end (comportement
+ * d'avant inchangé).
  */
-export function estHoraireWeekEnd(
+export function convertirHorairesAncienneForme(ancienne: HorairesRetraitAncienneForme): HorairesRetraitPatisserie {
+  const parJour = {} as Record<JourIsoCle, string>;
+  for (const cle of JOURS_ISO_CLES) {
+    parJour[cle] = ancienne.joursWeekEndIso.includes(Number(cle)) ? ancienne.weekEnd : ancienne.semaine;
+  }
+  return {
+    familles: [...ancienne.familles],
+    parJour,
+    exceptions: (ancienne.feriesOuverts ?? []).map((date) => ({ date, heure: ancienne.weekEnd })),
+  };
+}
+
+/** Ce que les fonctions d'horaires acceptent : le règlement entier, ou ses horaires (nouvelle ou ancienne forme). */
+export type SourceHoraires =
+  | Pick<ReglementCommande, 'horairesRetraitPatisserie'>
+  | HorairesRetraitPatisserie
+  | HorairesRetraitAncienneForme;
+
+function horairesDe(source: SourceHoraires): HorairesRetraitPatisserie {
+  const h = 'horairesRetraitPatisserie' in source ? source.horairesRetraitPatisserie : source;
+  if ('parJour' in h) return h;
+  return convertirHorairesAncienneForme(h);
+}
+
+/**
+ * Première heure de retrait d'une commande de pâtisserie à `date`, « HH:MM ».
+ * Ordre (réglages du gérant, décision du 15/10/2026) :
+ *   1. date exceptionnelle (`exceptions`) si présente — prioritaire sur tout ;
+ *   2. jour férié OUVERT (ligne `ferie` de JourFerme rouverte) → horaire du
+ *      DIMANCHE. HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°52) : comportement
+ *      d'avant (un férié ouvert suit le week-end), le plus prudent ;
+ *   3. sinon l'horaire du jour de la semaine (`parJour`).
+ * Si une date figure plusieurs fois dans `exceptions`, la plus TARDIVE
+ * s'applique (le plus sûr : on ne promet pas une pâtisserie trop tôt).
+ * Horaires illisibles (réglage cassé) ou date illisible : RangeError (bug).
+ */
+export function heureMinRetrait(
   date: DateISO,
-  horaires: HorairesRetraitPatisserie,
+  reglement: SourceHoraires,
   joursFermes: readonly JourFerme[] = [],
-): boolean {
-  if (horaires.joursWeekEndIso.includes(jourSemaineIso(date))) return true;
-  if (horaires.feriesOuverts?.includes(date)) return true;
-  return estJourFerie(date, joursFermes);
+): string {
+  if (!estDateISO(date)) throw new RangeError('reglement.ts : date de retrait illisible.');
+  const horaires = horairesDe(reglement);
+  const lire = (texte: string): number => {
+    const m = lireHeure(texte);
+    if (m === null) throw new RangeError('reglement.ts : horaires de retrait pâtisserie illisibles.');
+    return m;
+  };
+  const exceptions = horaires.exceptions.filter((e) => e.date === date).map((e) => lire(e.heure));
+  if (exceptions.length > 0) return heureChamp(Math.max(...exceptions));
+  const cleDimanche = JOURS_ISO_CLES[JOURS_ISO_CLES.length - 1] as JourIsoCle;
+  const cle = estJourFerie(date, joursFermes) ? cleDimanche : (String(jourSemaineIso(date)) as JourIsoCle);
+  return heureChamp(lire(horaires.parJour[cle]));
+}
+
+/** « samedi » — nom du jour d'une date, pour les messages (Intl, jamais écrit dans le code). */
+export function nomJour(date: DateISO): string {
+  return new Intl.DateTimeFormat('fr-BE', { weekday: 'long', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`));
+}
+
+/**
+ * « lundi » … « dimanche » pour un jour ISO 1 … 7 (écran des réglages : libellés
+ * de `parJour`). Évite d'écrire les noms de jours hors du domaine (invariant 2).
+ */
+export function nomJourIso(jourIso: number | JourIsoCle): string {
+  const n = Number(jourIso);
+  if (!Number.isInteger(n) || n < 1 || n > JOURS_ISO_CLES.length) throw new RangeError('reglement.ts : jour ISO hors 1 à 7.');
+  // Le 2 janvier 2023 (UTC) est un lundi : point de départ fixe, sans calcul de jour.
+  return nomJour(decalerJours('2023-01-02', n - 1));
 }
 
 /**
  * Règle R54 : une commande contenant de la pâtisserie se retire à partir de
- * `horaires.semaine` en semaine et `horaires.weekEnd` le week-end (et férié ouvert).
+ * `heureMinRetrait(date)` (horaires réglables jour par jour et par date
+ * exceptionnelle).
  * Niveau : BLOQUANT, `valeurProposee` = première heure possible (« HH:MM »).
  * Heure illisible → ERR_SAISIE_INVALIDE.
  * HYPOTHÈSE À VALIDER : commande avec pâtisserie SANS heure de retrait →
@@ -159,12 +212,13 @@ export function estHoraireWeekEnd(
  * N'interdit pas : toute heure ≥ l'heure minimale ; aucune heure maximale n'est
  * contrôlée (heure de fermeture : non demandée par le règlement).
  * Les horaires mal configurés (illisibles) sont un bug : RangeError.
+ * `horaires` : nouvelle forme, ancienne forme (convertie) ou règlement entier.
  */
 export function validerHeureRetrait(
   dateRetrait: DateISO,
   heureRetrait: string | null | undefined,
   lignes: readonly { estPatisserie: boolean }[],
-  horaires: HorairesRetraitPatisserie,
+  horaires: SourceHoraires,
   joursFermes: readonly JourFerme[] = [],
   champ = 'heureRetrait',
 ): Resultat<string | null> {
@@ -182,14 +236,13 @@ export function validerHeureRetrait(
     return signaler('ERR_SAISIE_INVALIDE', { champLibelle: 'date de retrait' }, { champ: 'dateRetrait' });
   }
 
-  const weekEnd = estHoraireWeekEnd(dateRetrait, horaires, joursFermes);
-  const min = lireHeure(weekEnd ? horaires.weekEnd : horaires.semaine);
-  if (min === null) throw new RangeError('reglement.ts : horaires de retrait pâtisserie illisibles.');
+  const minimum = heureMinRetrait(dateRetrait, horaires, joursFermes);
+  const min = lireHeure(minimum) as number;
   if (minutes >= min) return succes(heure);
   return signaler(
     'ERR_HEURE_RETRAIT_TROP_TOT',
-    { heureMin: formaterHeure(min), typeJour: weekEnd ? 'week-end' : 'semaine' },
-    { champ, valeurProposee: heureChamp(min) },
+    { heureMin: formaterHeure(min), jour: nomJour(dateRetrait) },
+    { champ, valeurProposee: minimum },
   );
 }
 

@@ -3,7 +3,7 @@
 // src/components/commande/AccesGerant.tsx
 //
 // Saisie du code gérant pour un déverrouillage (prix sous le plancher, ligne
-// libre, retrait le lendemain, remise sur le total). Le code est vérifié par
+// libre, remise sur le total). Le code est vérifié par
 // POST /api/gestion (agent `securite`), qui ouvre l'accès gérant de CETTE
 // tablette pour une courte durée ; la route des commandes revérifie cet accès
 // avant d'accepter le moindre déverrouillage (jamais la tablette seule).

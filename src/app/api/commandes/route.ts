@@ -10,14 +10,15 @@
 // recalcule sont enregistrés. La base rejoue encore une partie de ces règles
 // (déclencheurs) : elle est le filet, le domaine refuse d'abord.
 //
-// Déverrouillages (prix sous plancher, ligne libre, lendemain, remise) :
+// Déverrouillages (prix sous plancher, ligne libre, remise) :
 // acceptés SEULEMENT si l'accès gérant est ouvert sur cette tablette (cookie
 // vérifié par `gerantActif`), sinon ERR_DROIT_INSUFFISANT. L'heure de
 // l'accord est celle du serveur. Exception : en modification, un accord DÉJÀ
 // enregistré est conservé tel quel s'il couvre encore ce qui est demandé
 // (src/components/commande/accords.ts) : ligne → même produit, même prix,
-// quantité égale ou inférieure ; lendemain → même date de retrait ; remise →
-// même total convenu ET même total au tarif. Sinon : code gérant redemandé.
+// quantité égale ou inférieure ; remise → même total convenu ET même total
+// au tarif. Retrait le LENDEMAIN : accepté sans le gérant (décision du
+// 15/10/2026, LOI 11) — plus aucun accord lu ni enregistré pour cela. Sinon : code gérant redemandé.
 // Commande prise avant le lot 2 (lignes sans produit du catalogue) : sans le
 // gérant, seuls les champs sans effet sur les prix se modifient (réserve 4).
 // HYPOTHÈSE À VALIDER : identité déclarée (nom saisi), pas de compte individuel.
@@ -41,10 +42,10 @@ import {
 import { validerHeureRetrait } from '@/domaine/reglement';
 import { estLigneAncienTarif, lignesIdentiques, refusAncienTarif } from '@/components/commande/modele';
 import {
-  lendemainCouvert,
   ligneCouverte,
   memeAccord,
   remiseCouverte,
+  tailleCouverte,
   type AccordEnregistre,
   type AccordRecu,
 } from '@/components/commande/accords';
@@ -218,6 +219,18 @@ function preparer(
       produitId ? 'déverrouiller un prix sous le plancher' : 'fixer le prix d’une ligne libre',
     );
     if (accord && 'ok' in accord) return { ok: false, echec: { ...accord, champ: `lignes[${i}].prixCentimes` } };
+    // Taille de gâteau hors standard (LOI 11) : accord DISTINCT de l'accord de
+    // prix. Confirmé si le gérant est là, ou s'il est déjà enregistré pour ce
+    // produit à cette quantité exacte. Le domaine (`validerTailleGateau`, rejoué
+    // par `controler`) décide s'il sert.
+    const deverrouillageTaille = confirmer(
+      lireAccord(l.deverrouillageTaille),
+      (a) => tailleCouverte(a, { produitId, quantite }),
+      'accepter une taille de gâteau hors standard',
+    );
+    if (deverrouillageTaille && 'ok' in deverrouillageTaille) {
+      return { ok: false, echec: { ...deverrouillageTaille, champ: `lignes[${i}].quantite` } };
+    }
     lignes.push({
       produitId,
       libelle,
@@ -226,17 +239,11 @@ function preparer(
       nbSymboles: entierOuNull(l.nbSymboles),
       nbObjets: entierOuNull(l.nbObjets),
       deverrouillage: accord,
+      deverrouillageTaille,
     });
     precisions.push(texte(l.precision, 200) || null);
   }
 
-  const dateRetrait = texte(corps.dateRetrait, 10);
-  const lendemain = confirmer(
-    lireAccord(corps.accordLendemain),
-    (a) => lendemainCouvert(a, dateRetrait),
-    'accepter un retrait le lendemain',
-  );
-  if (lendemain && 'ok' in lendemain) return { ok: false, echec: { ...lendemain, champ: 'dateRetrait' } };
   // Remise : seul le type est vérifié ici ; les totaux le sont après le domaine.
   const remise = confirmer(lireAccord(corps.remise), (a) => a.type === 'remise', 'accorder une remise sur le total');
   if (remise && 'ok' in remise) return { ok: false, echec: { ...remise, champ: 'total' } };
@@ -249,7 +256,6 @@ function preparer(
     heurePrise: prise.heurePrise,
     dateRetrait: texte(corps.dateRetrait, 10),
     heureRetrait: texte(corps.heureRetrait, 5) || null,
-    accordLendemain: lendemain,
     lignes,
     acompteCentimes: entierOuNull(corps.acompteCentimes) ?? 0,
     totalConvenuCentimes: entierOuNull(corps.totalConvenuCentimes),
@@ -292,6 +298,11 @@ function lignesAEnregistrer(r: Ok, fiches: Controle['fiches'], prep: Extract<Pre
     const fiche = l.produitId ? fiches.get(l.produitId) : undefined;
     const accord = prep.saisie.lignes[ordre].deverrouillage;
     const accordLe = l.autorisation ? ((accord && prep.quand.get(accord)) ?? new Date(l.autorisation.le)) : null;
+    // Taille hors standard (LOI 11) : accord distinct, tracé dans ses propres colonnes.
+    const accordTaille = prep.saisie.lignes[ordre].deverrouillageTaille;
+    const tailleLe = l.autorisationTaille
+      ? ((accordTaille && prep.quand.get(accordTaille)) ?? new Date(l.autorisationTaille.le))
+      : null;
     const libre = l.produitId === null;
     return {
       libelle: l.libelle,
@@ -308,6 +319,8 @@ function lignesAEnregistrer(r: Ok, fiches: Controle['fiches'], prep: Extract<Pre
       sousPlancherAutoriseLe: !libre && l.autorisation ? accordLe : null,
       ligneLibreAutoriseePar: libre && l.autorisation ? l.autorisation.par : null,
       ligneLibreAutoriseeLe: libre && l.autorisation ? accordLe : null,
+      tailleAutoriseePar: l.autorisationTaille ? l.autorisationTaille.par : null,
+      tailleAutoriseeLe: tailleLe,
     };
   });
 }
@@ -317,7 +330,6 @@ function champsCommande(r: Ok, prep: Extract<Preparation, { ok: true }>) {
   const d = r.donnees;
   // Heure de l'accord : celle fixée par le serveur (ou celle d'un accord conservé).
   const quand = (x: Deverrouillage) => prep.quand.get(x) ?? new Date(x.le);
-  const lendemain = d.accordLendemain ? prep.saisie.accordLendemain : null;
   const remise = d.remise ? prep.saisie.remise : null;
   return {
     retraitLe: new Date(`${d.dateRetrait}T00:00:00Z`),
@@ -325,8 +337,6 @@ function champsCommande(r: Ok, prep: Extract<Preparation, { ok: true }>) {
     acompteCentimes: d.acompteCentimes,
     totalCentimes: d.totalCentimes,
     totalTarifCentimes: d.totalTarifCentimes,
-    accordLendemainPar: lendemain ? d.accordLendemain!.par : null,
-    accordLendemainLe: lendemain ? quand(lendemain) : null,
     remiseAutoriseePar: remise ? d.remise!.par : null,
     remiseAutoriseeLe: remise ? quand(remise) : null,
     // Avertissements affichés puis passés outre : ceux recalculés par le serveur.
@@ -611,9 +621,11 @@ export async function PATCH(request: Request) {
               const cleProduit = l.produitCatalogueId !== null ? l.produitCatalogue?.cleCatalogue : `libre:${l.libelle}`;
               return cleProduit ? [{ type: 'ligne', cle: `${cleProduit}|${l.prixCentimes}`, par, le, quantite: l.quantite }] : [];
             }),
-            ...(existante.accordLendemainPar && existante.accordLendemainLe
-              ? [{ type: 'lendemain' as const, par: existante.accordLendemainPar, le: existante.accordLendemainLe, dateRetrait: etatExistant.retraitLe }]
-              : []),
+            ...existante.lignes.flatMap((l): AccordEnregistre[] => {
+              const cle = l.produitCatalogue?.cleCatalogue;
+              if (!cle || !l.tailleAutoriseePar || !l.tailleAutoriseeLe) return [];
+              return [{ type: 'taille', cle, par: l.tailleAutoriseePar, le: l.tailleAutoriseeLe, quantite: l.quantite }];
+            }),
             ...(existante.remiseAutoriseePar && existante.remiseAutoriseeLe
               ? [
                   {

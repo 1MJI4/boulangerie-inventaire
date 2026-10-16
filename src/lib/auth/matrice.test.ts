@@ -144,6 +144,7 @@ test('écritures sensibles réservées au gérant, tout le reste ouvert à la ta
     'src/app/api/produits/reorganiser/route.ts PUT',
     'src/app/api/gateaux/route.ts POST',
     'src/app/api/gateaux/route.ts PATCH',
+    'src/app/api/reglages/route.ts PUT',
   ]);
   for (const [fichier, methodes] of Object.entries(MATRICE_ACCES)) {
     for (const [methode, entree] of Object.entries(methodes)) {

@@ -22,6 +22,8 @@ import { LIBELLE_POSTE, trierCategories } from '@/lib/postes';
 import { formatHeure, useHistoriqueProduit } from '@/lib/useHistoriqueProduit';
 import { useSaisieJournee, type Produit } from '@/lib/useSaisieJournee';
 import { PaveSaisieProduit } from '@/components/inventaire/PaveSaisieProduit';
+import { focaliserLigne, useLigneActiveEnVue } from '@/components/inventaire/ligneActive';
+import { DispositionAvecPave } from '@/components/saisie/DispositionAvecPave';
 import { SignalementsLigne } from '@/components/inventaire/SignalementsLigne';
 import { RappelChargement } from '@/components/rappels';
 import { formaterQuantite } from '@/domaine/unites';
@@ -140,8 +142,50 @@ export default function SaisiePrevisions() {
     return [...vus];
   }, [saisie.produits, saisie.valeurs]);
 
+  /* ------------------------------------------- Enchaînement de la saisie */
+
+  // Ordre affiché à l'écran : « suivant » = la ligne juste en dessous.
+  const ordreAffiche = rayons.flatMap(({ categorie, produits, remplis }) =>
+    estOuvert(categorie, remplis) ? produits : []
+  );
+
+  /**
+   * Passe au produit affiché après `produitId` : pavé décimal s'il est au kilo
+   * (LOI 2), sinon le curseur va dans son champ. Toujours amené en vue.
+   */
+  const passerAuSuivant = (produitId: number) => {
+    const index = ordreAffiche.findIndex((p) => p.id === produitId);
+    const suivant = index >= 0 ? ordreAffiche[index + 1] : undefined;
+    if (!suivant) {
+      setPesee(null);
+      return;
+    }
+    if (suivant.unite === 'kg') {
+      setPesee(suivant.id);
+      return;
+    }
+    setPesee(null);
+    requestAnimationFrame(() => focaliserLigne(suivant.id));
+  };
+  const indexPese = produitPese ? ordreAffiche.findIndex((p) => p.id === produitPese.id) : -1;
+
+  // La ligne pesée n'est jamais cachée par le pavé.
+  useLigneActiveEnVue(produitPese?.id ?? null, produitPese !== null);
+
+  const pave = produitPese ? (
+    <PaveSaisieProduit
+      key={produitPese.id}
+      produit={produitPese}
+      valeur={saisie.valeurs[produitPese.id] ?? ''}
+      onChange={(v) => saisie.definir(produitPese.id, v)}
+      onSuivant={() => passerAuSuivant(produitPese.id)}
+      peutAllerSuivant={indexPese >= 0 && indexPese < ordreAffiche.length - 1}
+      onFermer={() => setPesee(null)}
+    />
+  ) : null;
+
   return (
-    <div className={produitPese ? 'pb-[30rem]' : ''}>
+    <div>
       <Entete
         titre="Prévisions de production"
         sousTitre={
@@ -153,234 +197,229 @@ export default function SaisiePrevisions() {
         actions={<SelecteurJournee date={date} onChange={setDate} libelle="À produire" />}
       />
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Progression fait={saisie.nbRenseignes} total={saisie.produits.length} />
-          {postesConcernes.length > 0 ? (
-            <span className="text-xs text-ink-3">
-              visible par {postesConcernes.map((p) => LIBELLE_POSTE[p]).join(' et ')}
-            </span>
-          ) : null}
+      <DispositionAvecPave pave={pave}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Progression fait={saisie.nbRenseignes} total={saisie.produits.length} />
+            {postesConcernes.length > 0 ? (
+              <span className="text-xs text-ink-3">
+                visible par {postesConcernes.map((p) => LIBELLE_POSTE[p]).join(' et ')}
+              </span>
+            ) : null}
+          </div>
+          <IndicateurSauvegarde
+            statut={saisie.statut}
+            derniereSauvegarde={saisie.derniereSauvegarde}
+            nbEnAttente={saisie.nbEnAttente}
+            messageErreur={saisie.messageErreur}
+            onReessayer={() => void saisie.enregistrerMaintenant()}
+          />
         </div>
-        <IndicateurSauvegarde
-          statut={saisie.statut}
-          derniereSauvegarde={saisie.derniereSauvegarde}
-          nbEnAttente={saisie.nbEnAttente}
-          messageErreur={saisie.messageErreur}
-          onReessayer={() => void saisie.enregistrerMaintenant()}
-        />
-      </div>
 
-      <div className="sans-impression mb-4">
-        <input
-          type="search"
-          value={recherche}
-          onChange={(e) => setRecherche(e.target.value)}
-          placeholder="Chercher un produit dans tous les rayons…"
-          aria-label="Chercher un produit"
-          className="h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none sm:max-w-80"
-        />
-      </div>
-
-      <BandeauCommandes journee={date} />
-
-      {saisie.erreurChargement ? (
-        <Alerte>
-          {saisie.erreurChargement}{' '}
-          <button onClick={() => void saisie.recharger()} className="underline underline-offset-2">
-            Recharger
-          </button>
-        </Alerte>
-      ) : null}
-
-      {saisie.chargement ? (
-        <>
-          <Chargement libelle="Chargement de la liste des produits…" />
-          <RappelChargement className="mx-auto max-w-md" />
-        </>
-      ) : rayons.length === 0 ? (
-        <Carte>
-          <EtatVide titre="Aucun produit ne correspond" detail="Essayez un autre mot." />
-        </Carte>
-      ) : (
-        <div className="space-y-3">
-          {rayons.map(({ categorie, produits, remplis }) => {
-            const ouvert = estOuvert(categorie, remplis);
-            const principal = categorie === RAYON_PRINCIPAL;
-            const avecReperes = produits.filter(
-              (p) => (reperes.get(p.id)?.moyenneProduite ?? 0) > 0
-            ).length;
-
-            return (
-              <Carte key={categorie}>
-                <div className="flex flex-wrap items-center justify-between gap-3 px-4">
-                  <button
-                    type="button"
-                    onClick={() => basculer(categorie)}
-                    aria-expanded={ouvert}
-                    className="-mx-2 flex min-h-11 min-w-0 items-center gap-2 rounded-md px-2 text-left hover:bg-surface-2"
-                  >
-                    <span aria-hidden className="text-ink-3">
-                      {ouvert ? '▾' : '▸'}
-                    </span>
-                    <span className="text-sm font-semibold text-ink">{categorie}</span>
-                    {!principal && remplis === 0 ? (
-                      <span className="text-xs text-ink-3">rarement planifié</span>
-                    ) : null}
-                  </button>
-
-                  <div className="flex items-center gap-3">
-                    {remplis > 0 ? (
-                      <Puce ton="accent">
-                        <span className="chiffres">{remplis}</span> demandé{remplis > 1 ? 's' : ''}
-                      </Puce>
-                    ) : null}
-                    <Progression fait={remplis} total={produits.length} />
-                  </div>
-                </div>
-
-                {ouvert ? (
-                  <>
-                    {avecReperes > 0 ? (
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-surface-2 px-4 py-2">
-                        <span className="text-xs text-ink-2">
-                          L&apos;historique donne un repère pour{' '}
-                          <span className="chiffres font-medium text-ink">{avecReperes}</span>{' '}
-                          produits de ce rayon.
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => appliquerLesReperes(produits)}
-                          className="text-xs font-medium text-accent underline underline-offset-2 hover:text-accent-fort"
-                        >
-                          Pré-remplir les champs vides
-                        </button>
-                      </div>
-                    ) : null}
-
-                    <div className="border-t border-line">
-                      {produits.map((produit) => {
-                        const repere = reperes.get(produit.id);
-                        const auPoids = produit.unite === 'kg';
-                        const refus = saisie.refus.get(produit.id) ?? commande.refus.get(produit.id);
-                        return (
-                          <LigneSaisie
-                            key={produit.id}
-                            nom={produit.nom}
-                            unite={produit.unite}
-                            selectionne={pesee === produit.id}
-                            onSelectionner={auPoids ? () => setPesee(produit.id) : undefined}
-                            valeur={saisie.valeurs[produit.id] ?? ''}
-                            onChange={(v) => saisie.definir(produit.id, v)}
-                            signalements={
-                              refus ? (
-                                <SignalementsLigne
-                                  signalements={[refus]}
-                                  onEffacer={() => saisie.definir(produit.id, '')}
-                                />
-                              ) : undefined
-                            }
-                            suggestion={auPoids ? null : (repere?.moyenneProduite ?? null)}
-                            onAppliquerSuggestion={
-                              repere?.moyenneProduite != null
-                                ? () => saisie.definir(produit.id, String(repere.moyenneProduite))
-                                : undefined
-                            }
-                            indice={
-                              repere?.dernier?.produite != null ? (
-                                <>
-                                  semaine passée :{' '}
-                                  <span className="chiffres">
-                                    {auPoids
-                                      ? afficher(produit, repere.dernier.produite)
-                                      : `${repere.dernier.produite} produits`}
-                                  </span>
-                                  {repere.dernier.restante != null ? (
-                                    <>
-                                      ,{' '}
-                                      <span
-                                        className={`chiffres ${
-                                          repere.dernier.restante > repere.dernier.produite * 0.2
-                                            ? 'text-attention'
-                                            : ''
-                                        }`}
-                                      >
-                                        {afficher(produit, repere.dernier.restante)} invendus
-                                      </span>
-                                    </>
-                                  ) : null}
-                                  {repere.ruptureMoyenneMinutes != null ? (
-                                    <>
-                                      {' · '}
-                                      <span className="text-alerte">
-                                        à sec vers {formatHeure(repere.ruptureMoyenneMinutes)}
-                                        {repere.joursEnRupture > 1
-                                          ? ` (${repere.joursEnRupture}× sur ${repere.echantillon})`
-                                          : ''}
-                                      </span>
-                                    </>
-                                  ) : null}
-                                </>
-                              ) : null
-                            }
-                            complement={
-                              auPoids
-                                ? undefined
-                                : {
-                                    titre: `${produit.nom} : part due à une commande`,
-                                    valeur: commande.valeurs[produit.id] ?? '',
-                                    onChange: (v) => ajusterCommande(produit.id, v),
-                                  }
-                            }
-                          />
-                        );
-                      })}
-                    </div>
-                  </>
-                ) : null}
-              </Carte>
-            );
-          })}
+        <div className="sans-impression mb-4">
+          <input
+            type="search"
+            value={recherche}
+            onChange={(e) => setRecherche(e.target.value)}
+            placeholder="Chercher un produit dans tous les rayons…"
+            aria-label="Chercher un produit"
+            className="h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none sm:max-w-80"
+          />
         </div>
-      )}
 
-      {oublisProbables.length > 0 && !saisie.chargement ? (
-        <div className="mt-4">
-          <Alerte ton="attention">
-            <span className="font-medium">
-              {oublisProbables.length} viennoiserie{oublisProbables.length > 1 ? 's' : ''}{' '}
-              habituellement produite{oublisProbables.length > 1 ? 's' : ''} sans quantité :
-            </span>{' '}
-            {oublisProbables
-              .slice(0, 6)
-              .map((p) => p.nom)
-              .join(', ')}
-            {oublisProbables.length > 6 ? ` et ${oublisProbables.length - 6} autre(s)` : ''}.
+        <BandeauCommandes journee={date} />
+
+        {saisie.erreurChargement ? (
+          <Alerte>
+            {saisie.erreurChargement}{' '}
+            <button onClick={() => void saisie.recharger()} className="underline underline-offset-2">
+              Recharger
+            </button>
           </Alerte>
+        ) : null}
+
+        {saisie.chargement ? (
+          <>
+            <Chargement libelle="Chargement de la liste des produits…" />
+            <RappelChargement className="mx-auto max-w-md" />
+          </>
+        ) : rayons.length === 0 ? (
+          <Carte>
+            <EtatVide titre="Aucun produit ne correspond" detail="Essayez un autre mot." />
+          </Carte>
+        ) : (
+          <div className="space-y-3">
+            {rayons.map(({ categorie, produits, remplis }) => {
+              const ouvert = estOuvert(categorie, remplis);
+              const principal = categorie === RAYON_PRINCIPAL;
+              const avecReperes = produits.filter(
+                (p) => (reperes.get(p.id)?.moyenneProduite ?? 0) > 0
+              ).length;
+
+              return (
+                <Carte key={categorie}>
+                  <div className="flex flex-wrap items-center justify-between gap-3 px-4">
+                    <button
+                      type="button"
+                      onClick={() => basculer(categorie)}
+                      aria-expanded={ouvert}
+                      className="-mx-2 flex min-h-11 min-w-0 items-center gap-2 rounded-md px-2 text-left hover:bg-surface-2"
+                    >
+                      <span aria-hidden className="text-ink-3">
+                        {ouvert ? '▾' : '▸'}
+                      </span>
+                      <span className="text-sm font-semibold text-ink">{categorie}</span>
+                      {!principal && remplis === 0 ? (
+                        <span className="text-xs text-ink-3">rarement planifié</span>
+                      ) : null}
+                    </button>
+
+                    <div className="flex items-center gap-3">
+                      {remplis > 0 ? (
+                        <Puce ton="accent">
+                          <span className="chiffres">{remplis}</span> demandé{remplis > 1 ? 's' : ''}
+                        </Puce>
+                      ) : null}
+                      <Progression fait={remplis} total={produits.length} />
+                    </div>
+                  </div>
+
+                  {ouvert ? (
+                    <>
+                      {avecReperes > 0 ? (
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-surface-2 px-4 py-2">
+                          <span className="text-xs text-ink-2">
+                            L&apos;historique donne un repère pour{' '}
+                            <span className="chiffres font-medium text-ink">{avecReperes}</span>{' '}
+                            produits de ce rayon.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => appliquerLesReperes(produits)}
+                            className="text-xs font-medium text-accent underline underline-offset-2 hover:text-accent-fort"
+                          >
+                            Pré-remplir les champs vides
+                          </button>
+                        </div>
+                      ) : null}
+
+                      <div className="border-t border-line">
+                        {produits.map((produit) => {
+                          const repere = reperes.get(produit.id);
+                          const auPoids = produit.unite === 'kg';
+                          const refus = saisie.refus.get(produit.id) ?? commande.refus.get(produit.id);
+                          return (
+                            <LigneSaisie
+                              key={produit.id}
+                              produitId={produit.id}
+                              onEntree={() => passerAuSuivant(produit.id)}
+                              nom={produit.nom}
+                              unite={produit.unite}
+                              selectionne={pesee === produit.id}
+                              onSelectionner={auPoids ? () => setPesee(produit.id) : undefined}
+                              valeur={saisie.valeurs[produit.id] ?? ''}
+                              onChange={(v) => saisie.definir(produit.id, v)}
+                              signalements={
+                                refus ? (
+                                  <SignalementsLigne
+                                    signalements={[refus]}
+                                    onEffacer={() => saisie.definir(produit.id, '')}
+                                  />
+                                ) : undefined
+                              }
+                              suggestion={auPoids ? null : (repere?.moyenneProduite ?? null)}
+                              onAppliquerSuggestion={
+                                repere?.moyenneProduite != null
+                                  ? () => saisie.definir(produit.id, String(repere.moyenneProduite))
+                                  : undefined
+                              }
+                              indice={
+                                repere?.dernier?.produite != null ? (
+                                  <>
+                                    semaine passée :{' '}
+                                    <span className="chiffres">
+                                      {auPoids
+                                        ? afficher(produit, repere.dernier.produite)
+                                        : `${repere.dernier.produite} produits`}
+                                    </span>
+                                    {repere.dernier.restante != null ? (
+                                      <>
+                                        ,{' '}
+                                        <span
+                                          className={`chiffres ${
+                                            repere.dernier.restante > repere.dernier.produite * 0.2
+                                              ? 'text-attention'
+                                              : ''
+                                          }`}
+                                        >
+                                          {afficher(produit, repere.dernier.restante)} invendus
+                                        </span>
+                                      </>
+                                    ) : null}
+                                    {repere.ruptureMoyenneMinutes != null ? (
+                                      <>
+                                        {' · '}
+                                        <span className="text-alerte">
+                                          à sec vers {formatHeure(repere.ruptureMoyenneMinutes)}
+                                          {repere.joursEnRupture > 1
+                                            ? ` (${repere.joursEnRupture}× sur ${repere.echantillon})`
+                                            : ''}
+                                        </span>
+                                      </>
+                                    ) : null}
+                                  </>
+                                ) : null
+                              }
+                              complement={
+                                auPoids
+                                  ? undefined
+                                  : {
+                                      titre: `${produit.nom} : part due à une commande`,
+                                      valeur: commande.valeurs[produit.id] ?? '',
+                                      onChange: (v) => ajusterCommande(produit.id, v),
+                                    }
+                              }
+                            />
+                          );
+                        })}
+                      </div>
+                    </>
+                  ) : null}
+                </Carte>
+              );
+            })}
+          </div>
+        )}
+
+        {oublisProbables.length > 0 && !saisie.chargement ? (
+          <div className="mt-4">
+            <Alerte ton="attention">
+              <span className="font-medium">
+                {oublisProbables.length} viennoiserie{oublisProbables.length > 1 ? 's' : ''}{' '}
+                habituellement produite{oublisProbables.length > 1 ? 's' : ''} sans quantité :
+              </span>{' '}
+              {oublisProbables
+                .slice(0, 6)
+                .map((p) => p.nom)
+                .join(', ')}
+              {oublisProbables.length > 6 ? ` et ${oublisProbables.length - 6} autre(s)` : ''}.
+            </Alerte>
+          </div>
+        ) : null}
+
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5">
+          <span className="text-xs text-ink-3 text-pretty">
+            La saisie part toute seule — le fournil la voit dans la minute.
+          </span>
+          <Bouton
+            variante="principal"
+            onClick={() => void saisie.enregistrerMaintenant()}
+            disabled={saisie.nbEnAttente === 0 || saisie.statut === 'envoi'}
+          >
+            {saisie.statut === 'envoi' ? 'Enregistrement…' : 'Enregistrer maintenant'}
+          </Bouton>
         </div>
-      ) : null}
-
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5">
-        <span className="text-xs text-ink-3 text-pretty">
-          La saisie part toute seule — le fournil la voit dans la minute.
-        </span>
-        <Bouton
-          variante="principal"
-          onClick={() => void saisie.enregistrerMaintenant()}
-          disabled={saisie.nbEnAttente === 0 || saisie.statut === 'envoi'}
-        >
-          {saisie.statut === 'envoi' ? 'Enregistrement…' : 'Enregistrer maintenant'}
-        </Bouton>
-      </div>
-
-      {produitPese ? (
-        <PaveSaisieProduit
-          produit={produitPese}
-          valeur={saisie.valeurs[produitPese.id] ?? ''}
-          onChange={(v) => saisie.definir(produitPese.id, v)}
-          onFermer={() => setPesee(null)}
-        />
-      ) : null}
+      </DispositionAvecPave>
     </div>
   );
 }

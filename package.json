@@ -11,7 +11,15 @@
     "invariants": "node scripts/verifier-invariants.mjs",
     "invariants:rapport": "node scripts/verifier-invariants.mjs --rapport",
     "postinstall": "prisma generate",
-    "db:seed": "node prisma/seed.mjs"
+    "db:seed": "node prisma/seed.mjs",
+    "recette:base": "node scripts/recette.mjs base",
+    "recette:migrer": "node scripts/recette.mjs migrer",
+    "recette:donnees": "node scripts/recette.mjs donnees",
+    "recette:demo": "node scripts/recette.mjs demo",
+    "recette:dev": "node scripts/recette.mjs dev",
+    "recette:tablette": "node scripts/recette.mjs tablette",
+    "recette:arreter": "node scripts/recette.mjs arreter",
+    "recette:effacer": "node scripts/recette.mjs effacer"
   },
   "dependencies": {
     "@prisma/client": "^6.18.0",

@@ -72,3 +72,28 @@ export function libelleMois(iso: string): string {
 export function libelleLong(iso: string): string {
   return FMT_LONG.format(pourAffichage(iso));
 }
+
+/** Nombre de jours de `de` à `a` (négatif si `a` est avant). Calcul en UTC. */
+export function ecartJours(de: string, a: string): number {
+  const ms = (iso: string) => {
+    const m = ISO.exec(iso);
+    if (!m) throw new Error(`Date ISO attendue : ${iso}`);
+    return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  };
+  return Math.round((ms(a) - ms(de)) / 86_400_000);
+}
+
+/**
+ * Jours affichés par le sélecteur : `semaines` rangées de 7 jours consécutifs,
+ * à partir de `debut` décalé de `decalage` semaines. Chaque rangée commence le
+ * même jour de semaine que `debut` : les colonnes restent alignées (un jour
+ * fermé chaque semaine forme une colonne) sans que ce code ne sache lequel.
+ */
+export function fenetreSemaines(debut: string, decalage: number, semaines: number): string[] {
+  return joursSuccessifs(ajouterJours(debut, decalage * 7), semaines * 7);
+}
+
+/** Décalage (en semaines) qui montre `date` dans la première rangée ; 0 si avant `debut`. */
+export function decalagePour(debut: string, date: string): number {
+  return Math.max(0, Math.floor(ecartJours(debut, date) / 7));
+}

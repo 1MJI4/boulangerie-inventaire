@@ -19,7 +19,8 @@ import {
   texteDepuisGrammes,
   texteDepuisPieces,
 } from './lecteurs.ts';
-import { ajouterJours, aujourdhuiIso, estDateIso, joursSuccessifs } from './dates.ts';
+import { ajouterJours, aujourdhuiIso, decalagePour, ecartJours, estDateIso, fenetreSemaines, joursSuccessifs } from './dates.ts';
+import { cotePaveDepuisStockage } from '../../lib/preferencesSaisie.ts';
 import { trierSignalements } from '../signalement/trier.ts';
 
 // Les pavés ne convertissent rien eux-mêmes : la lecture est celle du domaine.
@@ -177,4 +178,33 @@ test('trierSignalements : bloquants d’abord, dédoublonnés par code + champ',
     tries.map((s) => s.message),
     ['e1', 'e2', 'autre champ', 'a', 'i'],
   );
+});
+
+test('sélecteur de date : 2 semaines de 7 jours, défilement par semaine', () => {
+  const j = fenetreSemaines('2026-10-15', 0, 2);
+  assert.equal(j.length, 14);
+  assert.equal(j[0], '2026-10-15');
+  assert.equal(j[7], '2026-10-22'); // 2e rangée : même jour de semaine, colonnes alignées
+  assert.equal(j[13], '2026-10-28');
+  assert.equal(fenetreSemaines('2026-10-15', 1, 2)[0], '2026-10-22');
+  assert.equal(fenetreSemaines('2026-10-29', 0, 1)[6], '2026-11-04'); // passage de mois
+});
+
+test('sélecteur de date : écart en jours et semaine d’une date choisie', () => {
+  assert.equal(ecartJours('2026-10-15', '2026-10-15'), 0);
+  assert.equal(ecartJours('2026-10-15', '2026-11-15'), 31);
+  assert.equal(ecartJours('2026-03-28', '2026-03-30'), 2); // heure d'été sans effet
+  assert.equal(ecartJours('2026-10-15', '2026-10-14'), -1);
+  assert.equal(decalagePour('2026-10-15', '2026-10-21'), 0);
+  assert.equal(decalagePour('2026-10-15', '2026-10-22'), 1);
+  assert.equal(decalagePour('2026-10-15', '2026-10-01'), 0);
+});
+
+test('côté du pavé : droitier par défaut, reprise du réglage « main », valeurs illisibles ignorées', () => {
+  assert.equal(cotePaveDepuisStockage(null, null), 'droite');
+  assert.equal(cotePaveDepuisStockage('gauche', null), 'gauche');
+  assert.equal(cotePaveDepuisStockage(null, JSON.stringify({ main: 'gauche' })), 'gauche');
+  assert.equal(cotePaveDepuisStockage('droite', JSON.stringify({ main: 'gauche' })), 'droite');
+  assert.equal(cotePaveDepuisStockage('milieu', '{pas du json'), 'droite');
+  assert.equal(cotePaveDepuisStockage(null, 'null'), 'droite');
 });

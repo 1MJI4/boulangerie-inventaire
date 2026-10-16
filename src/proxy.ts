@@ -16,11 +16,10 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { signaler } from '@/domaine/messages';
 import type { Echec } from '@/domaine/resultat';
 import { corpsClient } from '@/lib/erreurBase';
+import { origineEtrangere } from '@/lib/auth/origine';
 import { CHEMIN_CONNEXION, estCheminApi, estCheminPublic } from '@/lib/auth/chemins';
 import { NOM_COOKIE_GERANT, NOM_COOKIE_TABLETTE, lireConfiguration, optionsCookie } from '@/lib/auth/config';
 import { doitRafraichir, dureeCookieSecondes, prolonger, signerJeton, verifierJeton } from '@/lib/auth/session';
-
-const METHODES_SURES = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 function refusApi(echec: Echec, statut: number): NextResponse {
   return NextResponse.json(corpsClient(echec), {
@@ -40,18 +39,26 @@ function versConnexion(requete: NextRequest): NextResponse {
 /**
  * Une écriture envoyée depuis un autre site est refusée, même si le navigateur
  * a joint le cookie. SameSite=Lax suffit dans les navigateurs récents ; ceci
- * couvre les autres.
+ * couvre les autres. La comparaison se fait sur l'hôte RÉEL de la requête
+ * (en-tête Host), pas sur `nextUrl.host` — voir src/lib/auth/origine.ts.
+ *
+ * x-forwarded-host n'est retenu que derrière Netlify (variable NETLIFY=true
+ * posée par la plateforme).
+ * HYPOTHÈSE À VALIDER : NETLIFY=true est bien visible à l'exécution des
+ * fonctions Netlify (agent `deploiement`). Si elle ne l'est pas, seul Host est
+ * comparé : plus strict, jamais plus permissif.
  */
-function origineEtrangere(requete: NextRequest): boolean {
-  if (METHODES_SURES.has(requete.method)) return false;
-  if (requete.headers.get('sec-fetch-site') === 'cross-site') return true;
-  const origine = requete.headers.get('origin');
-  if (!origine) return false;
-  try {
-    return new URL(origine).host !== requete.nextUrl.host;
-  } catch {
-    return true;
-  }
+function origineRefusee(requete: NextRequest): boolean {
+  return origineEtrangere(
+    {
+      methode: requete.method,
+      origin: requete.headers.get('origin'),
+      secFetchSite: requete.headers.get('sec-fetch-site'),
+      host: requete.headers.get('host'),
+      xForwardedHost: requete.headers.get('x-forwarded-host'),
+    },
+    process.env.NETLIFY === 'true'
+  );
 }
 
 export function proxy(requete: NextRequest) {
@@ -73,7 +80,7 @@ export function proxy(requete: NextRequest) {
     return api ? refusApi(signaler('ERR_SESSION_EXPIREE', {}), 401) : versConnexion(requete);
   }
 
-  if (api && origineEtrangere(requete)) {
+  if (api && origineRefusee(requete)) {
     return refusApi(signaler('ERR_ORIGINE_REFUSEE', {}), 403);
   }
 
