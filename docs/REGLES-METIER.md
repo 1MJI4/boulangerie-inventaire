@@ -20,8 +20,9 @@ Niveaux : 🔴 **bloquant** (refus) · 🟠 **avertissement** (accepté, signal�
 | ~~R2c~~ | ~~Heure limite de commande dans la journée (cut-off)~~ | — | — | **écarté par le gérant — 15/10/2026** |
 | R2d | Production la veille : si la veille est un jour fermé, le délai s'allonge automatiquement | 🔴 | `ERR_PRODUCTION_IMPOSSIBLE` | **non** |
 
-**Hypothèses appliquées en attendant** : gâteau de mariage / pièce montée 5 jours ouvrés ·
-gâteau simple 48 h ouvrées · plateau salé 24 h ouvrées.
+**Délais appliqués** : comptoir commandé, plateau salé, gâteau simple → **1 jour ouvré**
+(le lendemain passe, le jour même est refusé — lendemain confirmé le 15/10/2026, voir R53) ·
+gâteau de mariage / pièce montée → **5 jours ouvrés** (**hypothèse**, question 17).
 
 ## B. Prix
 
@@ -116,18 +117,19 @@ gâteau simple 48 h ouvrées · plateau salé 24 h ouvrées.
 
 ## J. Règlement intérieur — commandes et inventaire
 
-Ces règles viennent du règlement de la direction. Elles ne sont **pas encore toutes en place**
-dans l'application : la colonne « Code » reste vide tant que le message n'existe pas.
+Ces règles viennent du règlement de la direction et des décisions du propriétaire du
+15/10/2026.
 
 | # | Règle | Niveau | Code | Confirmé |
 |---|---|---|---|---|
-| R52 | Acompte d'**au moins 50 %** du total pour valider une commande. Sous 50 % : refusé, avec le bouton « Mettre l'acompte à X € ». Exemple : commande de 90 € → acompte minimum 45 € | 🔴 | à créer | **oui — règlement intérieur 15/10/2026** |
-| R53 | Commande à retirer **le lendemain** : refusée sauf accord du responsable, donné avec le code gérant et enregistré | 🔴 | à créer | **oui — règlement intérieur 15/10/2026** |
-| R54 | Commande en pâtisserie : retrait possible **à partir de 9h en semaine, 12h le week-end**. Une heure plus tôt est refusée, avec la première heure possible proposée. Ces heures sont réglables, pas figées | 🔴 | à créer | **oui — règlement intérieur 15/10/2026** |
-| R55 | Commande inhabituelle (ingrédient particulier, moule spécial…) : acceptée mais signalée, avec la sortie « Appeler le responsable » ou « Passer par WhatsApp » | 🟠 | à créer | **oui — règlement intérieur 15/10/2026** |
+| R52 | Acompte d'**au moins 50 %** du total pour valider une commande. Sous 50 % : refusé, avec le bouton « Mettre l'acompte à X € ». Exemple : commande de 90 € → acompte minimum 45 € | 🔴 | `ERR_ACOMPTE_INSUFFISANT` | **oui — règlement intérieur 15/10/2026** |
+| R53 | Commande à retirer **le lendemain** (premier jour ouvert suivant : prise un lundi → mercredi) : **acceptée**, sans code gérant. Simple message « prévenez l'atelier ». Le jour même reste refusé (R2) | 🔵 | `INFO_COMMANDE_LENDEMAIN` | **oui — propriétaire 15/10/2026** |
+| R54 | Commande en pâtisserie et viennoiserie : retrait à partir d'une heure **réglable par le gérant, jour par jour** (défaut : 9h lundi-vendredi, 12h samedi-dimanche) **et pour une date précise** (ex. samedi à 11h). Une heure plus tôt est refusée, bouton « Passer à 12h00 ». Heure de retrait obligatoire dès qu'il y a de la pâtisserie | 🔴 | `ERR_HEURE_RETRAIT_TROP_TOT` | **oui — propriétaire 15/10/2026** · viennoiserie : **non** (q. 50) · férié ouvert = heure du dimanche : **non** (q. 52) · deux heures pour une même date = la plus tardive : **non** (q. 63) |
+| R55 | Commande inhabituelle (ingrédient particulier, moule spécial…) : acceptée mais signalée, avec la sortie « Appeler le responsable » ou « Passer par WhatsApp » | 🟠 | `AVERT_COMMANDE_INHABITUELLE` | **oui — règlement intérieur 15/10/2026** |
 | R56 | Nom et téléphone du client **obligatoires**. La date et l'heure de prise de commande s'enregistrent toutes seules | 🔴 | `ERR_CHAMP_OBLIGATOIRE` | **oui — règlement intérieur 15/10/2026** |
-| R57 | Inventaire commencé **avant 20h00** (heure de fermeture, réglable) : accepté mais signalé | 🟠 | à créer | **oui — règlement intérieur 15/10/2026** |
-| R58 | À la remise de la commande : liste des articles à cocher **devant le client**, pour que rien ne soit oublié | — | — | **oui — règlement intérieur 15/10/2026** |
+| R57 | Inventaire commencé **avant 20h00** (heure de fermeture, réglable) : accepté mais signalé | 🟠 | `AVERT_INVENTAIRE_AVANT_FERMETURE` | **oui — règlement intérieur 15/10/2026** |
+| R58 | À la remise de la commande : liste des articles à cocher **devant le client**. Tant qu'un article n'est pas coché, la remise est refusée | 🔴 | `ERR_DECOMPTE_INCOMPLET` | **oui — règlement intérieur 15/10/2026** |
+| R59 | Gâteau simple sur commande : **tailles standard uniquement** — 4, 6, 8, 10, 15, 20, 25, 30 parts (liste réglable). Autre taille refusée à la saisie, avec deux boutons vers les tailles voisines : 13 parts → « Passer à 10 » / « Passer à 15 » ; 1 part → « Passer à 4 » ; 35 parts → « Passer à 30 ». Exception possible par code gérant, nom enregistré | 🔴 (🟠 si gérant) | `ERR_TAILLE_NON_STANDARD` · `AVERT_TAILLE_NON_STANDARD_AUTORISEE` | **oui — propriétaire 15/10/2026** · définition du « gâteau simple » : **non** (q. 61) · liste vide = aucune taille imposée : **non** (q. 62) |
 
 Les autres points du règlement (tenue, hygiène, pauses, respect, avantages du personnel) ne
 bloquent jamais une saisie. Ils apparaissent sous forme de **petits rappels sympathiques**,
@@ -150,14 +152,17 @@ visibles du client.
 - **Inventaire et catalogue de commande séparés** (R36).
 - **Pavé de l'application** pour tous les chiffres de la commande (R37).
 - **Contrôles de cohérence** de la commande (R39 à R46).
-- **Règlement intérieur** : acompte d'au moins 50 %, lendemain avec accord du responsable,
-  horaires de retrait pâtisserie, commande inhabituelle, nom et téléphone, inventaire à 20h00,
-  décompte à la remise (R52 à R58).
+- **Règlement intérieur** : acompte d'au moins 50 %, horaires de retrait pâtisserie,
+  commande inhabituelle, nom et téléphone, inventaire à 20h00, décompte à la remise
+  (R52 à R58).
+- **Commande pour le lendemain acceptée**, simple information (R53).
+- **Horaires de retrait réglables** jour par jour et par date (R54).
+- **Tailles standard des gâteaux simples** : 4, 6, 8, 10, 15, 20, 25, 30 parts (R59).
 
 ## Comportements par défaut appliqués en l'absence de réponse
 
 Chacun est marqué `// HYPOTHÈSE À VALIDER` dans le code et visible à l'écran :
 
-1. **Délais** → mariage 5 j ouvrés · gâteau simple 48 h ouvrées · salé 24 h ouvrées
+1. **Délais** → mariage / pièce montée 5 jours ouvrés (le reste : 1 jour ouvré, tranché)
 2. **Minimum 10/15 pièces** → par ligne de produit, pas par panier
 3. ~~**Acompte** → aucun acompte exigé automatiquement~~ → **tranché** : au moins 50 % (R52)

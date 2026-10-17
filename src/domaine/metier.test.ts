@@ -627,6 +627,37 @@ test('R53 + délai : pièce montée pour le lendemain → ERR_DELAI_TROP_COURT (
   assert.deepEqual(blocagesCommande(saisie, ctx).map((e) => e.code), ['ERR_DELAI_TROP_COURT']);
 });
 
+// Réserve qa-metier B2 : le délai « gâteau à étages » dépend de la SEULE donnée
+// `etages` de la fiche (fournie par le catalogue), jamais du nom ni du minimum.
+function avecEtages(id: string, etages: number | null): ContexteCommande {
+  return {
+    ...ctx,
+    resoudre: (produitId, date) => {
+      const r = resoudre(produitId, date);
+      if (!r.ok || produitId !== id) return r;
+      return { ...r, donnees: { ...r.donnees, prix: { ...r.donnees.prix, etages } } };
+    },
+  };
+}
+
+test('B2 délai étages : une fiche qui porte `etages` reçoit le délai gâteau à étages via controlerCommande', () => {
+  const saisie = commande([{ produitId: ID.layer, quantite: 20 }], { dateRetrait: '2026-10-16', sansEcriture: true });
+  assert.ok(controlerCommande(saisie, ctx).ok, 'Layer Cake sans étages : lendemain accepté');
+  const r = controlerCommande(saisie, avecEtages(ID.layer, 2));
+  assert.equal(r.ok, false);
+  if (!r.ok) {
+    assert.equal(r.code, 'ERR_DELAI_TROP_COURT');
+    assert.equal(r.valeurProposee, '2026-10-21', `${DELAIS_HYPOTHESE.gateauAEtages} jours ouvrés, mardi exclu`);
+  }
+});
+
+test('B2 délai étages : sans la donnée `etages`, rien n’est déduit du nom ni du minimum (dépend du catalogue)', () => {
+  const saisie = commande([{ produitId: ID.pieceMontee, quantite: 60 }], { dateRetrait: '2026-10-16', sansEcriture: true });
+  const r = controlerCommande(saisie, avecEtages(ID.pieceMontee, null));
+  assert.ok(r.ok, 'pas de déduction : le délai vient de la donnée, que catalogue-prix doit fournir');
+  assert.equal(r.donnees.delaiJoursOuvres, DELAIS_HYPOTHESE.parRegime.C);
+});
+
 test('R54 gâteau retiré samedi 11:00 → ERR_HEURE_RETRAIT_TROP_TOT, 12:00 proposé ; baguettes à 7:00 acceptées', () => {
   const r = controlerCommande(
     commande([{ produitId: ID.layer, quantite: 20 }], { dateRetrait: '2026-10-17', heureRetrait: '11:00', sansEcriture: true }),

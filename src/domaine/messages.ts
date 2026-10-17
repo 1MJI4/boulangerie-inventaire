@@ -190,8 +190,12 @@ export type ParametresMessages = {
   /** `dateEffet` : date déjà formatée. */
   INFO_TARIF_EN_VIGUEUR: { dateEffet: string };
   INFO_EN_ATTENTE_ENVOI: { nombre: number };
-  /** LOI 11 — retrait le premier jour ouvert suivant : accepté, l'atelier est prévenu. `dateRetrait` déjà formatée. */
-  INFO_COMMANDE_LENDEMAIN: { dateRetrait: string };
+  /**
+   * LOI 11 — retrait le premier jour ouvert suivant : accepté, l'atelier est prévenu.
+   * `jour` : nom du jour de retrait (« mercredi »), tiré de la date, jamais écrit en dur.
+   * `demain` : vrai seulement si le retrait est le lendemain CALENDAIRE de la prise.
+   */
+  INFO_COMMANDE_LENDEMAIN: { jour: string; demain: boolean };
 
   // --- Données incohérentes (famille 5) ---------------------------------------
   ERR_TARIF_ABSENT: { produit: string; date: string };
@@ -747,7 +751,10 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
   INFO_COMMANDE_LENDEMAIN: {
     niveau: 'information',
     cas: 'Retrait le premier jour ouvert suivant la prise : accepté, l’atelier doit être prévenu (LOI 11, décision du 15/10/2026).',
-    message: () => `Commande pour demain : prévenez l’atelier.`,
+    message: (p) =>
+      p.demain
+        ? `Commande pour demain : prévenez l’atelier.`
+        : `Commande pour ${p.jour}, le prochain jour d’ouverture : prévenez l’atelier dès aujourd’hui.`,
   },
 
   // --- Données incohérentes -----------------------------------------------------------

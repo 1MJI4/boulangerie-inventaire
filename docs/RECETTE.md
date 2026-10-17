@@ -42,6 +42,7 @@ npm run recette:demo       crée 5 commandes de test sur différents jours
 | Voir l'application **sur le PC et la tablette** | `npm run recette:base` puis `npm run recette:tablette` → ouvrir l'adresse affichée (ex. `http://192.168.1.140:3000`) **sur les deux** |
 | Arrêter l'application | `Ctrl + C` dans le terminal |
 | Arrêter la base (les données restent) | `npm run recette:arreter` |
+| Après une **mise à jour** de l'application | `npm run recette:migrer` **puis** `npm run recette:donnees` (relancer l'import du catalogue : une nouvelle colonne peut avoir besoin d'être remplie) |
 | **Tout remettre à zéro** | `npm run recette:effacer` (demande de taper EFFACER), puis refaire « Première fois » |
 
 **Tablette** : elle doit être sur le **même wifi** que le PC. Au premier

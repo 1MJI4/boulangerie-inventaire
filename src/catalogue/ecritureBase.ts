@@ -53,6 +53,13 @@ export interface ProduitAttendu {
   unite: Unite;
   regimePrix: RegimePrix;
   estFavori: boolean;
+  /**
+   * Nombre d'étages indiqué sur l'affiche (gâteau de mariage, pièce montée),
+   * null sinon. Lu dans la DERNIÈRE version de la grille qui décrit le produit.
+   * Sert au délai « gâteau à étages » (src/domaine/commande.ts) : ce n'est pas
+   * un prix, il vit sur la fiche ProduitCatalogue (colonne `etages`).
+   */
+  etages: number | null;
   /** false : absent du dernier tarif de sa grille → archivé, jamais supprimé. */
   actif: boolean;
   /** Versions dans l'ordre des dates d'effet. */
@@ -72,9 +79,11 @@ export function attenduDepuisCatalogue(catalogue: Catalogue): { produits: Produi
     const versions = catalogue.versions.filter((v) => v.grille === p.grille);
     const derniere = versions[versions.length - 1];
     const prix: PrixAttendu[] = [];
+    let etages: number | null = null;
     for (const v of versions) {
       const l = v.lignes.get(p.id);
       if (!l) continue;
+      etages = l.etages ?? null; // la version la plus récente l'emporte
       // Schéma : pour un produit au kilo, les seuils sont en GRAMMES. Aucun
       // produit au kilo n'a de seuil aujourd'hui ; si cela arrive, l'unité du
       // seuil (kg ou g ?) est à confirmer — on refuse plutôt que de deviner.
@@ -102,6 +111,7 @@ export function attenduDepuisCatalogue(catalogue: Catalogue): { produits: Produi
       unite: p.unite,
       regimePrix: p.regimePrix,
       estFavori: p.estFavori,
+      etages,
       actif: derniere !== undefined && derniere.lignes.has(p.id),
       prix,
     });
@@ -118,6 +128,7 @@ export type ChampsProduitModifiables = Partial<{
   estFavori: boolean;
   actif: boolean;
   regimePrix: RegimePrix;
+  etages: number | null;
 }>;
 
 export type Operation =
@@ -194,6 +205,16 @@ export function planifierEcriture(
     if (e.sousCategorie !== a.sousCategorie) champs.sousCategorie = a.sousCategorie;
     if (e.estFavori !== a.estFavori) champs.estFavori = a.estFavori;
     if (e.actif && !a.actif) champs.actif = false;
+    // Étages : une fiche importée avant la colonne `etages` (NULL) est
+    // COMPLÉTÉE au réimport, sans toucher aux prix (versions figées). Un
+    // nombre d'étages changé sur l'affiche est repris. En revanche, un fichier
+    // SANS étages n'efface jamais ceux de la base : effacer supprimerait le
+    // délai « gâteau à étages » (sens qui accepte à tort).
+    // HYPOTHÈSE À VALIDER : retirer les étages d'un produit = décision du gérant, pas de l'import.
+    if (a.etages !== null && e.etages !== a.etages) champs.etages = a.etages;
+    if (a.etages === null && e.etages !== null) {
+      signalements.push(surProduit("INFO_HYPOTHESE", a.nom, a.cle, `${e.etages} étages sur le serveur, aucun dans les fichiers : conservés, à confirmer par le gérant`));
+    }
     if (!e.actif && a.actif) {
       // Un produit désactivé à la main (écran de gestion) n'est jamais réactivé en silence.
       signalements.push(surProduit("INFO_RESTE_ARCHIVE", a.nom, a.cle));

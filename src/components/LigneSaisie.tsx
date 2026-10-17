@@ -1,11 +1,12 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import type { Densite, Main } from '@/lib/preferencesSaisie';
 import type { Unite } from '@/domaine/types';
 import { formaterQuantite } from '@/domaine/unites';
 import type { Niveau } from '@/domaine/resultat';
 import { IconeNiveau, NIVEAUX } from '@/components/signalement';
+import { POLICE_NOM_MIN, policeNomNormale } from '@/components/inventaire/dispositionGrille';
 
 /**
  * Une ligne de saisie, partagée par le comptage, la production et les prévisions.
@@ -37,6 +38,11 @@ import { IconeNiveau, NIVEAUX } from '@/components/signalement';
  * complet, sur deux lignes au besoin ; les signalements
  * ne l'agrandissent jamais : une icône de niveau sur la ligne, et le détail
  * (avec sa sortie) en surimpression quand la ligne est active.
+ * Nom trop long pour la hauteur imposée : sa police est réduite, pour CETTE
+ * ligne seulement, jusqu'à 13 px (mesure réelle) ; au-delà, c'est
+ * `dispositionGrille` qui découpe la page en sous-pages. Garde-fou : la ligne
+ * contient son contenu (jamais de débordement sur la voisine) et le nom
+ * complet reste accessible (title + aria-label), même en police réduite.
  */
 export function LigneSaisie({
   nom,
@@ -113,6 +119,41 @@ export function LigneSaisie({
   const viaPave = modePave || auPoids;
   const affichee = auPoids && rempli ? formaterQuantite('kg', Number(valeur)) : valeur;
 
+  // Grille fixe : si le nom dépasse la hauteur de la ligne, réduire SA police
+  // pas à pas (mesure réelle du rendu), jusqu'à 13 px. Le nom n'est jamais
+  // raccourci (LOI 5). Remesuré quand la colonne change de largeur.
+  const refNom = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = refNom.current;
+    if (!el) return;
+    if (hauteurFixe === undefined) {
+      el.style.fontSize = '';
+      return;
+    }
+    const disponible = hauteurFixe - 1; // bordure basse
+    const ajuster = () => {
+      let police = policeNomNormale(hauteurFixe);
+      el.style.fontSize = `${police}px`;
+      while (police > POLICE_NOM_MIN && el.scrollHeight > disponible) {
+        police -= 1;
+        el.style.fontSize = `${police}px`;
+      }
+      el.dataset.policeReduite = police < policeNomNormale(hauteurFixe) ? String(police) : '';
+    };
+    ajuster();
+    if (typeof ResizeObserver === 'undefined') return;
+    // Seule la LARGEUR du nom compte (colonne, icône de niveau apparue…) ;
+    // la hauteur change avec la police elle-même : on l'ignore.
+    let largeur = el.clientWidth;
+    const observateur = new ResizeObserver(() => {
+      if (el.clientWidth === largeur) return;
+      largeur = el.clientWidth;
+      ajuster();
+    });
+    observateur.observe(el);
+    return () => observateur.disconnect();
+  }, [nom, hauteurFixe]);
+
   const tailleCible = grande ? 'h-14 w-14' : cibleReduite ? 'h-9 w-9' : 'h-11 w-11';
   const hauteurChamp = grande ? 'h-14' : cibleReduite ? 'h-9' : 'h-11';
   // En carte le champ s'étire pour offrir une grande cible au doigt, mais
@@ -145,9 +186,13 @@ export function LigneSaisie({
         }`;
   const classesRangee = carte
     ? 'contents'
-    : `flex items-center ${compact ? 'gap-2 px-2.5 py-1' : fixe ? 'gap-1.5 px-2' : 'gap-2.5 px-3 py-1.5'} ${gaucher ? 'flex-row-reverse' : ''}`;
+    : `flex items-center ${compact ? 'gap-2 px-2.5 py-1' : fixe ? 'max-h-full min-h-0 gap-1.5 overflow-hidden px-2' : 'gap-2.5 px-3 py-1.5'} ${gaucher ? 'flex-row-reverse' : ''}`;
   // Grille fixe : nom COMPLET, à la lettre (LOI 5), jamais d'ellipse — sur deux
-  // lignes au besoin ; `dispositionGrille` élargit les colonnes pour que ça tienne.
+  // lignes ou plus ; police réduite au besoin (ci-dessus) ; `dispositionGrille`
+  // réserve la largeur réelle des cibles (champ kg, icône) et découpe en
+  // sous-pages en dernier recours. `overflow-hidden` sur la rangée : garde-fou,
+  // la ligne ne déborde jamais sur la voisine (la surimpression, elle, est hors
+  // de la rangée et reste visible).
   const classesNom = fixe
     ? `whitespace-normal break-words leading-tight ${grande ? 'text-lg' : 'text-[15px]'}`
     : `${carte ? 'line-clamp-2 leading-snug' : 'truncate'} ${compact ? 'text-sm' : 'text-[15px]'}`;
@@ -173,7 +218,7 @@ export function LigneSaisie({
             <span className="sr-only">{NIVEAUX[niveauSignalement].libelle}</span>
           </span>
         ) : null}
-        <div className={`min-w-0 text-ink ${classesNom}`} title={nom}>
+        <div ref={refNom} className={`min-w-0 text-ink ${classesNom}`} title={nom} aria-label={nom}>
           {nom}
         </div>
         {indice && !compact && !fixe ? (

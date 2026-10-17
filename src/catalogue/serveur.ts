@@ -59,6 +59,7 @@ const CHAMPS_PRODUIT = {
   unite: true,
   regimePrix: true,
   estFavori: true,
+  etages: true, // migration 20261015160000 (délai « gâteau à étages »)
   actif: true,
 } as const;
 
@@ -131,6 +132,7 @@ export function depotPrisma(tx: ClientPrismaCatalogue): DepotEcritureCatalogue {
           unite: p.unite,
           regimePrix: p.regimePrix,
           estFavori: p.estFavori,
+          etages: p.etages,
           actif: p.actif,
         })),
         select: { id: true, cleCatalogue: true },

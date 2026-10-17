@@ -24,8 +24,11 @@
 //   typeMin           ← « bloquant » dès qu'un minimum existe (LOI 7)
 //   estFavori (ligne) ← Produit.estFavori (non versionné en base)
 //   variantes         ← [] · variantesFermees ← false
-//   maxParUnite.objet ← "" · etages ← null · rapprochementComptoir ← []
-// HYPOTHÈSE À VALIDER : ces quatre derniers champs ne servent ni au calcul du
+//   maxParUnite.objet ← "" · rapprochementComptoir ← []
+//   etages            ← ProduitCatalogue.etages (migration 20261015160000),
+//                       sur la FICHE produit et non sur la version de prix :
+//                       le délai « gâteau à étages » (5 jours ouvrés) en dépend.
+// HYPOTHÈSE À VALIDER : les autres champs vides ci-dessus ne servent ni au calcul du
 // prix ni aux minimums ; ils sont vides côté serveur tant que la base ne les
 // porte pas (dépendance `base-donnees`, voir rapport du lot 2).
 
@@ -60,6 +63,8 @@ export interface LigneProduitBase {
   unite: Unite;
   regimePrix: RegimePrix | null;
   estFavori: boolean;
+  /** Étages de l'affiche (mariage, pièce montée), NULL sinon. */
+  etages: number | null;
   actif: boolean;
 }
 
@@ -162,7 +167,8 @@ export function prixDepuisBase(p: LigneProduitBase & { regimePrix: RegimePrix },
     minParSymbole: l.minimumParSymbole,
     typeMin: aUnMinimum ? "bloquant" : null,
     maxParUnite: l.maximum === null ? null : { valeur: l.maximum, objet: "" },
-    etages: null,
+    // `?? null` : ligne lue par un client Prisma généré avant la colonne.
+    etages: p.etages ?? null,
     rapprochementComptoir: [],
     tauxTva: tauxTvaDepuisBase(l),
   };

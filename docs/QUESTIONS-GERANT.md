@@ -33,6 +33,17 @@
 - ✅ **Acompte obligatoire : au moins 50 % du total**, pour toute commande (règlement
   intérieur). Sous 50 %, l'application refuse et propose le bon montant. Un acompte plus
   élevé que le total reste refusé. *(ancienne question 25)*
+- ✅ **Commande pour le lendemain : acceptée.** Pas de code gérant. L'application affiche
+  seulement « commande pour demain : prévenez l'atelier ». Une commande pour le jour même
+  reste refusée. *(ancienne question 49)*
+- ✅ **Heures de retrait pâtisserie réglables par vous**, jour par jour (lundi … dimanche),
+  et pour une date précise (exemple : samedi 20/12 à 11h au lieu de 12h). Par défaut :
+  9h du lundi au vendredi, 12h samedi et dimanche.
+- ✅ **Gâteaux simples sur commande : tailles standard 4, 6, 8, 10, 15, 20, 25, 30 parts.**
+  Une autre taille est refusée. L'application propose les deux tailles voisines en un
+  geste (13 parts → « Passer à 10 » ou « Passer à 15 » ; 1 part → « Passer à 4 »). Le code
+  gérant permet une exception, avec son nom enregistré. Vous pouvez changer cette liste.
+  *(anciennes questions 12 et 55)*
 
 ## Urgent — bloque le développement
 
@@ -80,8 +91,6 @@
 
 11. Le supplément « moins de 6 personnes » existe-t-il encore ? Si oui, combien ?
 
-12. Un gâteau de 13 parts : faut-il le refuser, prévenir, ou le laisser passer ?
-
 13. Un prix à 0 € peut-il exister (geste commercial, offert) ?
     *(en attendant, l'application fait : refusé.)*
 
@@ -122,9 +131,11 @@
     *(en attendant, l'application fait : aucune ouverture exceptionnelle n'est prévue, le
     mardi est toujours refusé.)*
 
-17. Délais minimum de commande, en jours ouvrés : gâteau de mariage / pièce montée ? ·
-    gâteau simple ? · plateau salé ?
-    *(en attendant, l'application fait : 5 jours / 48 h / 24 h.)*
+17. **Gâteau de mariage et pièce montée** : combien de jours ouvrés à l'avance ? Le
+    lendemain est-il possible pour eux aussi ?
+    *(en attendant, l'application fait : 5 jours ouvrés, le mardi ne compte pas. Exemple :
+    commande prise un lundi → retrait possible au plus tôt le dimanche. Tout le reste —
+    comptoir, plateau salé, gâteau simple — se commande au plus tard la veille.)*
 
 40. Un produit du **comptoir commandé à l'avance** (par exemple 30 baguettes) : combien de
     jours à l'avance faut-il le commander ?
@@ -133,27 +144,36 @@
 41. Une date de retrait **déjà passée** doit-elle être refusée ?
     *(en attendant, l'application fait : refusée.)*
 
-49. Une commande pour **le lendemain** : votre règlement dit « contacter le responsable ».
-    Le délai de 2 jours ouvrés supposé pour les gâteaux (question 17) est-il donc faux ?
-    Le responsable peut-il accepter un gâteau pour le lendemain ?
-    Aujourd'hui, même avec l'accord du responsable, le délai de 2 jours ouvrés l'emporte :
-    le gâteau pour le lendemain reste refusé. Le responsable peut-il lever les deux ?
-    *(en attendant, l'application fait : lendemain refusé sauf code gérant ; pour un gâteau,
-    le délai de 2 jours ouvrés s'applique en plus, sans exception.)*
-
-50. Les horaires de retrait **pâtisserie (9h en semaine / 12h le week-end)** valent-ils aussi
-    pour les plateaux salés et les produits du comptoir commandés ?
-    *(en attendant, l'application fait : uniquement pour la pâtisserie.)*
+50. Les horaires de retrait **pâtisserie (9h en semaine / 12h le week-end)** valent-ils
+    aussi pour la **viennoiserie** ? Et pour les plateaux salés ?
+    *(en attendant, l'application fait : pâtisserie **et viennoiserie** — 20 croissants
+    pour un samedi ne sortent qu'à partir de 12h. Les plateaux salés et le pain ne sont
+    pas concernés. Un produit dont le rayon est inconnu, ou une « autre demande », suit
+    l'horaire pâtisserie.)*
 
 51. L'heure de fermeture est-elle **20h00 tous les jours ouverts**, week-end compris ?
     C'est elle qui décide quand l'inventaire peut commencer.
     *(en attendant, l'application fait : 20h00 tous les jours ; un inventaire commencé avant
     est signalé, pas refusé.)*
 
-52. Le **week-end**, c'est bien samedi et dimanche ? Un jour férié ouvert compte-t-il comme
-    un week-end (retrait pâtisserie à partir de 12h) ?
-    *(proposition en attendant : samedi, dimanche et férié ouvert à partir de 12h — le cas
-    le plus prudent.)*
+52. Un **jour férié où vous ouvrez** : la pâtisserie se retire-t-elle à la même heure
+    que le dimanche ?
+    *(en attendant, l'application fait : l'heure du dimanche, donc 12h par défaut. Pour un
+    férié précis, vous pouvez régler une autre heure dans les réglages.)*
+
+61. **Gâteau simple** : l'application range dans cette famille tout gâteau sur commande
+    au prix par personne, sans minimum de parts et sans étages. Layer Cake, Number Cake,
+    mariage et pièce montée gardent leurs propres minimums, sans tailles imposées. Est-ce
+    juste ?
+    *(en attendant, l'application fait : exactement cela. Un Layer Cake de 22 parts passe.)*
+
+62. Si vous **videz la liste des tailles standard**, faut-il accepter toutes les tailles ?
+    *(en attendant, l'application fait : oui, plus aucune taille n'est imposée.)*
+
+63. Deux heures différentes saisies **pour la même date** (par erreur, 11h et 10h le même
+    samedi) : laquelle compte ?
+    *(en attendant, l'application fait : la plus tardive, 11h. On ne promet jamais une
+    pâtisserie trop tôt.)*
 
 54. **Inventaire avant 20h00** : votre règlement dit « jamais avant ». L'application, elle,
     prévient seulement. Faut-il le refuser, sauf code gérant ?
@@ -185,10 +205,6 @@
     que soit le nombre de parts ; un plateau de minis sur commande = un gâteau ; au
     comptoir, chaque pièce du rayon pâtisserie = un gâteau. Plus de photos que de gâteaux,
     ou une photo sans gâteau : refusé.)*
-
-55. **Gâteaux simples** : quel est le nombre minimum de parts ? L'ancien supplément « moins
-    de 6 personnes » laissait penser que c'était 6.
-    *(en attendant, l'application fait : aucun minimum.)*
 
 59. **Grand pain surprise au-delà de 20 sandwichs** : faut-il seulement prévenir, ou
     refuser ?

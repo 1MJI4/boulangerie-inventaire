@@ -77,3 +77,38 @@ test('taille hors standard déjà acceptée : conservée au même produit et à 
   assert.equal(memeAccord(taille, { par: 'Gérant', le: LE.toISOString() }), true);
   assert.equal(memeAccord(taille, { par: 'Autre', le: LE.toISOString() }), false);
 });
+
+// Réserve m3 : accord non confirmé devenu inutile → ignoré, pas refusé.
+import { accordManquant } from './accords.ts';
+
+const ACCORD = { par: 'Gérant', le: '2026-10-10T09:00:00.000Z' };
+
+test('m3 : accord de taille non confirmé, taille redevenue standard (domaine ne le trace pas) → ignoré', () => {
+  assert.equal(accordManquant({ lignes: [{ prix: false, taille: true }], remise: false }, { lignes: [{}] }), null);
+});
+
+test('m3 : accord de taille non confirmé, taille toujours hors liste → code gérant redemandé', () => {
+  assert.deepEqual(
+    accordManquant({ lignes: [{ prix: false, taille: true }], remise: false }, { lignes: [{ autorisationTaille: ACCORD }] }),
+    { type: 'taille', ligne: 0 },
+  );
+});
+
+test('m3 : accord sous plancher non confirmé, prix ≥ plancher → ignoré ; sous plancher → redemandé', () => {
+  const attente = { lignes: [{ prix: false, taille: false }, { prix: true, taille: false }], remise: false };
+  assert.equal(accordManquant(attente, { lignes: [{}, {}] }), null);
+  assert.deepEqual(accordManquant(attente, { lignes: [{}, { autorisation: ACCORD }] }), { type: 'prix', ligne: 1 });
+});
+
+test('m3 : remise non confirmée, total = tarif → ignorée ; total remisé → redemandée', () => {
+  const attente = { lignes: [], remise: true };
+  assert.equal(accordManquant(attente, { lignes: [] }), null);
+  assert.deepEqual(accordManquant(attente, { lignes: [], remise: ACCORD }), { type: 'remise' });
+});
+
+test('m3 : accord confirmé (gérant présent ou déjà enregistré) utilisé → jamais redemandé', () => {
+  assert.equal(
+    accordManquant({ lignes: [{ prix: false, taille: false }], remise: false }, { lignes: [{ autorisation: ACCORD, autorisationTaille: ACCORD }], remise: ACCORD }),
+    null,
+  );
+});

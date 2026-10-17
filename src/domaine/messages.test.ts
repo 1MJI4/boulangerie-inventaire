@@ -124,7 +124,7 @@ const EXEMPLES: Partial<Record<CodeCatalogue, unknown>> = {
   AVERT_PRODUCTION_INHABITUELLE: { produit: 'P', demandee: '12', sens: 'dessus' },
   INFO_TARIF_EN_VIGUEUR: { dateEffet: '01/09/2026' },
   INFO_EN_ATTENTE_ENVOI: { nombre: 3 },
-  INFO_COMMANDE_LENDEMAIN: { dateRetrait: 'vendredi 16 octobre' },
+  INFO_COMMANDE_LENDEMAIN: { jour: 'vendredi', demain: true },
   ERR_TARIF_ABSENT: { produit: 'P', date: '15/10/2026' },
   ERR_CATALOGUE_ABSENT: {},
   ERR_PRODUIT_SANS_REGIME: { produit: 'P' },
@@ -254,8 +254,13 @@ test('règlement intérieur (LOI 11) : un exemple par code, sortie et statut', (
   assert.deepEqual(sortiePour('ERR_ACOMPTE_INSUFFISANT', acompte), { type: 'correction', libelle: 'Mettre l’acompte à M €' });
 
   // R53 (15/10/2026) : le lendemain est accepté, simple information sans friction.
-  const lendemain = { dateRetrait: 'vendredi 16 octobre' };
+  const lendemain = { jour: 'vendredi', demain: true };
   assert.equal(messagePour('INFO_COMMANDE_LENDEMAIN', lendemain), 'Commande pour demain : prévenez l’atelier.');
+  // Réserve qa-metier m1 : prise lundi, mardi fermé → « pour mercredi », jamais « pour demain ».
+  assert.equal(
+    messagePour('INFO_COMMANDE_LENDEMAIN', { jour: 'JOUR', demain: false }),
+    'Commande pour JOUR, le prochain jour d’ouverture : prévenez l’atelier dès aujourd’hui.',
+  );
   assert.equal(CATALOGUE.INFO_COMMANDE_LENDEMAIN.niveau, 'information');
   assert.equal(niveauDuCode('INFO_COMMANDE_LENDEMAIN'), 'information');
   assert.ok(!estCodeCatalogue('AVERT_COMMANDE_LENDEMAIN_AUTORISEE'), 'plus d’accord gérant pour le lendemain');
@@ -309,7 +314,8 @@ test('règlement intérieur (LOI 11) : un exemple par code, sortie et statut', (
   // Aucun chiffre en dur : sans chiffre dans les paramètres, aucun chiffre dans le texte.
   for (const m of [
     messagePour('ERR_COMMANDE_LENDEMAIN', { dateRetrait: 'demain' }),
-    messagePour('INFO_COMMANDE_LENDEMAIN', { dateRetrait: 'demain' }),
+    messagePour('INFO_COMMANDE_LENDEMAIN', { jour: 'J', demain: true }),
+    messagePour('INFO_COMMANDE_LENDEMAIN', { jour: 'J', demain: false }),
     messagePour('ERR_HEURE_RETRAIT_TROP_TOT', { heureMin: 'H', jour: 'samedi' }),
     messagePour('AVERT_TAILLE_NON_STANDARD_AUTORISEE', { par: 'Karim' }),
     messagePour('AVERT_INVENTAIRE_AVANT_FERMETURE', { heureFermeture: 'H' }),

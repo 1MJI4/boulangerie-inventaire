@@ -13,10 +13,9 @@
 --      valeurs controlees, jamais supprimees.
 --   2. Commande :
 --      - heure de retrait "HH:MM" ou NULL (commande sans patisserie) ;
---      - retrait avant le jour de la prise -> ERR_DATE_PASSEE ; le lendemain
---        est ACCEPTE sans accord (decision du proprietaire du 15/10/2026,
---        LOI 11) ; colonnes accordLendemainPar/Le conservees (historique,
---        nom ET horodatage ou rien) mais elles ne conditionnent plus rien ;
+--      - accord du responsable pour le lendemain : nom ET horodatage, ou rien ;
+--        retrait au plus tard le prochain jour ouvert sans accord -> refus
+--        (ERR_COMMANDE_LENDEMAIN) ; retrait avant la prise -> ERR_DATE_PASSEE ;
 --      - remise : total facture <= total du tarif ; en dessous, nom ET
 --        horodatage du gerant obligatoires (ERR_REMISE_NON_AUTORISEE) ;
 --      - acompte <= total (ERR_ACOMPTE_SUPERIEUR_TOTAL) et >= pourcentage
@@ -175,9 +174,7 @@ UPDATE "Commande" SET "demandeInhabituelle" = true WHERE "gateauComplexe";
 ALTER TABLE "Commande" ADD CONSTRAINT "Commande_retrait_heure_format"
   CHECK ("retraitHeure" IS NULL OR "retraitHeure" ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$') NOT VALID;
 
--- R53 (ancien) — accord du responsable pour le lendemain : nom ET horodatage,
--- ou rien. Le lendemain n'exige plus d'accord (15/10/2026) : colonnes gardees
--- pour l'historique, sans effet sur l'acceptation d'une commande.
+-- R53 — accord du responsable pour le lendemain : nom ET horodatage, ou rien.
 ALTER TABLE "Commande" ADD CONSTRAINT "Commande_accord_lendemain_trace" CHECK (
   ("accordLendemainPar" IS NULL) = ("accordLendemainLe" IS NULL)
   AND ("accordLendemainPar" IS NULL OR length(btrim("accordLendemainPar")) > 0)
@@ -208,8 +205,6 @@ ALTER TABLE "Commande" ADD CONSTRAINT "Commande_acompte_max_total"
 
 -- Premier jour ouvert a partir de d (inclus), d'apres "JourFerme".
 -- NULL si aucun jour ouvert sur un an (table incoherente).
--- Outil de calcul (jours ouvres, LOI 3) : plus utilise par le declencheur
--- depuis l'abandon du refus du lendemain, garde pour les requetes.
 CREATE OR REPLACE FUNCTION "prochain_jour_ouvert"(d date) RETURNS date
 LANGUAGE plpgsql STABLE
 SET search_path = public, pg_temp
@@ -239,6 +234,7 @@ SET search_path = public, pg_temp
 AS $fn$
 DECLARE
   jour_saisie date;
+  lendemain   date;
   pourcent    integer;
   minimum     bigint;
 BEGIN
@@ -282,14 +278,13 @@ BEGIN
     END IF;
   END IF;
 
-  -- ---- Date de retrait : passee (R53) ----
+  -- ---- Date de retrait : passee / lendemain (R53, validerLendemain) ----
   -- Jour de la saisie : a la creation, le jour LOCAL de la prise de commande
   -- (priseLe, horloge de la tablette transmise par la route : une commande
   -- prise hors ligne et synchronisee plus tard est jugee a sa date de prise) ;
   -- a une modification de la date de retrait, le jour du magasin.
-  -- Le lendemain (et le jour meme) ne sont PAS refuses ici : decision du
-  -- proprietaire du 15/10/2026, plus d'accord du responsable (LOI 11).
-  -- Seule une date anterieure au jour de la saisie est refusee.
+  -- HYPOTHÈSE À VALIDER (reprise du domaine) : une modification faite la
+  -- veille du retrait repasse par l'accord du responsable.
   IF TG_OP = 'INSERT' OR NEW."retraitLe" IS DISTINCT FROM OLD."retraitLe" THEN
     IF TG_OP = 'INSERT' THEN
       jour_saisie := ((NEW."priseLe" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Brussels')::date;
@@ -302,6 +297,15 @@ BEGIN
         DETAIL = format('Retrait %s, saisie %s.', NEW."retraitLe", jour_saisie),
         HINT = 'champ=retraitLe';
     END IF;
+
+    lendemain := "prochain_jour_ouvert"(jour_saisie + 1);
+    IF (lendemain IS NULL OR NEW."retraitLe" <= lendemain)
+       AND (NEW."accordLendemainPar" IS NULL OR length(btrim(NEW."accordLendemainPar")) = 0
+            OR NEW."accordLendemainLe" IS NULL) THEN
+      RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'ERR_COMMANDE_LENDEMAIN',
+        DETAIL = format('Retrait %s, premier jour ouvert suivant %s.', NEW."retraitLe", lendemain),
+        HINT = 'champ=retraitLe';
+    END IF;
   END IF;
 
   RETURN NEW;
@@ -309,11 +313,10 @@ END
 $fn$;
 
 -- Se declenche APRES "Commande_refuser_jour_ferme" (ordre alphabetique des
--- declencheurs) : un mardi reste refuse en ERR_JOUR_FERME, avant tout autre
--- controle du reglement.
+-- declencheurs) : un mardi reste refuse en ERR_JOUR_FERME, pas en lendemain.
 CREATE TRIGGER "Commande_reglement"
   BEFORE INSERT OR UPDATE OF "acompteCentimes", "totalCentimes", "totalTarifCentimes",
-    "remiseAutoriseePar", "remiseAutoriseeLe", "retraitLe"
+    "remiseAutoriseePar", "remiseAutoriseeLe", "retraitLe", "accordLendemainPar", "accordLendemainLe"
   ON "Commande"
   FOR EACH ROW EXECUTE FUNCTION "commande_controler_reglement"();
 

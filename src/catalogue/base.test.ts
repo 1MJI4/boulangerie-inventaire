@@ -86,7 +86,7 @@ class FausseBase {
           this.ecrire();
           if (this.produits.some((p) => p.cleCatalogue === a.cle)) throw new ErreurBase("unique cleCatalogue");
           const id = ++this.seq.p;
-          this.produits.push({ id, cleCatalogue: a.cle, nom: a.nom, categorie: a.categorie, sousCategorie: a.sousCategorie, unite: a.unite, regimePrix: a.regimePrix, estFavori: a.estFavori, actif: a.actif });
+          this.produits.push({ id, cleCatalogue: a.cle, nom: a.nom, categorie: a.categorie, sousCategorie: a.sousCategorie, unite: a.unite, regimePrix: a.regimePrix, estFavori: a.estFavori, etages: a.etages, actif: a.actif });
           ids.set(a.cle, id);
         }
         return ids;
@@ -241,7 +241,7 @@ test("relecture : getPrix serveur = getPrix des fichiers, pour chaque produit", 
       }
       const a = attendu.donnees;
       const b = lu.donnees;
-      for (const champ of ["prixCentimes", "basePrix", "prixEstPlancher", "estFavori", "minQuantite", "minParSymbole", "typeMin", "versionCode", "valideDu", "valideAu"] as const) {
+      for (const champ of ["prixCentimes", "basePrix", "prixEstPlancher", "estFavori", "minQuantite", "minParSymbole", "typeMin", "etages", "versionCode", "valideDu", "valideAu"] as const) {
         assert.deepEqual(b[champ], a[champ], `${id} ${champ}`);
       }
       assert.equal(b.maxParUnite?.valeur ?? null, a.maxParUnite?.valeur ?? null);
@@ -344,7 +344,7 @@ test("version en base inconnue des fichiers : refus", () => {
   const a = produits[0];
   const existant: ProduitAvecPrixBase = {
     id: 1, cleCatalogue: a.cle, nom: a.nom, categorie: a.categorie, sousCategorie: a.sousCategorie,
-    unite: a.unite, regimePrix: a.regimePrix, estFavori: a.estFavori, actif: true,
+    unite: a.unite, regimePrix: a.regimePrix, estFavori: a.estFavori, etages: null, actif: true,
     prix: [{ id: 9, produitId: 1, prixCentimes: a.prix[0].prixCentimes, basePrix: a.prix[0].basePrix, valideDu: new Date("2026-08-01T00:00:00.000Z"), valideAu: new Date("2026-08-31T00:00:00.000Z"), tauxTvaEmporterPb: null, tauxTvaSurPlacePb: null, minimum: null, minimumParSymbole: null, maximum: null, versionCode: null }],
   };
   const plan = planifierEcriture(produits, [existant], AUJOURDHUI);
@@ -357,7 +357,7 @@ test("changement d'unité ou de régime en base : refus", () => {
   const kg = produits.find((p) => p.unite === "kg")!;
   const base = (x: Partial<ProduitAvecPrixBase>): ProduitAvecPrixBase => ({
     id: 1, cleCatalogue: kg.cle, nom: kg.nom, categorie: kg.categorie, sousCategorie: kg.sousCategorie,
-    unite: kg.unite, regimePrix: kg.regimePrix, estFavori: kg.estFavori, actif: true, prix: [], ...x,
+    unite: kg.unite, regimePrix: kg.regimePrix, estFavori: kg.estFavori, etages: null, actif: true, prix: [], ...x,
   });
   assert.ok(planifierEcriture([kg], [base({ unite: "piece" })], AUJOURDHUI).signalements.some((s) => s.code === "ERR_CHANGEMENT_UNITE"));
   assert.ok(planifierEcriture([kg], [base({ regimePrix: "C" })], AUJOURDHUI).signalements.some((s) => s.code === "ERR_CHANGEMENT_REGIME"));
@@ -369,6 +369,74 @@ test("panne en cours d'écriture : la transaction n'écrit rien", async () => {
   await assert.rejects(ecrireCatalogueEnBase(base.client(), CAT, { aujourdhui: AUJOURDHUI }));
   assert.equal(base.produits.length, 0);
   assert.equal(base.prix.length, 0);
+});
+
+// ------------------------------------------------------------ Étages (délai « gâteau à étages »)
+
+/** Produits dont l'affiche porte des étages, lus dans les fichiers (aucun identifiant en dur). */
+function produitsAEtages() {
+  return attenduDepuisCatalogue(CAT).produits.filter((p) => p.etages !== null);
+}
+
+test("étages : l'affiche porte ceux du gâteau de mariage et de la pièce montée", () => {
+  const aEtages = produitsAEtages();
+  assert.ok(aEtages.some((p) => /mariage/i.test(p.nom)), "gâteau de mariage sans étages dans les fichiers");
+  assert.ok(aEtages.some((p) => /pi[eè]ce mont[ée]e/i.test(p.nom)), "pièce montée sans étages dans les fichiers");
+  for (const p of aEtages) {
+    assert.ok(Number.isInteger(p.etages) && p.etages! >= 2, `${p.nom} : ${p.etages}`);
+    assert.equal(p.regimePrix, "C");
+  }
+});
+
+test("étages : relus en base (getPrix, listerParCategorie) — pièce montée et mariage ≥ 2", async () => {
+  const base = await baseRemplie();
+  const lecteur = creerLecteurBase(base.source());
+  for (const p of produitsAEtages()) {
+    const r = await lecteur.getPrix(p.cle, "2026-10-20");
+    assert.ok(r.ok, p.cle);
+    assert.equal(r.donnees.etages, p.etages);
+    assert.ok(r.donnees.etages! >= 2);
+  }
+  const rayons = await lecteur.listerParCategorie("2026-10-20");
+  assert.ok(rayons.ok);
+  const tous = rayons.donnees.flatMap((x) => x.produits);
+  const aEtages = tous.filter((x) => x.prix.etages !== null);
+  assert.equal(aEtages.length, produitsAEtages().length);
+  // Aucun produit du comptoir n'hérite d'étages.
+  assert.ok(tous.filter((x) => x.produit.regimePrix === "A").every((x) => x.prix.etages === null));
+});
+
+test("étages : une base importée SANS étages est complétée au réimport, prix intacts, puis idempotente", async () => {
+  const base = await baseRemplie();
+  const cles = new Set(produitsAEtages().map((p) => p.cle));
+  for (const p of base.produits) if (cles.has(p.cleCatalogue)) p.etages = null; // import d'avant la colonne
+  const prixAvant = JSON.stringify(base.prix);
+
+  const r = await ecrireCatalogueEnBase(base.client(), CAT, { aujourdhui: AUJOURDHUI });
+  assert.ok(r.ok && r.ecrit, JSON.stringify(r.signalements.filter((s) => s.niveau === "bloquant")));
+  assert.equal(r.resume.produitsModifies, cles.size);
+  assert.equal(r.resume.versionsInserees, 0);
+  assert.equal(r.resume.versionsFermees, 0);
+  assert.ok(r.operations.every((o) => o.type === "modifierProduit" && Object.keys(o.champs).join() === "etages"));
+  assert.equal(JSON.stringify(base.prix), prixAvant, "aucune version de prix touchée");
+  for (const p of base.produits) if (cles.has(p.cleCatalogue)) assert.ok(p.etages! >= 2);
+
+  const encore = await ecrireCatalogueEnBase(base.client(), CAT, { aujourdhui: AUJOURDHUI });
+  assert.equal(encore.ecrit, false);
+  assert.equal(encore.operations.length, 0);
+});
+
+test("étages : un fichier sans étages n'efface jamais ceux de la base", () => {
+  const a = produitsAEtages()[0];
+  const sansEtages = { ...a, etages: null };
+  const existant: ProduitAvecPrixBase = {
+    id: 1, cleCatalogue: a.cle, nom: a.nom, categorie: a.categorie, sousCategorie: a.sousCategorie,
+    unite: a.unite, regimePrix: a.regimePrix, estFavori: a.estFavori, etages: a.etages, actif: true, prix: [],
+  };
+  const plan = planifierEcriture([sansEtages], [existant], AUJOURDHUI);
+  assert.ok(plan.ok);
+  assert.ok(!plan.operations.some((o) => o.type === "modifierProduit" && "etages" in o.champs));
+  assert.ok(plan.signalements.some((s) => s.code === "INFO_HYPOTHESE"));
 });
 
 // ------------------------------------------------------------ Lecture : échecs typés

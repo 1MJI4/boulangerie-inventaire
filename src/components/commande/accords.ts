@@ -94,3 +94,42 @@ export function remiseCouverte(
 export function tailleCouverte(a: AccordEnregistre, ligne: { produitId: string | null; quantite: number | null }): boolean {
   return a.type === 'taille' && ligne.produitId !== null && a.cle === ligne.produitId && a.quantite === ligne.quantite;
 }
+
+/**
+ * Accords renvoyés par la tablette que personne n'a confirmés (gérant absent,
+ * pas d'accord enregistré qui les couvre) : par ligne, prix et/ou taille ;
+ * pour la commande, la remise.
+ */
+export type AccordsNonConfirmes = {
+  lignes: { prix: boolean; taille: boolean }[];
+  remise: boolean;
+};
+
+/** Ce que le domaine a réellement utilisé (autorisations tracées). */
+export type AccordsUtilises = {
+  lignes: { autorisation?: unknown; autorisationTaille?: unknown }[];
+  remise?: unknown;
+};
+
+export type AccordManquant =
+  | { type: 'prix' | 'taille'; ligne: number }
+  | { type: 'remise' };
+
+/**
+ * Réserve m3 (qa-metier) : un accord devenu INUTILE (taille redevenue
+ * standard, prix revenu au plancher ou au-dessus, total redevenu égal au
+ * tarif) est ignoré, jamais refusé — et jamais enregistré. Seul un accord non
+ * confirmé que le domaine a effectivement dû utiliser redemande le code
+ * gérant. Le domaine ne trace une autorisation que si elle sert ; c'est donc
+ * lui qui dit si l'accord était nécessaire.
+ */
+export function accordManquant(attente: AccordsNonConfirmes, utilises: AccordsUtilises): AccordManquant | null {
+  for (const [i, l] of utilises.lignes.entries()) {
+    const a = attente.lignes[i];
+    if (!a) continue;
+    if (a.prix && l.autorisation) return { type: 'prix', ligne: i };
+    if (a.taille && l.autorisationTaille) return { type: 'taille', ligne: i };
+  }
+  if (attente.remise && utilises.remise) return { type: 'remise' };
+  return null;
+}

@@ -201,3 +201,22 @@ test('accord de taille : tombe si la quantité change, reste sinon', () => {
   assert.deepEqual(majLigneEcran(l, { quantite: 7 }).deverrouillageTaille, accord);
   assert.deepEqual(majLigneEcran({ ...l, deverrouillageTaille: null }, { quantite: 9, deverrouillageTaille: accord }).deverrouillageTaille, accord);
 });
+
+test('réserve m3 : accord de taille renvoyé sur une taille STANDARD → non tracé par le domaine, donc ignoré (pas de 403)', async () => {
+  const { accordManquant } = await import('./accords.ts');
+  const accord = { par: 'Gérant', le: '2026-10-15T10:00:00.000Z' };
+  const l = { ...ligneVide('c/bavarois'), quantite: 8, deverrouillageTaille: accord };
+  const r = controlerLigne(versLigneSaisie(l, simple), 1, DATE, ctxTailles);
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.equal(r.donnees.autorisationTaille, undefined, 'accord inutile : jamais enregistré');
+  assert.equal(accordManquant({ lignes: [{ prix: false, taille: true }], remise: false }, { lignes: [r.donnees] }), null);
+  // Même accord, taille hors liste : tracé → sans gérant, code redemandé.
+  const hors = controlerLigne(versLigneSaisie({ ...l, quantite: 7 }, simple), 1, DATE, ctxTailles);
+  assert.equal(hors.ok, true);
+  if (!hors.ok) return;
+  assert.deepEqual(
+    accordManquant({ lignes: [{ prix: false, taille: true }], remise: false }, { lignes: [hors.donnees] }),
+    { type: 'taille', ligne: 0 },
+  );
+});

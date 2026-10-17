@@ -18,7 +18,6 @@ import {
   decalerJours,
   estDateISO,
   estJourFerie,
-  formaterDate,
   jourSemaineIso,
   prochainJourOuvert,
   validerDateRetrait,
@@ -78,7 +77,9 @@ export function heureChamp(minutes: number): string {
  * Niveau : INFORMATION (INFO_COMMANDE_LENDEMAIN) — aucune friction, aucun code
  * gérant, aucun accord à tracer : le propriétaire accepte ces commandes.
  * Le lendemain se compte en jours OUVERTS : prise lundi, mardi fermé → le
- * retrait du mercredi est « le lendemain ».
+ * retrait du mercredi est « le lendemain ». Le message ne dit « pour demain »
+ * que si c'est le lendemain CALENDAIRE ; sinon il nomme le jour réel
+ * (« Commande pour mercredi, le prochain jour d'ouverture… »), tiré de la date.
  *
  * N'interdit RIEN. Le jour même n'est pas « le lendemain » (aucune information
  * ici) : il est refusé par le délai minimum (`validerDelai`, ERR_DELAI_TROP_COURT),
@@ -99,7 +100,13 @@ export function validerLendemain(
   if (lendemain === null || dateRetrait !== lendemain) return succes(dateRetrait);
   return succes(
     dateRetrait,
-    signaler('INFO_COMMANDE_LENDEMAIN', { dateRetrait: formaterDate(dateRetrait) }, { champ }),
+    signaler(
+      'INFO_COMMANDE_LENDEMAIN',
+      // « demain » seulement si c'est vraiment le lendemain calendaire ; sinon le
+      // jour réel (prise lundi, mardi fermé → « pour mercredi »).
+      { jour: nomJour(dateRetrait), demain: dateRetrait === decalerJours(aujourdhui, 1) },
+      { champ },
+    ),
   );
 }
 

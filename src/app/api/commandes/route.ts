@@ -12,7 +12,10 @@
 //
 // Déverrouillages (prix sous plancher, ligne libre, remise) :
 // acceptés SEULEMENT si l'accès gérant est ouvert sur cette tablette (cookie
-// vérifié par `gerantActif`), sinon ERR_DROIT_INSUFFISANT. L'heure de
+// vérifié par `gerantActif`), sinon ERR_DROIT_INSUFFISANT — mais seulement si
+// le domaine en a besoin : un accord devenu inutile (taille standard, prix au
+// plancher ou au-dessus, total = tarif) est ignoré et non enregistré (réserve
+// m3, `accordManquant`). L'heure de
 // l'accord est celle du serveur. Exception : en modification, un accord DÉJÀ
 // enregistré est conservé tel quel s'il couvre encore ce qui est demandé
 // (src/components/commande/accords.ts) : ligne → même produit, même prix,
@@ -42,12 +45,14 @@ import {
 import { validerHeureRetrait } from '@/domaine/reglement';
 import { estLigneAncienTarif, lignesIdentiques, refusAncienTarif } from '@/components/commande/modele';
 import {
+  accordManquant,
   ligneCouverte,
   memeAccord,
   remiseCouverte,
   tailleCouverte,
   type AccordEnregistre,
   type AccordRecu,
+  type AccordsNonConfirmes,
 } from '@/components/commande/accords';
 import { decalerJours, estDateISO } from '@/domaine/calendrier';
 import { JOURS_AVANT_ARCHIVAGE } from '@/domaine/constantes';
@@ -166,6 +171,12 @@ type Preparation =
        * recalculés par le domaine (`remiseCouverte`), connus seulement après.
        */
       remiseConservee: Extract<AccordEnregistre, { type: 'remise' }> | null;
+      /**
+       * Accords reçus sans gérant et sans accord enregistré qui les couvre.
+       * Réserve m3 : refusés seulement si le domaine en a besoin (`accordManquant`),
+       * sinon ignorés et non enregistrés.
+       */
+      nonConfirmes: AccordsNonConfirmes;
     };
 
 /**
@@ -186,11 +197,14 @@ function preparer(
 
   // Un accord est confirmé si le gérant est là, ou s'il est déjà enregistré et
   // couvre encore ce qui est demandé (src/components/commande/accords.ts).
+  // Sinon il est marqué NON CONFIRMÉ (`enAttente`) : le refus n'est décidé
+  // qu'après le domaine, et seulement s'il a servi (réserve m3).
+  let enAttente = false;
   const confirmer = (
     accord: AccordRecu | null,
     couvert: (a: AccordEnregistre) => boolean,
-    action: string,
-  ): Deverrouillage | null | Echec => {
+  ): Deverrouillage | null => {
+    enAttente = false;
     if (!accord) return null;
     const existant = accordsExistants.find((a) => memeAccord(a, accord) && couvert(a));
     if (existant) {
@@ -199,7 +213,7 @@ function preparer(
       if (existant.type === 'remise') remiseConservee = existant;
       return d;
     }
-    if (!gerant) return signaler('ERR_DROIT_INSUFFISANT', { action, role: 'gérant' }, { champ: 'deverrouillage' });
+    if (!gerant) enAttente = true;
     const d = { par: accord.par, le: maintenant.toISOString() };
     quand.set(d, maintenant);
     return d;
@@ -207,18 +221,15 @@ function preparer(
 
   const lignes: LigneSaisie[] = [];
   const precisions: (string | null)[] = [];
+  const nonConfirmes: AccordsNonConfirmes = { lignes: [], remise: false };
   for (const [i, l] of lignesBrutes.entries()) {
     const produitId = texte(l.produitId, 200) || null;
     const libelle = produitId ? null : texte(l.libelle, 120);
     const prix = entierOuNull(l.prixUnitaireCentimes);
     const quantite = entierOuNull(l.quantite);
     const cle = `${produitId ?? `libre:${libelle}`}|${prix}`;
-    const accord = confirmer(
-      lireAccord(l.deverrouillage),
-      (a) => ligneCouverte(a, { cle, quantite }),
-      produitId ? 'déverrouiller un prix sous le plancher' : 'fixer le prix d’une ligne libre',
-    );
-    if (accord && 'ok' in accord) return { ok: false, echec: { ...accord, champ: `lignes[${i}].prixCentimes` } };
+    const accord = confirmer(lireAccord(l.deverrouillage), (a) => ligneCouverte(a, { cle, quantite }));
+    const prixEnAttente = enAttente;
     // Taille de gâteau hors standard (LOI 11) : accord DISTINCT de l'accord de
     // prix. Confirmé si le gérant est là, ou s'il est déjà enregistré pour ce
     // produit à cette quantité exacte. Le domaine (`validerTailleGateau`, rejoué
@@ -226,11 +237,8 @@ function preparer(
     const deverrouillageTaille = confirmer(
       lireAccord(l.deverrouillageTaille),
       (a) => tailleCouverte(a, { produitId, quantite }),
-      'accepter une taille de gâteau hors standard',
     );
-    if (deverrouillageTaille && 'ok' in deverrouillageTaille) {
-      return { ok: false, echec: { ...deverrouillageTaille, champ: `lignes[${i}].quantite` } };
-    }
+    nonConfirmes.lignes[i] = { prix: prixEnAttente, taille: enAttente };
     lignes.push({
       produitId,
       libelle,
@@ -245,8 +253,8 @@ function preparer(
   }
 
   // Remise : seul le type est vérifié ici ; les totaux le sont après le domaine.
-  const remise = confirmer(lireAccord(corps.remise), (a) => a.type === 'remise', 'accorder une remise sur le total');
-  if (remise && 'ok' in remise) return { ok: false, echec: { ...remise, champ: 'total' } };
+  const remise = confirmer(lireAccord(corps.remise), (a) => a.type === 'remise');
+  nonConfirmes.remise = enAttente;
 
   const saisie: CommandeSaisie = {
     client: texte(corps.client, 80),
@@ -264,7 +272,35 @@ function preparer(
     sansEcriture: corps.sansEcriture === true,
     demandeInhabituelle: corps.demandeInhabituelle === true,
   };
-  return { ok: true, saisie, precisions, quand, remiseConservee };
+  return { ok: true, saisie, precisions, quand, remiseConservee, nonConfirmes };
+}
+
+/**
+ * Réserve m3 : un accord non confirmé n'est refusé que si le domaine a dû
+ * s'en servir (taille hors liste, prix sous le plancher, ligne libre, total
+ * remisé). Un accord devenu inutile est ignoré : le domaine ne l'a pas tracé,
+ * il n'est donc pas enregistré.
+ */
+function refusAccordManquant(prep: Extract<Preparation, { ok: true }>, r: Ok): Echec | null {
+  const manque = accordManquant(prep.nonConfirmes, r.donnees);
+  if (!manque) return null;
+  if (manque.type === 'remise') {
+    return signaler('ERR_DROIT_INSUFFISANT', { action: 'accorder une remise sur le total', role: 'gérant' }, { champ: 'total' });
+  }
+  const i = manque.ligne;
+  if (manque.type === 'taille') {
+    return signaler(
+      'ERR_DROIT_INSUFFISANT',
+      { action: 'accepter une taille de gâteau hors standard', role: 'gérant' },
+      { champ: `lignes[${i}].quantite` },
+    );
+  }
+  const libre = prep.saisie.lignes[i]?.produitId === null;
+  return signaler(
+    'ERR_DROIT_INSUFFISANT',
+    { action: libre ? 'fixer le prix d’une ligne libre' : 'déverrouiller un prix sous le plancher', role: 'gérant' },
+    { champ: `lignes[${i}].prixCentimes` },
+  );
 }
 
 /** Rejoue le domaine sur le catalogue en base et les données du jour. */
@@ -365,6 +401,8 @@ export async function POST(request: Request) {
 
     const { resultat, fiches } = await controler(prep.saisie, route, prise.datePrise, null);
     if (!resultat.ok) return refus(resultat, route);
+    const manque = refusAccordManquant(prep, resultat);
+    if (manque) return refus(manque, route);
 
     const origine = corps.origine === 'telephone' ? 'telephone' : 'comptoir';
     const modePaiement = corps.modePaiement === 'virement' ? 'virement' : 'especes';
@@ -643,6 +681,8 @@ export async function PATCH(request: Request) {
           if (!prep.ok) return refus(prep.echec, route);
           const { resultat, fiches } = await controler(prep.saisie, route, aujourdhui, etatExistant);
           if (!resultat.ok) return refus(resultat, route);
+          const manque = refusAccordManquant(prep, resultat);
+          if (manque) return refus(manque, route);
           // Remise déjà enregistrée : elle ne couvre que les totaux que le gérant a vus.
           // Totaux changés → gérant présent : nouvel accord à l'heure du serveur ;
           // gérant absent : refus, code redemandé.

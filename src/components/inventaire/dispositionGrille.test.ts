@@ -5,9 +5,13 @@ import assert from 'node:assert/strict';
 import {
   HAUTEUR_LIGNE_MAX,
   HAUTEUR_LIGNE_MIN,
-  LARGEUR_CARACTERE,
+  POLICE_NOM_MIN,
   calculerDisposition,
-  largeurColonnePourNom,
+  largeurColonne,
+  largeurHorsNom,
+  lignesDuNom,
+  policeNom,
+  policeNomNormale,
   libelleSousPage,
   scinderEnSousPages,
   type Disposition,
@@ -61,7 +65,7 @@ test('40 produits : tiennent sur une page dans les deux orientations', () => {
 test('5 produits : une colonne, lignes au maximum (80 px)', () => {
   const d = calculerDisposition(5, PAYSAGE.largeur, PAYSAGE.hauteur);
   verifierTient(d, 5, PAYSAGE);
-  assert.deepEqual(d, { colonnes: 1, rangees: 5, hauteurLigne: 80, sousPages: 1, parSousPage: 5 });
+  assert.deepEqual(d, { colonnes: 1, rangees: 5, hauteurLigne: 80, sousPages: 1, parSousPage: 5, policeNomMin: 18 });
 });
 
 test('page impossible à faire tenir : découpée en sous-pages, jamais de défilement', () => {
@@ -78,7 +82,6 @@ test('page impossible à faire tenir : découpée en sous-pages, jamais de défi
 
 test('noms longs : la colonne s’élargit pour lire le nom ENTIER sur deux lignes (LOI 5)', () => {
   const long = 'Demi baguette grise aux céréales'.length; // 32
-  assert.ok(largeurColonnePourNom(long) >= 16 * LARGEUR_CARACTERE);
   // Paysage : 2 colonnes au lieu de 3 pour 25 produits, toujours une seule page.
   const p = calculerDisposition(25, PAYSAGE.largeur, PAYSAGE.hauteur, long);
   verifierTient(p, 25, PAYSAGE);
@@ -119,4 +122,109 @@ test('libellé : « Page 1 · 1/2 » seulement si la page est découpée', () =>
   assert.equal(libelleSousPage('Page 1', 0, 1), 'Page 1');
   assert.equal(libelleSousPage('Page 1', 0, 2), 'Page 1 · 1/2');
   assert.equal(libelleSousPage('Page 1', 1, 2), 'Page 1 · 2/2');
+});
+
+// --- Réserve m2 (qa-metier) : un nom très long ne déborde jamais sur la ligne voisine ---
+
+/** 120 caractères, à la lettre : un nom n'est jamais raccourci (LOI 5). */
+const NOM_120 = 'Assortiment de pâtisseries orientales au miel et aux amandes grillées, boîte familiale de fête avec cornes de gazelle et makrouts'.slice(0, 120);
+
+/** Une page de `n` produits dont le premier porte le nom de 120 caractères. */
+function pageAvecNomLong(n: number, unite: 'piece' | 'kg') {
+  return Array.from({ length: n }, (_, i) =>
+    i === 0 ? { nom: NOM_120, unite } : { nom: 'Pain gris', unite: 'piece' as const }
+  );
+}
+
+/** Chaque nom tient ENTIER dans sa ligne, à 13 px au moins, sans dépasser la hauteur. */
+function verifierNomsContenus(
+  d: Disposition,
+  zone: { largeur: number },
+  produits: readonly { nom: string; unite: 'piece' | 'kg' }[]
+) {
+  const h = d.hauteurLigne;
+  for (const p of produits) {
+    const largeurNom = largeurColonne(zone.largeur, d.colonnes) - largeurHorsNom(h, p.unite);
+    const police = policeNom(p.nom, largeurNom, h);
+    assert.notEqual(police, null, `« ${p.nom} » tient dans sa ligne`);
+    assert.ok(police! >= POLICE_NOM_MIN, 'police jamais sous 13 px');
+    assert.ok(lignesDuNom(p.nom, largeurNom, police!) * police! * 1.25 <= h - 1, 'aucun débordement vertical');
+  }
+  assert.ok(d.policeNomMin >= POLICE_NOM_MIN);
+}
+
+test('largeur hors nom : le champ kg (w-28) et l’icône de niveau sont comptés', () => {
+  // Grande ligne (≥ 64 px) : marges 16 + écart 6 + « 0 » 56 + écart 8 + champ + icône 22.
+  assert.equal(largeurHorsNom(80, 'piece'), 16 + 6 + 56 + 8 + 80 + 22);
+  assert.equal(largeurHorsNom(80, 'kg'), 16 + 6 + 56 + 8 + 112 + 22);
+  // Ligne normale : « 0 » 44, champ w-16 / w-24.
+  assert.equal(largeurHorsNom(53, 'piece'), 16 + 6 + 44 + 8 + 64 + 22);
+  assert.equal(largeurHorsNom(53, 'kg'), 16 + 6 + 44 + 8 + 96 + 22);
+  // L'ancienne estimation (164 px) sous-estimait la ligne kg de 56 px.
+  assert.ok(largeurHorsNom(80, 'kg') - 164 >= 56);
+});
+
+test('police du nom : normale si possible, réduite jusqu’à 13 px, sinon null (sous-pages)', () => {
+  assert.equal(policeNomNormale(80), 18);
+  assert.equal(policeNomNormale(53), 15);
+  assert.equal(policeNom('Pain gris', 300, 53), 15);
+  // 120 caractères dans 340 px (portrait, pièce) à 62 px de haut : ne tient qu’en réduisant.
+  const reduite = policeNom(NOM_120, 340, 62);
+  assert.ok(reduite !== null && reduite < 15 && reduite >= POLICE_NOM_MIN);
+  // Dans 190 px à 80 px de haut : même à 13 px, impossible → null.
+  assert.equal(policeNom(NOM_120, 190, 80), null);
+  // Retour à la ligne aux espaces ; mot trop long coupé.
+  assert.equal(lignesDuNom('aa bb', 10 * (15 * 10 / 18), 15), 1);
+  assert.equal(lignesDuNom('aaaa bbbb', 5 * (15 * 10 / 18), 15), 2);
+  assert.equal(lignesDuNom('a'.repeat(12), 5 * (15 * 10 / 18), 15), 3);
+});
+
+test('120 caractères en PORTRAIT, à la pièce : une page, police réduite, nom contenu', () => {
+  const produits = pageAvecNomLong(17, 'piece');
+  const d = calculerDisposition(17, PORTRAIT.largeur, PORTRAIT.hauteur, produits);
+  verifierTient(d, 17, PORTRAIT);
+  verifierNomsContenus(d, PORTRAIT, produits);
+  assert.equal(d.sousPages, 1, 'réduire la police avant de découper');
+  assert.equal(d.colonnes, 1);
+  assert.ok(d.policeNomMin < policeNomNormale(d.hauteurLigne), 'police du nom réduite');
+});
+
+test('120 caractères en PORTRAIT, produit au KILO : le champ plus large impose des sous-pages', () => {
+  const produits = pageAvecNomLong(17, 'kg');
+  const d = calculerDisposition(17, PORTRAIT.largeur, PORTRAIT.hauteur, produits);
+  verifierTient(d, 17, PORTRAIT);
+  verifierNomsContenus(d, PORTRAIT, produits);
+  assert.equal(d.sousPages, 2, 'dernier recours : sous-pages plutôt que déborder');
+  assert.equal(d.hauteurLigne, 80);
+});
+
+test('120 caractères en PAYSAGE (pièce et kg) : une colonne pleine largeur, jamais de débordement', () => {
+  for (const unite of ['piece', 'kg'] as const) {
+    for (const nb of [17, 22, 40]) {
+      const produits = pageAvecNomLong(nb, unite);
+      const d = calculerDisposition(nb, PAYSAGE.largeur, PAYSAGE.hauteur, produits);
+      verifierTient(d, nb, PAYSAGE);
+      verifierNomsContenus(d, PAYSAGE, produits);
+      assert.equal(d.colonnes, 1, `${nb} ${unite} : deux colonnes laisseraient déborder le nom`);
+    }
+  }
+  // Sans le nom long, 22 produits tiennent sur une page : c'est bien le nom qui découpe.
+  const courts = pageAvecNomLong(22, 'piece').slice(1);
+  assert.equal(calculerDisposition(22, PORTRAIT.largeur, PORTRAIT.hauteur, courts).sousPages, 1);
+  assert.equal(calculerDisposition(22, PORTRAIT.largeur, PORTRAIT.hauteur, pageAvecNomLong(22, 'piece')).sousPages, 2);
+});
+
+test('sans la liste des produits (longueur seule) : on suppose le champ kg, jamais moins prudent', () => {
+  const nombre = calculerDisposition(17, PORTRAIT.largeur, PORTRAIT.hauteur, 120);
+  verifierTient(nombre, 17, PORTRAIT);
+  verifierNomsContenus(nombre, PORTRAIT, [{ nom: 'x'.repeat(120), unite: 'kg' }]);
+});
+
+test('écran minuscule : un produit par sous-page, la ligne prend la hauteur pour garder le nom entier', () => {
+  const produits = pageAvecNomLong(10, 'kg');
+  const d = calculerDisposition(10, 300, 500, produits);
+  assert.equal(d.sousPages, 10);
+  assert.equal(d.parSousPage, 1);
+  assert.ok(d.hauteurLigne <= 500);
+  verifierNomsContenus(d, { largeur: 300 }, produits);
 });

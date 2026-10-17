@@ -121,6 +121,10 @@ model ProduitCatalogue {
   regimePrix    RegimePrix
   // LOI 4 — un favori est un booleen, jamais une ligne en double.
   estFavori     Boolean    @default(false)
+  // Gateau a etages (mariage, piece montee) : nombre d'etages, NULL = non.
+  // Declenche le delai « gateau a etages » du domaine (src/domaine/commande.ts).
+  // CHECK ProduitCatalogue_etages_positif (> 0), migration 20261015160000.
+  etages        Int?
   actif         Boolean    @default(true)
   creeLe        DateTime   @default(now())
   modifieLe     DateTime   @updatedAt
@@ -280,7 +284,8 @@ model Commande {
   // LOI 3 — niveau persistance : un declencheur refuse toute date lue comme
   // fermee dans la table JourFerme (ERR_JOUR_FERME / ERR_PERIODE_CONGES).
   // R53 — retrait avant le jour de la prise -> ERR_DATE_PASSEE. Le lendemain
-  // est ACCEPTE sans accord (decision du proprietaire du 15/10/2026).
+  // est ACCEPTE sans accord (decision du proprietaire du 15/10/2026,
+  // declencheur Commande_reglement recree par la migration 20261015160000).
   retraitLe    DateTime @db.Date
   // R54 — « HH:MM » (CHECK Commande_retrait_heure_format), NULL = non precisee
   // (commande sans patisserie). Le minimum patisserie (9h / 12h) n'est PAS

@@ -86,10 +86,6 @@ type Section = {
 
 const GRAVITE: Record<Niveau, number> = { bloquant: 3, avertissement: 2, information: 1 };
 
-/** Nombre de caractères du nom le plus long (largeur de colonne : nom entier, LOI 5). */
-const nomLePlusLong = (produits: readonly { nom: string }[]) =>
-  produits.reduce((max, p) => Math.max(max, p.nom.length), 0);
-
 export default function Comptage() {
   const [date, setDate] = useState(() => dateDuJour());
   const [indexSection, setIndexSection] = useState(0);
@@ -260,7 +256,7 @@ export default function Comptage() {
           section.produits.length,
           largeurGrille,
           hauteurGrille,
-          nomLePlusLong(section.produits)
+          section.produits.map((p) => ({ nom: p.nom, unite: p.unite }))
         );
         if (sousPages <= 1) return [section];
         const tranches = scinderEnSousPages(section.produits, sousPages);
@@ -560,7 +556,7 @@ export default function Comptage() {
   // Grille plein écran de la page courante : tout tient, sans défilement.
   const disposition =
     pleinEcran && hauteurGrille > 0 && largeurGrille > 0
-      ? calculerDisposition(produitsVisibles.length, largeurGrille, hauteurGrille, nomLePlusLong(produitsVisibles))
+      ? calculerDisposition(produitsVisibles.length, largeurGrille, hauteurGrille, produitsVisibles.map((p) => ({ nom: p.nom, unite: p.unite })))
       : null;
 
   const avertissementDebut = debutControle?.date === date ? debutControle.signalements : [];

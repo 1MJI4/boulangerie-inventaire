@@ -53,6 +53,14 @@ test('R53 retrait le lendemain → ACCEPTÉ avec INFO_COMMANDE_LENDEMAIN (décis
   assert.doesNotMatch(info?.message ?? '', /code|gérant|accord/i, 'aucun code gérant, aucun accord');
 });
 
+test('R53 jour férié en plus du mardi : prise lundi 9/11, mar fermé, mer 11/11 férié → « pour jeudi »', () => {
+  const fermes: JourFerme[] = [...FERMES, { id: 2, nature: 'ferie', dateDebut: '2026-11-11', libelle: 'Armistice' }];
+  const r = validerLendemain('2026-11-12', '2026-11-09', fermes);
+  assert.ok(r.ok);
+  assert.equal(r.signalements[0]?.code, 'INFO_COMMANDE_LENDEMAIN');
+  assert.match(r.signalements[0]?.message ?? '', /^Commande pour jeudi, le prochain jour d’ouverture/);
+});
+
 test('R53 jour même : pas « le lendemain » (le délai le refuse) ; surlendemain → aucune information', () => {
   const r = validerLendemain('2026-10-15', '2026-10-15', FERMES);
   assert.ok(r.ok);
@@ -66,12 +74,19 @@ test('R53 vendredi pour samedi → accepté, information', () => {
   const r = validerLendemain('2026-10-17', '2026-10-16', FERMES);
   assert.ok(r.ok);
   assert.equal(r.signalements[0]?.code, 'INFO_COMMANDE_LENDEMAIN');
+  assert.equal(r.signalements[0]?.message, 'Commande pour demain : prévenez l’atelier.', 'vrai lendemain calendaire');
 });
 
 test('R53 lendemain fermé : prise lundi, mardi fermé → mercredi est « le lendemain » (information)', () => {
   const r = validerLendemain('2026-10-21', '2026-10-19', FERMES);
   assert.ok(r.ok);
   assert.equal(r.signalements[0]?.code, 'INFO_COMMANDE_LENDEMAIN');
+  // Réserve qa-metier m1 : ce n'est PAS « demain » (mardi entre les deux) ; le jour réel est nommé.
+  assert.equal(
+    r.signalements[0]?.message,
+    'Commande pour mercredi, le prochain jour d’ouverture : prévenez l’atelier dès aujourd’hui.',
+  );
+  assert.doesNotMatch(r.signalements[0]?.message ?? '', /demain/);
   const mardi = validerLendemain('2026-10-20', '2026-10-19', FERMES);
   assert.equal(mardi.ok, false);
   if (!mardi.ok) assert.equal(mardi.code, 'ERR_JOUR_FERME', 'le jour fermé reste refusé');

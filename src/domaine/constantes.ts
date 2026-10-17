@@ -18,7 +18,12 @@ import type { RegimePrix } from './types.ts';
 export type DelaisCommande = {
   /** Délai selon le régime de prix du produit. */
   parRegime: Record<RegimePrix, number>;
-  /** Délai d'un gâteau à étages (mariage, pièce montée) : produit avec `etages` renseigné. */
+  /**
+   * Délai d'un gâteau à étages (mariage, pièce montée) : produit avec `etages` renseigné.
+   * Ce délai dépend UNIQUEMENT de la donnée `etages` fournie par le catalogue
+   * (agent catalogue-prix) : rien n'est déduit du nom ni du minimum de parts. Une
+   * fiche sans `etages` reçoit le délai de son régime (prouvé par metier.test.ts, B2).
+   */
   gateauAEtages: number;
 };
 
