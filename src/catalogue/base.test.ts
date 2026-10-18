@@ -19,7 +19,7 @@ import {
   type ClientEcritureCatalogue,
   type DepotEcritureCatalogue,
 } from "./ecritureBase.ts";
-import { verifierCibleEcriture } from "./gardeEcriture.ts";
+import { verifierCibleEcriture, verifierCiblePremierImportProduction } from "./gardeEcriture.ts";
 import {
   creerLecteurBase,
   dateBaseVersIso,
@@ -205,6 +205,29 @@ test("garde-fou : marque « recette » ET hôte confirmé, les deux exigés", ()
   assert.ok(ok.ok);
   assert.equal(ok.ok && ok.hote, "db.exemple.be");
   assert.ok(verifierCibleEcriture("postgresql://u:p@recette.exemple.be/app", "recette.exemple.be").ok);
+});
+
+test("garde-fou production : premier import seulement, hôte confirmé, catalogue vide", () => {
+  const prod = "postgresql://postgres.abc:motdepasse@aws-0-eu-central-1.pooler.supabase.com:5432/postgres";
+  const hote = "aws-0-eu-central-1.pooler.supabase.com";
+  const ok = verifierCiblePremierImportProduction(prod, hote.toUpperCase(), 0);
+  assert.ok(ok.ok);
+  assert.equal(ok.ok && ok.hote, hote);
+  // Confirmation absente ou différente.
+  assert.equal(verifierCiblePremierImportProduction(prod, undefined, 0).ok, false);
+  assert.equal(verifierCiblePremierImportProduction(prod, "autre.exemple.be", 0).ok, false);
+  // Catalogue déjà rempli : jamais d'écrasement par cette voie.
+  const rempli = verifierCiblePremierImportProduction(prod, hote, 1);
+  assert.equal(rempli.ok, false);
+  assert.ok(!rempli.ok && !rempli.message.includes("motdepasse"), "le mot de passe n'apparaît jamais");
+  assert.equal(verifierCiblePremierImportProduction(prod, hote, Number.NaN).ok, false);
+  // Une base de recette ne passe pas par --production.
+  const recette = "postgresql://u:p@db.exemple.be:5432/boulangerie_recette";
+  assert.equal(verifierCiblePremierImportProduction(recette, "db.exemple.be", 0).ok, false);
+  // URL absente, illisible ou non PostgreSQL.
+  assert.equal(verifierCiblePremierImportProduction(undefined, hote, 0).ok, false);
+  assert.equal(verifierCiblePremierImportProduction("pas une url", hote, 0).ok, false);
+  assert.equal(verifierCiblePremierImportProduction("mysql://u:p@h/app", "h", 0).ok, false);
 });
 
 // ------------------------------------------------------------ Écriture

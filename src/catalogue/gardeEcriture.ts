@@ -10,9 +10,11 @@
 // Les deux conditions sont exigées. Le mot de passe n'apparaît jamais dans
 // les messages. Pur, sans accès réseau.
 //
-// HYPOTHÈSE À VALIDER : l'import en PRODUCTION n'est pas couvert par ce lot ;
-// il se fera après validation du rapport par le gérant, par une procédure
-// `deploiement` (sauvegarde puis import), pas en levant ce garde-fou.
+// La PRODUCTION a son propre garde-fou (verifierCiblePremierImportProduction) :
+// premier import seulement, sur un catalogue vide — il n'y a alors rien à
+// écraser ni à sauvegarder. Tout import ultérieur en production (nouveau
+// tarif) reste refusé ici : il passera par une procédure `deploiement`
+// (sauvegarde puis import), pas en assouplissant ces garde-fous.
 
 export const MARQUE_RECETTE = /recette/i;
 
@@ -54,6 +56,57 @@ export function verifierCibleEcriture(databaseUrl: string | undefined, confirmat
     return {
       ok: false,
       message: `L'hôte confirmé « ${confirmation} » ne correspond pas à l'hôte de DATABASE_URL « ${hote} » : écriture refusée. Rien n'est écrit.`,
+    };
+  }
+  return { ok: true, hote, base };
+}
+
+/**
+ * Premier import du catalogue en PRODUCTION (option --production).
+ *  1. l'hôte est confirmé par --je-confirme-la-base=<hôte>, exactement ;
+ *  2. la base ne porte PAS la marque « recette » (l'option ne sert pas à
+ *     contourner le garde-fou de recette, ni l'inverse) ;
+ *  3. le catalogue de commande en base est VIDE (aucun ProduitCatalogue).
+ * Pur : le nombre de produits déjà en base est lu par l'appelant.
+ */
+export function verifierCiblePremierImportProduction(
+  databaseUrl: string | undefined,
+  confirmation: string | undefined,
+  produitsCatalogueEnBase: number,
+): VerdictCible {
+  if (!databaseUrl) {
+    return { ok: false, message: "DATABASE_URL est vide : aucune base désignée, rien n'est écrit." };
+  }
+  let url: URL;
+  try {
+    url = new URL(databaseUrl);
+  } catch {
+    return { ok: false, message: "DATABASE_URL est illisible : rien n'est écrit." };
+  }
+  if (url.protocol !== "postgresql:" && url.protocol !== "postgres:") {
+    return { ok: false, message: "DATABASE_URL ne désigne pas une base PostgreSQL : rien n'est écrit." };
+  }
+  const hote = url.hostname.toLowerCase();
+  const base = decodeURIComponent(url.pathname.replace(/^\//, ""));
+  if (!hote || !base) {
+    return { ok: false, message: "DATABASE_URL sans hôte ou sans nom de base : rien n'est écrit." };
+  }
+  if (MARQUE_RECETTE.test(base) || MARQUE_RECETTE.test(hote)) {
+    return {
+      ok: false,
+      message: `La base « ${base} » sur « ${hote} » est une base de recette : relancer sans --production. Rien n'est écrit.`,
+    };
+  }
+  if (!confirmation || confirmation.trim().toLowerCase() !== hote) {
+    return {
+      ok: false,
+      message: `Confirmation manquante ou différente : relancer avec --je-confirme-la-base=${hote} si c'est bien la production visée. Rien n'est écrit.`,
+    };
+  }
+  if (!Number.isInteger(produitsCatalogueEnBase) || produitsCatalogueEnBase !== 0) {
+    return {
+      ok: false,
+      message: `Le catalogue de production contient déjà ${produitsCatalogueEnBase} produit(s) : un nouveau tarif passe par la procédure de déploiement (sauvegarde puis import). Rien n'est écrit.`,
     };
   }
   return { ok: true, hote, base };

@@ -9,6 +9,8 @@
 //   node scripts/importer-catalogue.mjs --detail        simulation, toutes les alertes
 //   node scripts/importer-catalogue.mjs --ecrire-en-base --je-confirme-la-base=<hôte>
 //        écriture dans une base de RECETTE seulement (voir ecrireEnBase plus bas)
+//   node scripts/importer-catalogue.mjs --ecrire-en-base --production --je-confirme-la-base=<hôte>
+//        PREMIER import en production, refusé si le catalogue en base n'est pas vide
 //
 // Node 24 requis (lecture native des fichiers .ts du module catalogue).
 // Code de sortie : 0 si aucun blocage, 1 sinon.
@@ -99,17 +101,20 @@ console.log("RÉSULTAT : simulation réussie, aucun blocage. Rien n'a été écr
 // être confirmé par --je-confirme-la-base=<hôte>. Une seule transaction ;
 // relancer sur une base à jour n'écrit rien.
 async function ecrireEnBase() {
-  const { verifierCibleEcriture } = await import("../src/catalogue/gardeEcriture.ts");
+  const { verifierCibleEcriture, verifierCiblePremierImportProduction } = await import("../src/catalogue/gardeEcriture.ts");
+  const production = args.has("--production");
   const confirmation = process.argv.find((a) => a.startsWith("--je-confirme-la-base="))?.split("=")[1];
   // URL figée AVANT de charger Prisma (qui lit .env) : seule celle-ci est vérifiée et utilisée.
   const urlVerifiee = process.env.DATABASE_URL;
-  const cible = verifierCibleEcriture(urlVerifiee, confirmation);
   console.log("=== Écriture en base ===");
-  if (!cible.ok) {
-    console.log("ÉCRITURE REFUSÉE : " + cible.message);
-    process.exit(1);
+  if (!production) {
+    const cible = verifierCibleEcriture(urlVerifiee, confirmation);
+    if (!cible.ok) {
+      console.log("ÉCRITURE REFUSÉE : " + cible.message);
+      process.exit(1);
+    }
+    console.log(`Base : « ${cible.base} » sur « ${cible.hote} » (recette confirmée).`);
   }
-  console.log(`Base : « ${cible.base} » sur « ${cible.hote} » (recette confirmée).`);
 
   const { PrismaClient } = await import("@prisma/client");
   const { clientEcriturePrisma, connaitProduitCatalogue } = await import("../src/catalogue/serveur.ts");
@@ -122,6 +127,16 @@ async function ecrireEnBase() {
       // Garde-fou : client Prisma généré avant le modèle ProduitCatalogue.
       console.log("ÉCRITURE REFUSÉE : client Prisma à régénérer (npx prisma generate). Rien n'a été écrit.");
       process.exit(1);
+    }
+    if (production) {
+      // Premier import en production : seulement sur un catalogue vide.
+      const dejaEnBase = await prisma.produitCatalogue.count();
+      const cible = verifierCiblePremierImportProduction(urlVerifiee, confirmation, dejaEnBase);
+      if (!cible.ok) {
+        console.log("ÉCRITURE REFUSÉE : " + cible.message);
+        process.exit(1);
+      }
+      console.log(`Base : « ${cible.base} » sur « ${cible.hote} » (PRODUCTION confirmée, catalogue vide).`);
     }
     const r = await ecrireCatalogueEnBase(clientEcriturePrisma(prisma), catalogue, { aujourdhui: aujourdhuiMagasin() });
     afficherSignalements(r.signalements);
