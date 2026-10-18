@@ -1,80 +1,71 @@
 // src/lib/serveur/reglages.ts
 //
 // LOI 11 — chiffres du règlement intérieur, stockés comme DONNÉES dans la
-// table "Reglage" (clés « reglement:* », migrations 20261015140000 et
-// 20261015150000), lus et écrits sous la forme attendue par le domaine
-// (`ReglementCommande`, propriétaire `regles-metier`) + l'heure de fermeture
-// (verifierHeureInventaire).
+// table "Reglage" (clés « reglement:* », migrations 20261015140000,
+// 20261015150000 et 20261018100000), lus et écrits sous la forme attendue par
+// le domaine (`ReglementCommande`, propriétaire `regles-metier`) + le délai
+// d'un gâteau à étages (`DelaisCommande.gateauAEtages`).
 // Propriétaire de ce fichier : `base-donnees`.
 //
-// AUCUNE règle ici et AUCUNE valeur par défaut (seule exception :
-// `taillesGateau`, décision du propriétaire du 15/10/2026) : une clé absente ou
-// illisible lève une erreur (la base refuse déjà une valeur invalide —
-// CHECK "Reglage_reglement_valide" — et leur suppression). Mieux vaut
-// échouer que d'appliquer un acompte ou un horaire inventé.
+// AUCUNE règle ici. Valeur par défaut seulement pour une clé ABSENTE (base pas
+// encore migrée) et seulement quand le propriétaire a tranché : tailles des
+// gâteaux (15/10/2026), heures d'ouverture 06:00–20:00 et délai d'un gâteau à
+// étages 0 (18/10/2026). L'acompte minimum absent lève une erreur.
+// Une valeur PRÉSENTE mais illisible lève toujours une erreur (la base refuse
+// déjà une valeur invalide — CHECK "Reglage_reglement_valide" — et leur
+// suppression) : mieux vaut échouer que d'appliquer un horaire inventé.
 // Les contrôles de format ci-dessous sont la COPIE côté code du CHECK de la
-// base (même bornes) : l'écran des réglages reçoit un refus lisible avant
+// base (mêmes bornes) : l'écran des réglages reçoit un refus lisible avant
 // d'atteindre la base.
 // Pas d'import de Prisma : conversion pure testable avec `node --test`, le
 // client est reçu en paramètre (`prisma` de src/lib/prisma.ts le satisfait).
 
-import { JOURS_ISO_CLES, type JourIsoCle } from '../../domaine/constantes.ts';
+import {
+  DELAI_GATEAU_ETAGES_MAX,
+  DELAI_GATEAU_ETAGES_MIN,
+  DELAIS_PAR_DEFAUT,
+  JOURS_ISO_CLES,
+  REGLEMENT_COMMANDE,
+  type ExceptionOuverture,
+  type HorairesOuverture,
+  type JourIsoCle,
+  type PlageOuverture,
+} from '../../domaine/constantes.ts';
 import { signaler } from '../../domaine/messages.ts';
-import { nomJourIso } from '../../domaine/reglement.ts';
+import { estPlageOuverture, nomJourIso } from '../../domaine/reglement.ts';
 import { succes, type Resultat } from '../../domaine/resultat.ts';
 
 /** Clés lues (= données initiales des migrations). */
 export const CLES_REGLEMENT = {
   acomptePourcentageMin: 'reglement:acompte_min_pourcent',
-  heureFermeture: 'reglement:heure_fermeture',
-  famillesPatisserie: 'reglement:familles_patisserie',
-  retraitParJour: 'reglement:patisserie_retrait_par_jour',
-  retraitExceptions: 'reglement:patisserie_retrait_exceptions',
+  ouvertureParJour: 'reglement:ouverture_par_jour',
+  ouvertureExceptions: 'reglement:ouverture_exceptions',
   taillesGateau: 'reglement:tailles_gateau',
+  delaiGateauEtagesJours: 'reglement:delai_gateau_etages_jours',
 } as const;
 
-/**
- * OBSOLÈTES (remplacées par retraitParJour, migration 20261015150000).
- * Lues seulement si `retraitParJour` manque (base pas encore migrée).
- * À supprimer en deux temps quand plus aucune base ne les porte seules.
- */
-export const CLES_REGLEMENT_OBSOLETES = {
-  retraitSemaine: 'reglement:patisserie_retrait_semaine',
-  retraitWeekEnd: 'reglement:patisserie_retrait_week_end',
-  joursWeekEndIso: 'reglement:jours_week_end_iso',
-} as const;
-
-const TOUTES_LES_CLES: string[] = [...Object.values(CLES_REGLEMENT), ...Object.values(CLES_REGLEMENT_OBSOLETES)];
+const TOUTES_LES_CLES: string[] = Object.values(CLES_REGLEMENT);
 
 /** Jours ISO « 1 » (lundi) … « 7 » (dimanche) : liste du domaine. */
 export const JOURS_ISO = JOURS_ISO_CLES;
 export type JourIso = JourIsoCle;
 
-/** Une date exceptionnelle : première heure de retrait ce jour-là. */
-export type ExceptionRetrait = { date: string /* AAAA-MM-JJ */; heure: string /* HH:MM */ };
-
-export type HorairesRetraitLus = {
-  /** Familles de vente (`Produit.famille`) soumises aux horaires. */
-  familles: string[];
-  /** Première heure de retrait par jour ISO (1 = lundi … 7 = dimanche). */
-  parJour: Record<JourIso, string>;
-  /** Dates exceptionnelles (une par date), triées par date. */
-  exceptions: ExceptionRetrait[];
-};
+export type { ExceptionOuverture, PlageOuverture };
 
 /** Forme renvoyée dans `reglement` (contrat avec regles-metier / commandes-traiteur). */
 export type ReglementLu = {
   acomptePourcentageMin: number;
-  horairesRetraitPatisserie: HorairesRetraitLus;
+  /** Heures d'ouverture par jour ISO + dates exceptionnelles (une par date, triées). */
+  horairesOuverture: HorairesOuverture;
   /** Tailles standard d'un gâteau simple (parts), entiers 1..200 triés sans doublon. */
   taillesGateau: number[];
 };
 
-/** Ce que reçoit l'appelant : le règlement de commande et l'heure de fermeture. */
+/** Ce que reçoit l'appelant : le règlement de commande et le délai d'un gâteau à étages. */
 export type ReglagesReglement = {
   reglement: ReglementLu;
-  /** « HH:MM » — inventaire « jamais avant » (AVERT_INVENTAIRE_AVANT_FERMETURE). */
-  heureFermeture: string;
+  /** Jours ouvrés minimum avant le retrait d'un gâteau à étages (0 = aucun délai). */
+  delaiGateauEtagesJours: number;
 };
 
 /** Forme d'une ligne Prisma `Reglage` (seuls les champs lus). */
@@ -91,16 +82,24 @@ export type LecteurReglages = {
 };
 
 // ---------------------------------------------------------------------------
-// Contrôles de format — miroir du CHECK "Reglage_reglement_valide"
+// Valeurs si la clé est ABSENTE (décisions du propriétaire)
 // ---------------------------------------------------------------------------
 
 /**
- * Tailles standard si `reglement:tailles_gateau` est ABSENT (base sans la
- * migration 20261015150000) — décision du propriétaire du 15/10/2026,
- * identique à la valeur initiale de la migration. Une valeur PRÉSENTE mais
- * invalide reste refusée.
+ * Tailles standard si `reglement:tailles_gateau` est ABSENT — décision du
+ * propriétaire du 15/10/2026, identique à la valeur initiale de la migration.
  */
-export const TAILLES_GATEAU_DEFAUT: readonly number[] = [4, 6, 8, 10, 15, 20, 25, 30];
+export const TAILLES_GATEAU_DEFAUT: readonly number[] = REGLEMENT_COMMANDE.taillesGateau;
+
+/** Heures d'ouverture si les clés sont ABSENTES — décision du propriétaire du 18/10/2026. */
+export const HORAIRES_OUVERTURE_DEFAUT: HorairesOuverture = REGLEMENT_COMMANDE.horairesOuverture;
+
+/** Délai d'un gâteau à étages si la clé est ABSENTE — décision du propriétaire du 18/10/2026. */
+export const DELAI_GATEAU_ETAGES_DEFAUT: number = DELAIS_PAR_DEFAUT.gateauAEtages;
+
+// ---------------------------------------------------------------------------
+// Contrôles de format — miroir du CHECK "Reglage_reglement_valide"
+// ---------------------------------------------------------------------------
 
 /** Bornes des tailles de gâteau (identiques au CHECK de la base). */
 export const TAILLE_GATEAU_MIN = 1;
@@ -135,32 +134,39 @@ function memesCles(o: Record<string, unknown>, attendues: readonly string[]): bo
   return cles.length === voulues.length && cles.every((c, i) => c === voulues[i]);
 }
 
+/** Plage « HH:MM » stricte, exactement { ouverture, fermeture }, ouverture avant fermeture. */
+function estPlage(v: unknown): v is PlageOuverture {
+  return (
+    estObjet(v) &&
+    memesCles(v, ['ouverture', 'fermeture']) &&
+    estHeure(v.ouverture) &&
+    estHeure(v.fermeture) &&
+    estPlageOuverture(v)
+  );
+}
+
 /** Raison du refus, ou null si la valeur est valide. */
 type Controle = (v: unknown) => string | null;
 
 const controlerPourcent: Controle = (v) =>
   typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 100 ? null : 'entier de 0 à 100 attendu';
 
-const controlerHeure: Controle = (v) => (estHeure(v) ? null : 'heure « HH:MM » attendue');
-
-const controlerFamilles: Controle = (v) =>
-  Array.isArray(v) && v.length > 0 && v.every((f) => typeof f === 'string' && f.trim().length > 0)
-    ? null
-    : 'liste de familles non vide attendue';
-
 const controlerParJour: Controle = (v) =>
-  estObjet(v) && memesCles(v, JOURS_ISO) && JOURS_ISO.every((j) => estHeure(v[j]))
+  estObjet(v) && memesCles(v, JOURS_ISO) && JOURS_ISO.every((j) => estPlage(v[j]))
     ? null
-    : 'objet des jours "1" à "7" avec une heure « HH:MM » chacun attendu';
+    : 'objet des jours "1" à "7" avec { ouverture, fermeture } « HH:MM » (ouverture avant fermeture) attendu';
 
 const controlerExceptions: Controle = (v) => {
   if (!Array.isArray(v)) return 'liste de dates exceptionnelles attendue';
   for (const e of v) {
-    if (!estObjet(e) || !memesCles(e, ['date', 'heure']) || !estDate(e.date) || !estHeure(e.heure)) {
-      return 'date « AAAA-MM-JJ » et heure « HH:MM » attendues';
+    if (!estObjet(e) || !memesCles(e, ['date', 'ouverture', 'fermeture']) || !estDate(e.date)) {
+      return 'date « AAAA-MM-JJ », ouverture et fermeture « HH:MM » attendues';
+    }
+    if (!estPlage({ ouverture: e.ouverture, fermeture: e.fermeture })) {
+      return 'ouverture « HH:MM » avant fermeture « HH:MM » attendue';
     }
   }
-  if (new Set(v.map((e) => (e as ExceptionRetrait).date)).size !== v.length) return 'une même date figure deux fois';
+  if (new Set(v.map((e) => (e as ExceptionOuverture).date)).size !== v.length) return 'une même date figure deux fois';
   return null;
 };
 
@@ -177,10 +183,10 @@ const controlerTailles: Controle = (v) => {
   return null;
 };
 
-const controlerJoursWeekEnd: Controle = (v) =>
-  Array.isArray(v) && v.every((j) => Number.isInteger(j) && j >= 1 && j <= 7) && new Set(v).size === v.length
+const controlerDelai: Controle = (v) =>
+  typeof v === 'number' && Number.isInteger(v) && v >= DELAI_GATEAU_ETAGES_MIN && v <= DELAI_GATEAU_ETAGES_MAX
     ? null
-    : 'liste de jours 1 à 7 sans doublon attendue';
+    : `entier de ${DELAI_GATEAU_ETAGES_MIN} à ${DELAI_GATEAU_ETAGES_MAX} attendu`;
 
 // ---------------------------------------------------------------------------
 // Lecture
@@ -207,55 +213,56 @@ function lireControle<T>(valeurs: Map<string, string>, cle: string, controle: Co
   return v as T;
 }
 
-function trierExceptions(e: readonly ExceptionRetrait[]): ExceptionRetrait[] {
-  return [...e].map(({ date, heure }) => ({ date, heure })).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+/** Lit la clé si elle est présente (contrôlée), sinon la valeur du propriétaire. */
+function lireOuDefaut<T>(valeurs: Map<string, string>, cle: string, controle: Controle, defaut: () => T): T {
+  return valeurs.has(cle) ? lireControle<T>(valeurs, cle, controle) : defaut();
 }
 
-/** Compatibilité : « par jour » reconstruit depuis semaine / week-end / jours de week-end. */
-function parJourDepuisAnciennes(valeurs: Map<string, string>): Record<JourIso, string> {
-  const o = CLES_REGLEMENT_OBSOLETES;
-  const semaine = lireControle<string>(valeurs, o.retraitSemaine, controlerHeure);
-  const weekEnd = lireControle<string>(valeurs, o.retraitWeekEnd, controlerHeure);
-  const jours = lireControle<number[]>(valeurs, o.joursWeekEndIso, controlerJoursWeekEnd);
-  return Object.fromEntries(JOURS_ISO.map((j) => [j, jours.includes(Number(j)) ? weekEnd : semaine])) as Record<
-    JourIso,
-    string
-  >;
+function copierPlage(p: PlageOuverture): PlageOuverture {
+  return { ouverture: p.ouverture, fermeture: p.fermeture };
+}
+
+function trierExceptions(e: readonly ExceptionOuverture[]): ExceptionOuverture[] {
+  return [...e]
+    .map(({ date, ouverture, fermeture }) => ({ date, ouverture, fermeture }))
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
+function parJourOrdonne(parJour: Record<string, PlageOuverture>): Record<JourIso, PlageOuverture> {
+  return Object.fromEntries(JOURS_ISO.map((j) => [j, copierPlage(parJour[j])])) as Record<JourIso, PlageOuverture>;
 }
 
 /**
  * Conversion pure lignes "Reglage" → données du domaine.
- * Lève si une clé manque ou si une valeur est hors format.
- * Si `patisserie_retrait_par_jour` manque mais que les anciennes clés sont
- * là (base sans la migration 20261015150000), « par jour » en est déduit et
- * les exceptions valent [] (elles n'existaient pas).
+ * Lève si l'acompte manque ou si une valeur présente est hors format.
  */
 export function versReglages(lignes: readonly LigneReglage[]): ReglagesReglement {
   const valeurs = new Map(lignes.map((l) => [l.cle, l.valeur]));
   const c = CLES_REGLEMENT;
-
-  const nouvelleForme = valeurs.has(c.retraitParJour);
-  const parJour = nouvelleForme
-    ? lireControle<Record<JourIso, string>>(valeurs, c.retraitParJour, controlerParJour)
-    : parJourDepuisAnciennes(valeurs);
-  const exceptions =
-    nouvelleForme || valeurs.has(c.retraitExceptions)
-      ? lireControle<ExceptionRetrait[]>(valeurs, c.retraitExceptions, controlerExceptions)
-      : [];
-
+  const parJour = lireOuDefaut<Record<string, PlageOuverture>>(
+    valeurs,
+    c.ouvertureParJour,
+    controlerParJour,
+    () => HORAIRES_OUVERTURE_DEFAUT.parJour,
+  );
+  const exceptions = lireOuDefaut<ExceptionOuverture[]>(
+    valeurs,
+    c.ouvertureExceptions,
+    controlerExceptions,
+    () => HORAIRES_OUVERTURE_DEFAUT.exceptions,
+  );
   return {
     reglement: {
       acomptePourcentageMin: lireControle<number>(valeurs, c.acomptePourcentageMin, controlerPourcent),
-      horairesRetraitPatisserie: {
-        familles: lireControle<string[]>(valeurs, c.famillesPatisserie, controlerFamilles),
-        parJour: Object.fromEntries(JOURS_ISO.map((j) => [j, parJour[j]])) as Record<JourIso, string>,
-        exceptions: trierExceptions(exceptions),
-      },
-      taillesGateau: valeurs.has(c.taillesGateau)
-        ? lireControle<number[]>(valeurs, c.taillesGateau, controlerTailles)
-        : [...TAILLES_GATEAU_DEFAUT],
+      horairesOuverture: { parJour: parJourOrdonne(parJour), exceptions: trierExceptions(exceptions) },
+      taillesGateau: [...lireOuDefaut<readonly number[]>(valeurs, c.taillesGateau, controlerTailles, () => TAILLES_GATEAU_DEFAUT)],
     },
-    heureFermeture: lireControle<string>(valeurs, c.heureFermeture, controlerHeure),
+    delaiGateauEtagesJours: lireOuDefaut<number>(
+      valeurs,
+      c.delaiGateauEtagesJours,
+      controlerDelai,
+      () => DELAI_GATEAU_ETAGES_DEFAUT,
+    ),
   };
 }
 
@@ -275,14 +282,14 @@ export async function lireReglages(client: LecteurReglages): Promise<ReglagesReg
 /** Ce que l'écran des réglages peut modifier ; chaque champ absent est laissé tel quel. */
 export type ReglagesPartiels = {
   acomptePourcentageMin?: number;
-  heureFermeture?: string;
-  famillesPatisserie?: string[];
   /** Les sept jours, ou seulement ceux qui changent (fusionnés avec la valeur en base). */
-  retraitParJour?: Partial<Record<JourIso, string>>;
+  ouvertureParJour?: Partial<Record<JourIso, PlageOuverture>>;
   /** Liste COMPLÈTE des dates exceptionnelles (remplace l'ancienne). */
-  retraitExceptions?: ExceptionRetrait[];
+  ouvertureExceptions?: ExceptionOuverture[];
   /** Liste complète des tailles ; triée à l'écriture. */
   taillesGateau?: number[];
+  /** Jours ouvrés minimum avant le retrait d'un gâteau à étages (0 = aucun). */
+  delaiGateauEtagesJours?: number;
 };
 
 type Upsert = {
@@ -299,11 +306,14 @@ export type EcrivainReglages = LecteurReglages & {
 
 const CHAMPS: Record<keyof ReglagesPartiels, { cle: string; libelle: string; controle: Controle }> = {
   acomptePourcentageMin: { cle: CLES_REGLEMENT.acomptePourcentageMin, libelle: 'acompte minimum (%)', controle: controlerPourcent },
-  heureFermeture: { cle: CLES_REGLEMENT.heureFermeture, libelle: 'heure de fermeture', controle: controlerHeure },
-  famillesPatisserie: { cle: CLES_REGLEMENT.famillesPatisserie, libelle: 'familles soumises aux horaires', controle: controlerFamilles },
-  retraitParJour: { cle: CLES_REGLEMENT.retraitParJour, libelle: 'horaires de retrait par jour', controle: controlerParJour },
-  retraitExceptions: { cle: CLES_REGLEMENT.retraitExceptions, libelle: 'dates exceptionnelles', controle: controlerExceptions },
+  ouvertureParJour: { cle: CLES_REGLEMENT.ouvertureParJour, libelle: 'heures d’ouverture par jour', controle: controlerParJour },
+  ouvertureExceptions: { cle: CLES_REGLEMENT.ouvertureExceptions, libelle: 'dates exceptionnelles', controle: controlerExceptions },
   taillesGateau: { cle: CLES_REGLEMENT.taillesGateau, libelle: 'tailles de gâteau', controle: controlerTailles },
+  delaiGateauEtagesJours: {
+    cle: CLES_REGLEMENT.delaiGateauEtagesJours,
+    libelle: 'délai d’un gâteau à étages (jours)',
+    controle: controlerDelai,
+  },
 };
 
 /**
@@ -324,22 +334,22 @@ export function preparerEcriture(
     if (valeur === undefined) continue;
     const { cle, libelle, controle } = CHAMPS[champ];
 
-    if (champ === 'retraitParJour') {
+    if (champ === 'ouvertureParJour') {
       if (!estObjet(valeur)) return signaler('ERR_SAISIE_INVALIDE', { champLibelle: libelle }, { champ });
-      const fusion: Record<string, unknown> = { ...actuel.reglement.horairesRetraitPatisserie.parJour, ...valeur };
+      const fusion: Record<string, unknown> = { ...actuel.reglement.horairesOuverture.parJour, ...valeur };
       for (const j of Object.keys(fusion)) {
-        if (!(JOURS_ISO as readonly string[]).includes(j) || !estHeure(fusion[j])) {
+        if (!(JOURS_ISO as readonly string[]).includes(j) || !estPlage(fusion[j])) {
           const nom = (JOURS_ISO as readonly string[]).includes(j) ? nomJourIso(j as JourIso) : undefined;
           return signaler(
             'ERR_SAISIE_INVALIDE',
-            { champLibelle: nom ? `heure de retrait du ${nom}` : libelle },
-            { champ: nom ? `retraitParJour.${j}` : champ },
+            { champLibelle: nom ? `heures d’ouverture du ${nom}` : libelle },
+            { champ: nom ? `ouvertureParJour.${j}` : champ },
           );
         }
       }
-      valeur = Object.fromEntries(JOURS_ISO.map((j) => [j, fusion[j]]));
-    } else if (champ === 'retraitExceptions' && Array.isArray(valeur)) {
-      if (controle(valeur) === null) valeur = trierExceptions(valeur as ExceptionRetrait[]);
+      valeur = parJourOrdonne(fusion as Record<string, PlageOuverture>);
+    } else if (champ === 'ouvertureExceptions' && Array.isArray(valeur)) {
+      if (controle(valeur) === null) valeur = trierExceptions(valeur as ExceptionOuverture[]);
     } else if (champ === 'taillesGateau' && Array.isArray(valeur)) {
       valeur = [...valeur].sort((a, b) => Number(a) - Number(b));
     }

@@ -15,7 +15,6 @@
 import type { Echec } from '../domaine/resultat.ts';
 import { pourClient } from '../domaine/resultat.ts';
 import { signaler } from '../domaine/messages.ts';
-import { formaterEuros } from '../domaine/argent.ts';
 import { journaliser, nouvelleReference } from './journal.ts';
 
 /**
@@ -79,7 +78,6 @@ const CODES_BASE: Record<string, string | undefined> = {
   // Lot 2 — commandes et règlement intérieur (migration 20261015140000).
   ERR_COMMANDE_LENDEMAIN: 'retraitLe',
   ERR_DATE_PASSEE: 'retraitLe',
-  ERR_ACOMPTE_INSUFFISANT: 'acompte', // DETAIL « minimum=<centimes>;pourcentage=<n> »
   ERR_ACOMPTE_SUPERIEUR_TOTAL: 'acompte',
   ERR_TOTAL_INCOHERENT: 'total',
   ERR_REMISE_NON_AUTORISEE: 'total',
@@ -95,7 +93,7 @@ export type CodeBase =
   | 'ERR_JOUR_FERME' | 'ERR_PERIODE_CONGES' | 'ERR_UNITE_INCOHERENTE' | 'ERR_UNITE_FIGEE'
   | 'ERR_REGIME_FIGE' | 'ERR_TARIF_IMMUABLE' | 'ERR_TARIF_PASSE' | 'ERR_TARIF_CHEVAUCHEMENT'
   | 'ERR_TARIF_INCOHERENT' | 'ERR_SOUS_PLANCHER' | 'ERR_PRODUIT_EN_DOUBLE'
-  | 'ERR_COMMANDE_LENDEMAIN' | 'ERR_DATE_PASSEE' | 'ERR_ACOMPTE_INSUFFISANT' | 'ERR_ACOMPTE_SUPERIEUR_TOTAL'
+  | 'ERR_COMMANDE_LENDEMAIN' | 'ERR_DATE_PASSEE' | 'ERR_ACOMPTE_SUPERIEUR_TOTAL'
   | 'ERR_TOTAL_INCOHERENT' | 'ERR_REMISE_NON_AUTORISEE' | 'ERR_QUANTITE_MIN' | 'ERR_NB_SYMBOLES_MANQUANT'
   | 'ERR_DROIT_INSUFFISANT' | 'ERR_MONTANT_NUL' | 'ERR_CONFIGURATION_SERVEUR';
 
@@ -196,7 +194,7 @@ function libelleAffichable(detail: string | undefined): string | undefined {
 
 /**
  * Paramètres machine d'un DETAIL « cle=valeur;cle=valeur » (posés par
- * `base-donnees` pour ERR_ACOMPTE_INSUFFISANT et ERR_QUANTITE_MIN).
+ * `base-donnees` pour ERR_QUANTITE_MIN).
  * Seuls les entiers positifs ou nuls sont retenus : une valeur illisible est
  * ignorée (variante générique du message), jamais affichée.
  */
@@ -213,20 +211,12 @@ function entiersDuDetail(detail: string | undefined): Record<string, number> {
 /**
  * Échec du catalogue pour un refus de la base. Le DETAIL n'est repris que
  * comme libellé de fermeture (« mardi ») ou comme paramètres machine
- * (`minimum=…;pourcentage=…`) ; partout ailleurs il est technique et ne part
+ * (`minimum=…`) ; partout ailleurs il est technique et ne part
  * qu'au journal. `reference` : référence courte du journal (pannes de configuration).
  */
 export function echecPourRefusBase(r: RefusBase, reference = nouvelleReference()): Echec {
   const options = r.champ ? { champ: r.champ } : undefined;
   switch (r.code) {
-    case 'ERR_ACOMPTE_INSUFFISANT': {
-      const { minimum, pourcentage } = entiersDuDetail(r.detail);
-      const params: { minimumFormate?: string; pourcentage?: number } = {};
-      if (minimum !== undefined) params.minimumFormate = formaterEuros(minimum);
-      if (pourcentage !== undefined && pourcentage <= 100) params.pourcentage = pourcentage;
-      return signaler('ERR_ACOMPTE_INSUFFISANT', params,
-        minimum !== undefined ? { ...options, valeurProposee: minimum } : options);
-    }
     case 'ERR_QUANTITE_MIN': {
       const { minimum } = entiersDuDetail(r.detail);
       if (minimum === undefined || minimum < 1) return signaler('ERR_QUANTITE_MIN', {}, options);

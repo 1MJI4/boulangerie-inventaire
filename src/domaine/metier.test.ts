@@ -9,10 +9,11 @@ import assert from 'node:assert/strict';
 
 import { chargerCatalogueDepuisDossier } from '../catalogue/chargerFichiers.ts';
 import { creerApiCatalogue } from '../catalogue/catalogue.ts';
+import { CORRESPONDANCES_COMPTOIR } from '../catalogue/correspondancesComptoir.ts';
 
 import { multiplier, prixAuPoids } from './argent.ts';
 import type { JourFerme } from './calendrier.ts';
-import { DELAIS_HYPOTHESE, REGLEMENT_COMMANDE } from './constantes.ts';
+import { DELAIS_PAR_DEFAUT, REGLEMENT_COMMANDE } from './constantes.ts';
 import {
   blocagesCommande,
   controlerCommande,
@@ -62,10 +63,15 @@ function fiche(id: string, date = PRISE): FicheTarifee {
 const ctx: ContexteCommande = {
   resoudre,
   joursFermes: FERMES,
-  delais: DELAIS_HYPOTHESE,
+  delais: DELAIS_PAR_DEFAUT,
   reglement: { ...REGLEMENT_COMMANDE, acomptePourcentageMin: 0 },
+  correspondancesComptoir: CORRESPONDANCES_COMPTOIR,
 };
 const ctxReglement: ContexteCommande = { ...ctx, reglement: REGLEMENT_COMMANDE };
+// Délai d'un gâteau à étages : RÉGLAGE du gérant (0 par défaut, 18/10/2026).
+// Valeur de TEST, comme si le gérant avait réglé 5 jours ouvrés.
+const DELAI_ETAGES_TEST = 5;
+const ctxEtages: ContexteCommande = { ...ctx, delais: { ...DELAIS_PAR_DEFAUT, gateauAEtages: DELAI_ETAGES_TEST } };
 
 function commande(lignes: LigneSaisie[], extra: Partial<CommandeSaisie> = {}): CommandeSaisie {
   return {
@@ -470,14 +476,14 @@ test('retrait un mardi → ERR_JOUR_FERME avec le mercredi proposé', () => {
   }
 });
 
-test('délai : gâteau de mariage à 5 jours ouvrés (HYPOTHÈSE), le plus long délai de la commande s’applique', () => {
-  const r = controlerCommande(
-    commande([{ produitId: ID.baguette, quantite: 30 }, { produitId: ID.mariage, quantite: 40 }], {
-      dateRetrait: '2026-10-19',
-      sansEcriture: true,
-    }),
-    ctx,
-  );
+test('délai : gâteau de mariage, délai réglé par le gérant (5 j), le plus long délai de la commande s’applique', () => {
+  const saisie = commande([{ produitId: ID.baguette, quantite: 30 }, { produitId: ID.mariage, quantite: 40 }], {
+    dateRetrait: '2026-10-19',
+    sansEcriture: true,
+  });
+  // Sans réglage (défaut 0, décision du 18/10/2026) : accepté.
+  assert.ok(controlerCommande(saisie, ctx).ok, 'aucun délai minimum par défaut');
+  const r = controlerCommande(saisie, ctxEtages);
   assert.equal(r.ok, false);
   if (!r.ok) {
     assert.equal(r.code, 'ERR_DELAI_TROP_COURT');
@@ -569,18 +575,24 @@ test('R56 date et heure de prise reprises telles quelles ; heure de prise illisi
   }
 });
 
-test('R52 acompte sous 50 % du total → ERR_ACOMPTE_INSUFFISANT, minimum proposé ; pile 50 % accepté', () => {
+test('R52 acompte sous 50 % du total → ACCEPTÉ avec AVERT_ACOMPTE_INSUFFISANT, minimum proposé ; pile 50 % sans avertissement', () => {
   const b = fiche(ID.baguette);
   const total = multiplier(31, b.prix.prixCentimes);
   const minimum = total % 2 === 0 ? total / 2 : (total + 1) / 2;
   const r = controlerCommande(commande([{ produitId: ID.baguette, quantite: 31 }], { acompteCentimes: minimum - 1 }), ctxReglement);
-  assert.equal(r.ok, false);
-  if (!r.ok) {
-    assert.equal(r.code, 'ERR_ACOMPTE_INSUFFISANT');
-    assert.equal(r.valeurProposee, minimum);
-  }
+  assert.ok(r.ok, 'un acompte faible ne bloque plus la vente (18/10/2026)');
+  assert.equal(r.donnees.acompteCentimes, minimum - 1);
+  const avert = r.signalements.filter((s) => s.code === 'AVERT_ACOMPTE_INSUFFISANT');
+  assert.equal(avert.length, 1);
+  assert.equal(avert[0]?.niveau, 'avertissement');
+  assert.equal(avert[0]?.champ, 'acompte');
+  assert.equal(avert[0]?.valeurProposee, minimum);
+  const sansAcompte = controlerCommande(commande([{ produitId: ID.baguette, quantite: 31 }], { acompteCentimes: 0 }), ctxReglement);
+  assert.ok(sansAcompte.ok, '0 € : accepté, signalé');
+  assert.ok(sansAcompte.signalements.some((s) => s.code === 'AVERT_ACOMPTE_INSUFFISANT'));
   const ok = controlerCommande(commande([{ produitId: ID.baguette, quantite: 31 }], { acompteCentimes: minimum }), ctxReglement);
   assert.ok(ok.ok, JSON.stringify(ok));
+  assert.ok(!ok.signalements.some((s) => s.code === 'AVERT_ACOMPTE_INSUFFISANT'));
 });
 
 test('R53 baguettes pour le lendemain → acceptées, INFO_COMMANDE_LENDEMAIN, aucun accord tracé', () => {
@@ -597,13 +609,36 @@ test('R53 baguettes pour le lendemain → acceptées, INFO_COMMANDE_LENDEMAIN, a
   assert.equal(avecAccord.donnees.accordLendemain, undefined);
 });
 
-test('R53 + délai : retrait le jour même → ERR_DELAI_TROP_COURT, lendemain proposé', () => {
-  const r = controlerCommande(commande([{ produitId: ID.baguette, quantite: 30 }], { dateRetrait: PRISE }), ctx);
+test('R53b retrait le jour même → ACCEPTÉ avec INFO_COMMANDE_JOUR_MEME, production le jour même', () => {
+  for (const id of [ID.baguette, ID.miniBurger, ID.layer]) {
+    const quantite = id === ID.layer ? 20 : 30;
+    const r = controlerCommande(commande([{ produitId: id, quantite }], { dateRetrait: PRISE, sansEcriture: true }), ctx);
+    assert.ok(r.ok, `${id} : ${JSON.stringify(r)}`);
+    assert.equal(r.signalements.filter((s) => s.code === 'INFO_COMMANDE_JOUR_MEME').length, 1, id);
+    assert.ok(!r.signalements.some((s) => s.code === 'INFO_COMMANDE_LENDEMAIN'), id);
+    assert.equal(r.donnees.delaiJoursOuvres, 0);
+    // Cascade R2d : jamais une fiche de production dans le passé.
+    assert.equal(r.donnees.dateProduction, PRISE, 'production le jour de la prise, pas la veille');
+  }
+});
+
+test('R53b jour même : saisie hors ligne un mardi pour le mardi, synchronisée le mercredi → ERR_JOUR_FERME', () => {
+  const mardi = '2026-10-20';
+  const r = controlerCommande(
+    commande([{ produitId: ID.baguette, quantite: 30 }], { datePrise: mardi, dateRetrait: mardi }),
+    { ...ctx, aujourdhui: mardi },
+  );
   assert.equal(r.ok, false);
   if (!r.ok) {
-    assert.equal(r.code, 'ERR_DELAI_TROP_COURT');
-    assert.equal(r.valeurProposee, '2026-10-16');
+    assert.equal(r.code, 'ERR_JOUR_FERME');
+    assert.equal(r.valeurProposee, '2026-10-21');
   }
+});
+
+test('R53b date passée reste refusée (ERR_DATE_PASSEE)', () => {
+  const r = controlerCommande(commande([{ produitId: ID.baguette, quantite: 30 }], { dateRetrait: '2026-10-14' }), ctx);
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.equal(r.code, 'ERR_DATE_PASSEE');
 });
 
 test('R53 + délai : gâteau simple (Layer Cake) pour le lendemain → accepté avec information', () => {
@@ -613,25 +648,29 @@ test('R53 + délai : gâteau simple (Layer Cake) pour le lendemain → accepté 
   );
   assert.ok(ok.ok, JSON.stringify(ok));
   assert.ok(ok.signalements.some((s) => s.code === 'INFO_COMMANDE_LENDEMAIN'));
-  assert.equal(ok.donnees.delaiJoursOuvres, 1);
+  assert.equal(ok.donnees.delaiJoursOuvres, 0);
+  assert.equal(ok.donnees.dateProduction, PRISE, 'veille ouvrée du vendredi = jeudi');
 });
 
-test('R53 + délai : pièce montée pour le lendemain → ERR_DELAI_TROP_COURT (5 jours ouvrés, HYPOTHÈSE)', () => {
+test('R53 + délai étages : pièce montée pour le lendemain → acceptée par défaut, refusée si le gérant a réglé 5 jours', () => {
   const saisie = commande([{ produitId: ID.pieceMontee, quantite: 60 }], { dateRetrait: '2026-10-16', sansEcriture: true });
-  const r = controlerCommande(saisie, ctx);
+  const defaut = controlerCommande(saisie, ctx);
+  assert.ok(defaut.ok, JSON.stringify(defaut));
+  assert.ok(defaut.signalements.some((s) => s.code === 'INFO_COMMANDE_LENDEMAIN'));
+  const r = controlerCommande(saisie, ctxEtages);
   assert.equal(r.ok, false);
   if (!r.ok) {
     assert.equal(r.code, 'ERR_DELAI_TROP_COURT');
     assert.equal(r.valeurProposee, '2026-10-21', 'ven 16, sam 17, dim 18, lun 19, (mar fermé), mer 21');
   }
-  assert.deepEqual(blocagesCommande(saisie, ctx).map((e) => e.code), ['ERR_DELAI_TROP_COURT']);
+  assert.deepEqual(blocagesCommande(saisie, ctxEtages).map((e) => e.code), ['ERR_DELAI_TROP_COURT']);
 });
 
 // Réserve qa-metier B2 : le délai « gâteau à étages » dépend de la SEULE donnée
 // `etages` de la fiche (fournie par le catalogue), jamais du nom ni du minimum.
 function avecEtages(id: string, etages: number | null): ContexteCommande {
   return {
-    ...ctx,
+    ...ctxEtages,
     resoudre: (produitId, date) => {
       const r = resoudre(produitId, date);
       if (!r.ok || produitId !== id) return r;
@@ -642,12 +681,12 @@ function avecEtages(id: string, etages: number | null): ContexteCommande {
 
 test('B2 délai étages : une fiche qui porte `etages` reçoit le délai gâteau à étages via controlerCommande', () => {
   const saisie = commande([{ produitId: ID.layer, quantite: 20 }], { dateRetrait: '2026-10-16', sansEcriture: true });
-  assert.ok(controlerCommande(saisie, ctx).ok, 'Layer Cake sans étages : lendemain accepté');
+  assert.ok(controlerCommande(saisie, ctxEtages).ok, 'Layer Cake sans étages : lendemain accepté');
   const r = controlerCommande(saisie, avecEtages(ID.layer, 2));
   assert.equal(r.ok, false);
   if (!r.ok) {
     assert.equal(r.code, 'ERR_DELAI_TROP_COURT');
-    assert.equal(r.valeurProposee, '2026-10-21', `${DELAIS_HYPOTHESE.gateauAEtages} jours ouvrés, mardi exclu`);
+    assert.equal(r.valeurProposee, '2026-10-21', `${DELAI_ETAGES_TEST} jours ouvrés, mardi exclu`);
   }
 });
 
@@ -655,38 +694,40 @@ test('B2 délai étages : sans la donnée `etages`, rien n’est déduit du nom 
   const saisie = commande([{ produitId: ID.pieceMontee, quantite: 60 }], { dateRetrait: '2026-10-16', sansEcriture: true });
   const r = controlerCommande(saisie, avecEtages(ID.pieceMontee, null));
   assert.ok(r.ok, 'pas de déduction : le délai vient de la donnée, que catalogue-prix doit fournir');
-  assert.equal(r.donnees.delaiJoursOuvres, DELAIS_HYPOTHESE.parRegime.C);
+  assert.equal(r.donnees.delaiJoursOuvres, DELAIS_PAR_DEFAUT.parRegime.C);
 });
 
-test('R54 gâteau retiré samedi 11:00 → ERR_HEURE_RETRAIT_TROP_TOT, 12:00 proposé ; baguettes à 7:00 acceptées', () => {
-  const r = controlerCommande(
-    commande([{ produitId: ID.layer, quantite: 20 }], { dateRetrait: '2026-10-17', heureRetrait: '11:00', sansEcriture: true }),
-    ctx,
-  );
-  assert.equal(r.ok, false);
-  if (!r.ok) {
-    assert.equal(r.code, 'ERR_HEURE_RETRAIT_TROP_TOT');
-    assert.equal(r.champ, 'heureRetrait');
-    assert.equal(r.valeurProposee, '12:00');
+test('R54 heure de retrait hors ouverture → ERR_HEURE_HORS_OUVERTURE, borne proposée ; tous produits', () => {
+  for (const [lignes, heure, proposee] of [
+    [[{ produitId: ID.layer, quantite: 20 }], '05:30', '06:00'],
+    [[{ produitId: ID.baguette, quantite: 30 }], '21:00', '20:00'],
+  ] as const) {
+    const r = controlerCommande(commande([...lignes], { dateRetrait: '2026-10-17', heureRetrait: heure, sansEcriture: true }), ctx);
+    assert.equal(r.ok, false, heure);
+    if (!r.ok) {
+      assert.equal(r.code, 'ERR_HEURE_HORS_OUVERTURE');
+      assert.equal(r.champ, 'heureRetrait');
+      assert.equal(r.valeurProposee, proposee);
+    }
   }
+  // Ancienne règle pâtisserie (12h00 le samedi) supprimée : un gâteau à 07:00 passe.
   const ok = controlerCommande(
-    commande([{ produitId: ID.baguette, quantite: 30 }], { dateRetrait: '2026-10-17', heureRetrait: '07:00' }),
+    commande([{ produitId: ID.layer, quantite: 20 }], { dateRetrait: '2026-10-17', heureRetrait: '07:00', sansEcriture: true }),
     ctx,
   );
   assert.ok(ok.ok, JSON.stringify(ok));
   assert.equal(ok.donnees.heureRetrait, '07:00');
 });
 
-test('R54 gâteau sans heure de retrait → ERR_CHAMP_OBLIGATOIRE ; baguettes sans heure → acceptées', () => {
-  const r = controlerCommande(commande([{ produitId: ID.layer, quantite: 20 }], { heureRetrait: null, sansEcriture: true }), ctx);
-  assert.equal(r.ok, false);
-  if (!r.ok) {
-    assert.equal(r.code, 'ERR_CHAMP_OBLIGATOIRE');
-    assert.equal(r.champ, 'heureRetrait');
+test('R54 heure de retrait facultative pour tous : gâteau et baguettes sans heure → acceptés', () => {
+  for (const [lignes, heureRetrait] of [
+    [[{ produitId: ID.layer, quantite: 20 }], null],
+    [[{ produitId: ID.baguette, quantite: 30 }], undefined],
+  ] as const) {
+    const r = controlerCommande(commande([...lignes], { heureRetrait, sansEcriture: true }), ctx);
+    assert.ok(r.ok, JSON.stringify(r));
+    assert.equal(r.donnees.heureRetrait, null);
   }
-  const ok = controlerCommande(commande([{ produitId: ID.baguette, quantite: 30 }], { heureRetrait: undefined }), ctx);
-  assert.ok(ok.ok);
-  assert.equal(ok.donnees.heureRetrait, null);
 });
 
 test('R55 case « demande inhabituelle » ou ligne libre → AVERT_COMMANDE_INHABITUELLE, commande acceptée', () => {

@@ -50,11 +50,9 @@ import {
   PaveEntier,
   PaveMontant,
   PaveTelephone,
-  SelecteurDateRetrait,
   useCotePave,
 } from '@/components/saisie';
 import { ContexteTaillePave } from '@/components/saisie/taillePave';
-import { estDateIso, libelleLong, morceauxDate } from '@/components/saisie/dates';
 import { ListeSignalements, type SignalementAffichable } from '@/components/signalement';
 import { RappelApresAction, RappelChargement } from '@/components/rappels';
 import {
@@ -70,14 +68,20 @@ import { ajouterJoursOuvres, fermetureDuJour, formaterDate, prochainJourOuvert }
 import { formaterEuros, resteDu, somme } from '@/domaine/argent';
 import { formaterQuantite } from '@/domaine/unites';
 import { libelleCorrection } from '@/domaine/messages';
-import { estPatisserie, heureMinRetrait, lireHeure, validerLendemain } from '@/domaine/reglement';
+import { horairesOuvertureDuJour, validerJourMeme, validerLendemain } from '@/domaine/reglement';
 import { estGateauSimpleSurCommande, taillesProches } from '@/domaine/minimums';
 import { FAMILLES_GATEAU, JOURS_AVANT_ARCHIVAGE } from '@/domaine/constantes';
+import { CORRESPONDANCES_COMPTOIR } from '@/catalogue/correspondancesComptoir';
+import { gateauSurCommandeDe } from '@/domaine/prixComptoir';
 import type { Echec, Resultat } from '@/domaine/resultat';
 import type { Deverrouillage, FicheTarifee } from '@/domaine/types';
 import {
   champLocal,
+  choisirTaille,
   echecReseau,
+  ficheComptoirPourTaille,
+  gateauDeLaLigne,
+  tailleChoisie,
   estLigneAncienTarif,
   ficheDe,
   lignesIdentiques,
@@ -90,9 +94,16 @@ import {
   fichesVisibles,
   majLigneEcran,
   quantiteAuBon,
-  rayonsDe,
+  boutonsFamilles,
   estSupplement,
   gateauxAuBon,
+  aSupplement,
+  basculerSupplement,
+  indexPremierGateau,
+  precisionsAEnregistrer,
+  saisirEcriture,
+  SUPPLEMENT_ECRITURE,
+  SUPPLEMENT_PHOTO,
   toucherProduit,
   versCommandeSaisie,
   type CatalogueCommande,
@@ -104,6 +115,7 @@ import {
 import { sortieDe } from '@/components/commande/sorties';
 import { ChampPave } from '@/components/commande/ChampPave';
 import { AccesGerant } from '@/components/commande/AccesGerant';
+import { BandeRetrait } from '@/components/commande/BandeRetrait';
 
 const CHAMP_TEXTE =
   'min-h-12 w-full rounded-xl border-2 border-line-fort bg-surface px-3 text-base text-ink placeholder:text-ink-3';
@@ -120,7 +132,9 @@ function composantes(l: LigneControlee, unite: string): string {
   const pu = formaterEuros(l.prixUnitaireCentimes);
   if (l.unite === 'kg') return `${formaterQuantite('kg', l.quantite)} × ${pu}/kg = ${total}`;
   if (l.basePrix === 'forfait') return `${l.quantite} × ${pu} = ${total}`;
-  return `${l.quantite} ${unite} × ${pu} = ${total}`;
+  // « 1 pièce », « 1 part » : unité au singulier pour une seule unité.
+  const libelle = l.quantite === 1 ? unite.replace(/s$/, '') : unite;
+  return `${l.quantite} ${libelle} × ${pu} = ${total}`;
 }
 
 type DemandeGerant = { raison: string; appliquer: (d: Deverrouillage) => void };
@@ -148,12 +162,6 @@ type Validee = { id: number; numero: string; controlee: CommandeControlee | null
 
 /** Tablette : espace laissé sous l'espace de travail, en px (la page ne défile jamais). */
 const MARGE_BAS_CADRE_PX = 12;
-
-/** « mercredi 22 octobre 2026 à 14:00 » — pour l'accessibilité du bouton « Retrait ». */
-function libelleCourtRetrait(date: string, heure: string): string {
-  const jour = estDateIso(date) ? libelleLong(date) : date;
-  return heure ? `${jour} à ${heure}` : `${jour}, heure à choisir`;
-}
 
 /* ======================================================================== */
 
@@ -190,7 +198,14 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   const [texteGateau, setTexteGateau] = useState(commande?.texteGateau ?? '');
   const [sansEcriture, setSansEcriture] = useState(commande?.sansEcriture ?? false);
   const [photoWhatsapp, setPhotoWhatsapp] = useState(commande?.photoWhatsapp ?? false);
-  const [photoImprimee, setPhotoImprimee] = useState(commande?.photoImprimee ?? false);
+  // « Photo à imprimer » = présence du supplément Photo au bon (18/10/2026).
+  // Seule exception : une commande enregistrée cochée SANS ligne de supplément
+  // (antérieure à l'automatisme) garde sa case jusqu'à ce qu'on la décoche.
+  const [photoHeritee, setPhotoHeritee] = useState(
+    () =>
+      !!commande?.photoImprimee &&
+      !commande.lignes.some((l) => l.produitCatalogue?.cleCatalogue === SUPPLEMENT_PHOTO),
+  );
   const [demandeInhabituelle, setDemandeInhabituelle] = useState(commande?.demandeInhabituelle ?? false);
   const [remarques, setRemarques] = useState(commande?.remarques ?? '');
 
@@ -204,9 +219,9 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   const [annonce, setAnnonce] = useState('');
   const etroit = useEcranEtroit();
   const [cotePave] = useCotePave();
-  // Tablette : panneau superposé à la grille (jour et heure de retrait). Nouvelle
-  // commande sans date : ouvert d'emblée — la date se choisit EN PREMIER.
-  const [panneauRetrait, setPanneauRetrait] = useState(() => !commande?.retraitLe);
+  // Jour et heure de retrait : bande compacte toujours visible au-dessus des
+  // produits (18/10/2026) — la date se choisit EN PREMIER, sans cacher la grille.
+  const bandeRetrait = useRef<HTMLDivElement>(null);
   // Tablette : hauteur de l'espace de travail = écran − ce qui est au-dessus (mesuré).
   const cadre = useRef<HTMLDivElement>(null);
   const [hautCadre, setHautCadre] = useState<number | null>(null);
@@ -268,6 +283,16 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   }, [prete, vendeur, router]);
 
   // --- Domaine ---------------------------------------------------------------
+  // Gâteaux au bon (R7, compté par le domaine sur les données, jamais par le
+  // nom) : ils décident du bloc « Gâteau » et des suppléments au forfait.
+  const famillesGateau = cal?.reglement.famillesGateau ?? FAMILLES_GATEAU;
+  const nbGateaux = cal ? gateauxAuBon(lignes, catalogue, famillesGateau) : 0;
+  const sansGateau = nbGateaux === 0;
+  const iPremierGateau = indexPremierGateau(lignes, catalogue, famillesGateau);
+  const photoImprimee = photoHeritee || aSupplement(lignes, SUPPLEMENT_PHOTO);
+  // Sans gâteau, aucune précision « gâteau » ne part en base (bloc absent).
+  const precisionsGateau = precisionsAEnregistrer({ texteGateau, sansEcriture, photoWhatsapp, photoImprimee }, nbGateaux);
+
   const etat: EtatFormulaire = {
     client,
     telephone,
@@ -277,8 +302,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     acompteCentimes: acompte,
     totalConvenuCentimes: totalConvenu,
     remise,
-    texteGateau,
-    sansEcriture,
+    texteGateau: precisionsGateau.texteGateau,
+    sansEcriture: precisionsGateau.sansEcriture,
     demandeInhabituelle,
   };
 
@@ -289,6 +314,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       joursFermes: cal.joursFermes,
       delais: cal.delais,
       reglement: cal.reglement,
+      // R60 : gâteau sur commande au prix du comptoir (donnée du catalogue).
+      correspondancesComptoir: CORRESPONDANCES_COMPTOIR,
       aujourdhui: cal.aujourdhui,
       existante: commande
         ? { statut: commande.statut, retraitLe: commande.retraitLe, anonymiseeLe: commande.anonymiseeLe }
@@ -335,18 +362,20 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   const tous: SignalementAffichable[] = [...blocages, ...(succesCommande?.signalements ?? [])];
   const pour = (champs: readonly string[]) => tous.filter((s) => champs.includes(champLocal(s.champ)) && indexLigne(s.champ) === null);
   const signauxClient = tentative ? pour(['client', 'telephone']) : pour(['telephone']).filter((s) => s.niveau !== 'bloquant' || telephone !== '');
-  // Retrait le lendemain : ACCEPTÉ (LOI 11, 15/10/2026), simple information
-  // « prévenir l'atelier » donnée par le domaine dès le choix de la date.
+  // Retrait le jour même ou le lendemain : ACCEPTÉ (LOI 11, 15/10 et 18/10/2026),
+  // simple information « prévenir l'atelier » donnée par le domaine dès le choix de la date.
+  const jourMeme = dateRetrait && cal ? validerJourMeme(dateRetrait, cal.aujourdhui, cal.joursFermes) : null;
   const lendemain = dateRetrait && cal ? validerLendemain(dateRetrait, cal.aujourdhui, cal.joursFermes) : null;
-  const infoLendemain = lendemain?.ok ? lendemain.signalements : [];
+  const infoLendemain = [...(jourMeme?.ok ? jourMeme.signalements : []), ...(lendemain?.ok ? lendemain.signalements : [])];
   const signauxDateDomaine = dateRetrait || tentative ? pour(['dateRetrait', 'datePrise']) : [];
   const signauxDate = [
     ...signauxDateDomaine,
     ...infoLendemain.filter((i) => !signauxDateDomaine.some((s) => s.code === i.code)),
   ];
-  const signauxHeure = (dateRetrait && lignes.length > 0) || tentative ? pour(['heureRetrait', 'heurePrise']) : [];
+  const signauxHeure = (dateRetrait && (lignes.length > 0 || heureRetrait !== '')) || tentative ? pour(['heureRetrait', 'heurePrise']) : [];
   const signauxProduits = tentative || ancienTarif ? pour(['lignes']) : [];
-  const signauxPrecisions = pour(['texteGateau', 'demandeInhabituelle']);
+  const signauxGateau = pour(['texteGateau']);
+  const signauxInhabituelle = pour(['demandeInhabituelle']);
   const signauxMontants = acompte !== null || tentative ? pour(['acompte', 'total']) : pour(['total']);
   const signauxStatut = pour(['statut']);
 
@@ -452,6 +481,11 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       if (s.code === 'ERR_SUPPLEMENT_SANS_GATEAU' || (s.code === 'ERR_SUPPLEMENT_TROP_NOMBREUX' && v === 0)) {
         return retirerLigne(i);
       }
+      // R60 : la taille existe au comptoir → la ligne devient le gâteau du comptoir.
+      if (s.code === 'ERR_PRIX_COMPTOIR' && ligne.quantite !== null) {
+        const parts = ligne.quantite;
+        return setLignes((ls) => ls.map((l, j) => (j === i ? choisirTaille(l, parts, catalogue, CORRESPONDANCES_COMPTOIR) : l)));
+      }
       if ((champ === 'quantite') && typeof v === 'number') return majLigne(i, { quantite: v });
       if (s.code === 'ERR_SOUS_PLANCHER' && typeof v === 'number') return majLigne(i, { prixUnitaireCentimes: v, deverrouillage: null });
       if (s.code === 'ERR_NB_SYMBOLES_MANQUANT') return setActif(`${ligne.cle}.symboles`);
@@ -470,8 +504,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         return;
       case 'heureRetrait':
         if (typeof v === 'string') setHeureRetrait(v);
-        else if (etroit) setActif('heure');
-        else setPanneauRetrait(true);
+        else bandeRetrait.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         return;
       case 'acompte':
         if (typeof v === 'number') setAcompte(v);
@@ -489,10 +522,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         return;
       case 'lignes':
         if (etroit) zoneProduits.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        else {
-          setPanneauRetrait(false);
-          zoneProduits.current?.scrollTo({ top: 0, behavior: 'smooth' });
-        }
+        else zoneProduits.current?.scrollTo({ top: 0, behavior: 'smooth' });
         return;
       case 'statut':
         router.push('/commandes/nouvelle');
@@ -613,10 +643,10 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         acompteCentimes: acompte ?? 0,
         totalConvenuCentimes: totalConvenu,
         remise,
-        texteGateau: texteGateau || null,
-        sansEcriture,
-        photoWhatsapp,
-        photoImprimee,
+        texteGateau: precisionsGateau.texteGateau || null,
+        sansEcriture: precisionsGateau.sansEcriture,
+        photoWhatsapp: precisionsGateau.photoWhatsapp,
+        photoImprimee: precisionsGateau.photoImprimee,
         demandeInhabituelle,
         remarques: remarques || null,
         lignes: lignes.map((l, i) => ({ ...saisie.lignes[i], precision: l.precision || null })),
@@ -663,10 +693,6 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
 
   const chargement = !refusChargement && (!cal || !catalogue);
 
-  // Suppléments au forfait (Photo, Écriture) : offerts seulement s'il y a un
-  // gâteau au bon — compté par le domaine sur les données, jamais par le nom.
-  const nbGateaux = cal ? gateauxAuBon(lignes, catalogue, cal.reglement.famillesGateau ?? FAMILLES_GATEAU) : 0;
-  const sansGateau = nbGateaux === 0;
 
   /** Le pavé ouvert (un seul à la fois), affiché dans la colonne du pavé. */
   const paveOuvert = (): ReactNode | null => {
@@ -725,6 +751,77 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     </div>
   ) : null;
 
+  /* --------------------------------------------- Bloc « Gâteau » (sous le 1er gâteau) */
+  // Demande du propriétaire (18/10/2026) : écriture et photos rattachées à la
+  // ligne du gâteau. Champs au niveau de la commande : UN bloc, sous le premier
+  // gâteau. Écrire / cocher la photo met le supplément au bon ; vider / décocher
+  // le retire (le vendeur peut aussi retirer la ligne du supplément lui-même).
+  const ecrire = (v: string) => {
+    setTexteGateau(v);
+    setLignes((ls) => saisirEcriture(ls, v, catalogue, famillesGateau));
+  };
+  const photoAuTarif = ficheDe(catalogue, SUPPLEMENT_PHOTO) !== null;
+  const blocGateau = (
+    <div
+      role="group"
+      aria-label="Sur le gâteau"
+      className="mt-2 rounded-lg border-l-4 border-accent bg-surface-2 px-2.5 pb-1.5 pt-2"
+    >
+      <label className="block">
+        <span className="mb-1 block text-sm font-semibold text-ink">Écriture sur le gâteau</span>
+        <input
+          className={CHAMP_TEXTE}
+          value={sansEcriture ? '' : texteGateau}
+          disabled={sansEcriture}
+          onChange={(e) => ecrire(e.target.value)}
+          placeholder={sansEcriture ? 'Pas d’écriture' : 'JOYEUX ANNIVERSAIRE MARIAM'}
+          autoComplete="off"
+        />
+      </label>
+      <p className="mt-1 text-xs text-ink-2">
+        {!sansEcriture && texteGateau.trim() !== '' && aSupplement(lignes, SUPPLEMENT_ECRITURE)
+          ? 'Supplément écriture au bon. '
+          : ''}
+        Relisez le texte au client : imprimé tel quel.
+      </p>
+      <Case
+        compact
+        coche={sansEcriture}
+        onChange={(v) => {
+          setSansEcriture(v);
+          if (v) {
+            setTexteGateau('');
+            setLignes((ls) => basculerSupplement(ls, SUPPLEMENT_ECRITURE, false, catalogue, famillesGateau));
+          }
+        }}
+      >
+        Pas d’écriture
+      </Case>
+      <Case compact coche={photoWhatsapp} onChange={setPhotoWhatsapp}>
+        Photo d’exemple envoyée sur WhatsApp
+      </Case>
+      <Case
+        compact
+        coche={photoImprimee}
+        desactive={!photoAuTarif && !photoImprimee}
+        aide={
+          aSupplement(lignes, SUPPLEMENT_PHOTO)
+            ? 'Supplément photo au bon'
+            : !photoAuTarif
+              ? 'Supplément « Photo » absent du tarif : prévenez le gérant'
+              : undefined
+        }
+        onChange={(v) => {
+          if (!v) setPhotoHeritee(false);
+          setLignes((ls) => basculerSupplement(ls, SUPPLEMENT_PHOTO, v, catalogue, famillesGateau));
+        }}
+      >
+        Photo à imprimer sur le gâteau
+      </Case>
+      {rendre(signauxGateau)}
+    </div>
+  );
+
   /* ----------------------------------------------- Le bon (lignes saisies) */
   const bon =
     cal && catalogue ? (
@@ -766,6 +863,14 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                   <LigneDuBon
                     ligne={ligne}
                     fiche={fiche}
+                    ficheGateau={ficheDe(catalogue, gateauDeLaLigne(ligne))}
+                    tailleCourante={tailleChoisie(ligne, CORRESPONDANCES_COMPTOIR)}
+                    prixTaille={(t) =>
+                      ficheComptoirPourTaille(gateauDeLaLigne(ligne), t, catalogue, CORRESPONDANCES_COMPTOIR)?.prix.prixCentimes ?? null
+                    }
+                    onTaille={(t) =>
+                      setLignes((ls) => ls.map((l, j) => (j === i ? choisirTaille(l, t, catalogue, CORRESPONDANCES_COMPTOIR) : l)))
+                    }
                     resultat={r}
                     unite={unite}
                     actif={actif}
@@ -783,6 +888,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                     }
                   />
                   {rendre(signaux, unite, `ligne-${ligne.cle}`)}
+                  {i === iPremierGateau ? blocGateau : null}
                 </li>
               );
             })}
@@ -866,100 +972,57 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     </div>
   );
 
-  /* ------------------------------------------------------------ Précisions */
+  /* ------------------------------------- Remarques et demande inhabituelle */
+  // Valent pour toute la commande (salé compris) : en bas du bon, discrètes.
   const precisions = (
     <>
-      <h2 className={TITRE}>Précisions</h2>
       <label className="block">
-        <span className="mb-1 block text-sm text-ink-2">Écriture sur le gâteau</span>
-        <input
-          className={CHAMP_TEXTE}
-          value={texteGateau}
-          disabled={sansEcriture}
-          onChange={(e) => setTexteGateau(e.target.value)}
-          placeholder="JOYEUX ANNIVERSAIRE MARIAM"
-          autoComplete="off"
-        />
-      </label>
-      <p className="mt-1 text-sm text-ink-3">
-        Relisez-le au client à voix haute : il est imprimé tel quel. Le supplément « écriture » se prend dans les
-        produits.
-      </p>
-      <Case coche={sansEcriture} onChange={(v) => { setSansEcriture(v); if (v) setTexteGateau(''); }}>
-        Pas d’écriture sur le gâteau
-      </Case>
-      <Case coche={photoWhatsapp} onChange={setPhotoWhatsapp}>
-        Photo d’exemple envoyée sur WhatsApp
-      </Case>
-      {/* Pas de gâteau au bon : la photo n'est pas offerte (déjà cochée : on peut la décocher). */}
-      <Case
-        coche={photoImprimee}
-        onChange={setPhotoImprimee}
-        desactive={sansGateau && !photoImprimee}
-        aide={sansGateau ? 'Ajoutez d’abord un gâteau' : undefined}
-      >
-        Photo à imprimer sur le gâteau (ajoutez aussi le supplément « Photo » dans les produits)
-      </Case>
-      <Case coche={demandeInhabituelle} onChange={setDemandeInhabituelle}>
-        Demande inhabituelle (ingrédient particulier, moule spécial…)
-      </Case>
-      {rendre(signauxPrecisions)}
-      <label className="mt-3 block">
         <span className="mb-1 block text-sm text-ink-2">Remarques</span>
-        <textarea className={`${CHAMP_TEXTE} min-h-20 py-2`} value={remarques} onChange={(e) => setRemarques(e.target.value)} />
+        <textarea className={`${CHAMP_TEXTE} min-h-16 py-2`} value={remarques} onChange={(e) => setRemarques(e.target.value)} />
       </label>
+      <Case compact coche={demandeInhabituelle} onChange={setDemandeInhabituelle}>
+        <span className="text-sm text-ink-2">Demande inhabituelle (ingrédient particulier, moule spécial…)</span>
+      </Case>
+      {rendre(signauxInhabituelle)}
     </>
   );
 
   /* ------------------------------------------------ Jour et heure de retrait */
-  const selecteurDate = cal ? (
-    <SelecteurDateRetrait
-      valeur={dateRetrait}
-      onChange={(d) => {
-        setDateRetrait(d);
-        // Tablette : date ET heure connues → le panneau se referme, place aux produits.
-        if (heureRetrait) setPanneauRetrait(false);
-      }}
-      aujourdhui={cal.aujourdhui}
-      premiereDate={premiereDate}
-      estJourFerme={(iso) => {
-        const f = fermetureDuJour(iso, cal.joursFermes);
-        return f ? { ferme: true, libelle: f.nature === 'hebdomadaire' ? undefined : f.libelle } : { ferme: false };
-      }}
-      enErreur={signauxDate.some((s) => s.niveau === 'bloquant')}
-    />
-  ) : null;
-  // LOI 11 : première heure de retrait pâtisserie du jour choisi (réglages du
-  // gérant : jour par jour + dates exceptionnelles), calculée par le domaine.
-  // Tant qu'aucun produit n'est au bon, on ne sait pas s'il y aura de la
-  // pâtisserie : l'horaire s'applique (le plus sûr). Le domaine juge de toute façon.
-  const avecPatisserie =
-    !!cal &&
-    (lignes.length === 0 ||
-      lignes.some((l) =>
-        estPatisserie(ficheDe(catalogue, l.produitId)?.produit ?? null, cal.reglement.horairesRetraitPatisserie.familles),
-      ));
-  let heureMin: string | null = null;
-  if (cal && dateRetrait && avecPatisserie) {
+  // R54 (18/10/2026) : heures d'ouverture du magasin le jour choisi (réglages
+  // du gérant : jour par jour + dates exceptionnelles), calculées par le
+  // domaine, pour tous les produits. Le domaine juge de toute façon.
+  let ouverture: { ouverture: string; fermeture: string } | null = null;
+  if (cal && dateRetrait) {
     try {
-      heureMin = heureMinRetrait(dateRetrait, cal.reglement, cal.joursFermes);
+      ouverture = horairesOuvertureDuJour(dateRetrait, cal.reglement.horairesOuverture);
     } catch {
-      heureMin = null; // réglage illisible : le domaine refusera, avec son message
+      ouverture = null; // réglage illisible : le domaine refusera, avec son message
     }
   }
-  const choixHeure = (
-    <ChoixHeure
-      heureMin={heureMin}
-      valeur={heureRetrait}
-      onChange={(h, fini) => {
-        setHeureRetrait(h);
-        if (fini) {
-          setActif(null);
-          if (dateRetrait) setPanneauRetrait(false);
+  const signauxRetrait = [...signauxDate, ...signauxHeure];
+  const bande = cal ? (
+    <div ref={bandeRetrait} className="min-w-0">
+      <BandeRetrait
+        aujourdhui={cal.aujourdhui}
+        date={dateRetrait}
+        heure={heureRetrait}
+        etatJour={(iso) => {
+          const f = fermetureDuJour(iso, cal.joursFermes);
+          return f ? { ferme: true, libelle: f.nature === 'hebdomadaire' ? undefined : f.libelle } : { ferme: false };
+        }}
+        premiereDate={premiereDate}
+        horaires={ouverture}
+        onDate={setDateRetrait}
+        onHeure={setHeureRetrait}
+        enErreur={signauxRetrait.some((s) => s.niveau === 'bloquant')}
+        signalements={
+          signauxRetrait.length > 0 ? (
+            <div className={etroit ? '' : 'max-h-40 overflow-y-auto overscroll-contain'}>{rendre(signauxRetrait)}</div>
+          ) : null
         }
-      }}
-    />
-  );
+      />
+    </div>
+  ) : null;
 
   const grille = (tablette: boolean, enTete?: ReactNode) =>
     catalogue ? (
@@ -1020,9 +1083,6 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   // pied (total + Valider) ≈ 130 → le bon garde ≈ 150 px et défile.
   if (!etroit) {
     const gauche = cotePave === 'gauche';
-    const enErreurRetrait = [...signauxDate, ...signauxHeure].some((s) => s.niveau === 'bloquant');
-    const jour = dateRetrait && estDateIso(dateRetrait) ? morceauxDate(dateRetrait) : null;
-    const signauxRetraitBande = panneauRetrait ? [] : [...signauxDate, ...signauxHeure];
     const styleCadre: CSSProperties = {
       // Pleine largeur de la tablette (la page est limitée à max-w-5xl), plafonnée à 90rem.
       marginInline: 'max(calc(50% - 50vw + 1rem), calc(50% - 45rem))',
@@ -1068,17 +1128,6 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                 className="flex-[1_1_10rem]"
                 ariaLabel={`Téléphone du client${telephone ? ` : ${telephone}` : ''}`}
               />
-              <BoutonBande
-                libelle="Retrait"
-                valeur={jour ? `${jour.jour} ${jour.numero} ${jour.mois} · ${heureRetrait || 'heure ?'}` : null}
-                vide="Choisir le jour"
-                actif={panneauRetrait}
-                enErreur={enErreurRetrait}
-                aFaire={!dateRetrait || !heureRetrait}
-                onClick={() => setPanneauRetrait(!panneauRetrait)}
-                className="flex-[2_1_14rem]"
-                ariaLabel={`Jour et heure de retrait${dateRetrait ? ` : ${libelleCourtRetrait(dateRetrait, heureRetrait)}` : ''}`}
-              />
               <div role="group" aria-label="Commande prise" className="flex shrink-0 gap-0.5 rounded-xl border-2 border-line-fort bg-surface p-0.5">
                 <Segment actif={origine === 'comptoir'} onClick={() => { setOrigine('comptoir'); setModePaiement('especes'); }}>
                   Comptoir
@@ -1091,12 +1140,11 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
             </div>
 
             {/* Signalements qui ne tiennent pas dans la bande (rares : ils prennent sur la grille, jamais sur la page). */}
-            {refusChargement || signauxStatut.length > 0 || signauxClient.length > 0 || signauxRetraitBande.length > 0 ? (
+            {refusChargement || signauxStatut.length > 0 || signauxClient.length > 0 ? (
               <div className="max-h-[40%] flex-none overflow-y-auto overscroll-contain">
                 {refusChargement ? rendre([refusChargement]) : null}
                 {rendre(signauxStatut)}
                 {rendre(signauxClient)}
-                {rendre(signauxRetraitBande)}
               </div>
             ) : null}
 
@@ -1104,31 +1152,13 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
             <div className={`flex min-h-0 flex-1 gap-3 ${gauche ? 'flex-row-reverse' : 'flex-row'}`}>
               {/* Produits */}
               <section aria-label="Produits" className="relative flex min-h-0 min-w-0 flex-1 flex-col rounded-2xl border border-line bg-surface">
+                {/* Jour et heure de retrait : bande compacte, toujours visible, jamais par-dessus les produits. */}
+                <div className="flex-none px-3 pt-3">{bande}</div>
                 {grille(true, signauxProduits.length > 0 ? rendre(signauxProduits) : null)}
 
-                {accesGerant || panneauRetrait ? (
+                {accesGerant ? (
                   <div className="absolute inset-0 z-20 overflow-y-auto overscroll-contain rounded-2xl border-2 border-accent bg-surface p-4 shadow-lg">
-                    {accesGerant ?? (
-                      <div role="group" aria-label="Jour et heure de retrait">
-                        <div className="mb-3 flex items-center justify-between gap-3">
-                          <h2 className="text-lg font-semibold text-ink">Retrait</h2>
-                          <Bouton onClick={() => setPanneauRetrait(false)}>Voir les produits</Bouton>
-                        </div>
-                        <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-                          <div className="min-w-0">
-                            {selecteurDate}
-                            {rendre(signauxDate)}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="mb-2 text-base font-semibold text-ink">
-                              Heure de retrait{heureRetrait ? ` : ${heureRetrait}` : ''}
-                            </p>
-                            {choixHeure}
-                            {rendre(signauxHeure)}
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                    {accesGerant}
                   </div>
                 ) : null}
               </section>
@@ -1145,7 +1175,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                 ) : null}
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
                   {bon}
-                  <section className="mt-4 border-t border-line pt-3">{precisions}</section>
+                  <section aria-label="Remarques" className="mt-3 border-t border-line pt-2">{precisions}</section>
                   <section className="mt-4 border-t border-line pt-3">
                     <h2 className={TITRE}>Paiement</h2>
                     {paiement}
@@ -1242,24 +1272,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
             </Carte>
 
             {/* ----------------------------------- Date et heure de retrait */}
-            <Carte className="p-4">
-              {selecteurDate}
-              {rendre(signauxDate)}
-
-              <div className="mt-4">
-                <ChampPave
-                  libelle="Heure de retrait"
-                  valeur={heureRetrait || null}
-                  vide="Choisir l’heure"
-                  ouvert={actif === 'heure'}
-                  onBasculer={() => setActif(actif === 'heure' ? null : 'heure')}
-                  enErreur={signauxHeure.some((s) => s.niveau === 'bloquant')}
-                >
-                  {choixHeure}
-                </ChampPave>
-                {rendre(signauxHeure)}
-              </div>
-            </Carte>
+            <Carte className="p-3">{bande}</Carte>
 
             {/* -------------------------------------------------- Produits */}
             <div ref={zoneProduits}>
@@ -1331,6 +1344,11 @@ function lignesDepuisCommande(c: Commande): LigneEcran[] {
       // Taille hors standard déjà accordée (LOI 11) : renvoyée telle quelle, le
       // serveur ne la conserve que pour ce produit à cette quantité exacte.
       deverrouillageTaille: accordTaille(l),
+      // R60 : gâteau du comptoir (1 pièce) qui remplace un gâteau sur commande →
+      // les boutons de taille du gâteau d'origine restent affichés à la
+      // modification. Plusieurs pièces (achat comptoir) : quantité au pavé, inchangée.
+      origineSurCommande:
+        l.quantite === 1 ? (gateauSurCommandeDe(produitId, CORRESPONDANCES_COMPTOIR)?.surCommande ?? null) : null,
     };
   });
 }
@@ -1420,6 +1438,10 @@ function PaveDeLigne({
 function LigneDuBon({
   ligne,
   fiche,
+  ficheGateau,
+  tailleCourante,
+  prixTaille,
+  onTaille,
   resultat,
   unite,
   actif,
@@ -1434,6 +1456,13 @@ function LigneDuBon({
 }: {
   ligne: LigneEcran;
   fiche: FicheTarifee | null;
+  /** Gâteau sur commande de la ligne (elle-même, ou son origine si remplacée par le comptoir, R60). */
+  ficheGateau: FicheTarifee | null;
+  /** Taille (parts) choisie, y compris quand la ligne est le gâteau du comptoir. */
+  tailleCourante: number | null;
+  /** Prix du gâteau du comptoir à cette taille (catalogue), null s'il n'y en a pas. */
+  prixTaille: (parts: number) => number | null;
+  onTaille: (parts: number) => void;
   resultat: Resultat<LigneControlee> | null;
   unite: string;
   actif: string | null;
@@ -1457,7 +1486,7 @@ function LigneDuBon({
   const suggestions = regime === 'B' ? options?.garnitures : regime === 'C' ? options?.parfums : undefined;
   // LOI 11 : gâteau simple sur commande (données de la fiche, jugées par le
   // domaine) → la taille se choisit d'abord aux boutons des tailles standard.
-  const parTailles = fiche !== null && estGateauSimpleSurCommande(fiche) && tailles.length > 0;
+  const parTailles = ficheGateau !== null && estGateauSimpleSurCommande(ficheGateau) && tailles.length > 0;
   const taillesTriees = [...tailles].sort((a, b) => a - b);
 
   const [signalementTarif, setSignalementTarif] = useState<Echec | 'ok' | null>(null);
@@ -1516,33 +1545,49 @@ function LigneDuBon({
         ) : null}
         {parTailles ? (
           <div role="group" aria-label="Taille du gâteau (parts)" className="grid grid-cols-5 gap-1">
-            {taillesTriees.map((t) => (
-              <button
-                key={t}
-                type="button"
-                aria-pressed={ligne.quantite === t}
-                onClick={() => {
-                  onChange({ quantite: t });
-                  setActif(null);
-                }}
-                className={`chiffres min-h-11 rounded-lg border-2 text-base font-semibold ${
-                  ligne.quantite === t ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
-                }`}
-              >
-                {t}
-              </button>
-            ))}
+            {taillesTriees.map((t) => {
+              // R60 : taille qui existe au comptoir → prix du comptoir affiché (catalogue).
+              const prixComptoir = prixTaille(t);
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  aria-pressed={tailleCourante === t}
+                  aria-label={prixComptoir === null ? `${t} parts` : `${t} parts · ${formaterEuros(prixComptoir)}`}
+                  onClick={() => {
+                    onTaille(t);
+                    setActif(null);
+                  }}
+                  className={`chiffres min-h-11 rounded-lg border-2 text-base font-semibold leading-tight ${
+                    tailleCourante === t ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
+                  }`}
+                >
+                  {t}
+                  {prixComptoir === null ? null : (
+                    <span className="block text-xs font-medium">{formaterEuros(prixComptoir)}</span>
+                  )}
+                </button>
+              );
+            })}
             <button
               type="button"
               aria-expanded={actif === id('quantite')}
-              onClick={() => basculer('quantite')}
+              onClick={() => {
+                // Gâteau du comptoir (R60) : « Autre » revient au gâteau sur commande, parts au pavé.
+                if (ligne.origineSurCommande) {
+                  onChange({ produitId: ligne.origineSurCommande, origineSurCommande: null, quantite: null, prixUnitaireCentimes: null });
+                  setActif(id('quantite'));
+                  return;
+                }
+                basculer('quantite');
+              }}
               className={`min-h-11 rounded-lg border-2 text-sm ${
-                ligne.quantite !== null && !taillesTriees.includes(ligne.quantite)
+                !ligne.origineSurCommande && ligne.quantite !== null && !taillesTriees.includes(ligne.quantite)
                   ? 'chiffres border-accent bg-accent-doux font-semibold text-accent'
                   : 'border-line bg-surface text-ink-2'
               }`}
             >
-              {ligne.quantite !== null && !taillesTriees.includes(ligne.quantite) ? ligne.quantite : 'Autre'}
+              {!ligne.origineSurCommande && ligne.quantite !== null && !taillesTriees.includes(ligne.quantite) ? ligne.quantite : 'Autre'}
             </button>
           </div>
         ) : (
@@ -1707,10 +1752,15 @@ function GrilleProduits({
   onToucher: (f: FicheCatalogue) => void;
   onAutreDemande: () => void;
 }) {
-  const rayons = rayonsDe(catalogue);
+  // Familles : « Salé » et « Gâteau » d'abord, en gros (libellés de bouton,
+  // modele.ts) ; les autres rayons ensuite, plus discrets.
+  const familles = boutonsFamilles(catalogue);
+  const enAvant = familles.filter((b) => b.enAvant);
+  const autres = familles.filter((b) => !b.enAvant);
   const fiches = fichesVisibles(catalogue, recherche, rayon);
   const libre = recherche.trim() === '' && rayon === null;
   const pucesVisibles = tablette || rayonsOuverts;
+  const autreChoisie = autres.find((b) => b.rayon === rayon) ?? null;
 
   const barre = (
     <div className={tablette ? 'flex-none p-3 pb-2' : ''}>
@@ -1721,16 +1771,32 @@ function GrilleProduits({
           placeholder="Chercher un produit…"
           aria-label="Chercher un produit"
           autoComplete="off"
-          className={`${CHAMP_TEXTE} min-w-0 flex-1 basis-48`}
+          className={`${CHAMP_TEXTE} min-w-0 flex-1 basis-40`}
         />
+        {enAvant.map((b) => (
+          <button
+            key={b.rayon}
+            type="button"
+            aria-pressed={rayon === b.rayon}
+            title={b.rayon}
+            onClick={() => onRayon(rayon === b.rayon ? null : b.rayon)}
+            className={`min-h-12 shrink-0 rounded-xl border-2 px-4 text-lg font-bold ${
+              rayon === b.rayon
+                ? 'border-accent bg-accent text-white shadow'
+                : 'border-accent bg-accent-doux text-accent'
+            }`}
+          >
+            {b.libelle}
+          </button>
+        ))}
         {tablette ? null : (
           <button
             type="button"
             aria-expanded={rayonsOuverts}
             onClick={() => onRayonsOuverts(!rayonsOuverts)}
-            className={`min-h-12 rounded-xl border-2 px-3 text-sm font-medium ${rayon ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink-2'}`}
+            className={`min-h-12 rounded-xl border-2 px-3 text-sm font-medium ${autreChoisie ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink-2'}`}
           >
-            {rayon ?? 'Familles'} {rayonsOuverts ? '▴' : '▾'}
+            {autreChoisie?.libelle ?? 'Familles'} {rayonsOuverts ? '▴' : '▾'}
           </button>
         )}
         <button
@@ -1743,16 +1809,17 @@ function GrilleProduits({
       </div>
 
       {pucesVisibles ? (
-        // Tablette : une seule rangée de familles, qui glisse horizontalement si besoin.
+        // Tablette : une seule rangée de familles secondaires, qui glisse horizontalement
+        // dans la colonne (jamais la page) ; « Salé » et « Gâteau » sont déjà en tête.
         <div
           role="group"
-          aria-label="Familles"
-          className={`mt-2 flex gap-1.5 ${tablette ? 'overflow-x-auto overscroll-x-contain pb-0.5' : 'flex-wrap'}`}
+          aria-label="Autres familles"
+          className={`mt-2 flex min-w-0 gap-1.5 ${tablette ? 'overflow-x-auto overscroll-x-contain pb-0.5 [scrollbar-width:thin]' : 'flex-wrap'}`}
         >
           <Puce actif={rayon === null} onClick={() => onRayon(null)}>Tout</Puce>
-          {rayons.map((r) => (
-            <Puce key={r} actif={rayon === r} onClick={() => onRayon(rayon === r ? null : r)}>
-              {r}
+          {autres.map((b) => (
+            <Puce key={b.rayon} actif={rayon === b.rayon} onClick={() => onRayon(rayon === b.rayon ? null : b.rayon)}>
+              {b.libelle}
             </Puce>
           ))}
         </div>
@@ -1933,67 +2000,6 @@ function Confirmation({
 
 /* ================================================================ Morceaux */
 
-/**
- * Heure de retrait au doigt : heures puis quarts d'heure. Les heures avant
- * `heureMin` (première heure pâtisserie du jour, donnée par le domaine) sont
- * grisées ; le domaine rejuge de toute façon (ERR_HEURE_RETRAIT_TROP_TOT).
- */
-function ChoixHeure({
-  valeur,
-  onChange,
-  heureMin = null,
-}: {
-  valeur: string;
-  onChange: (h: string, fini: boolean) => void;
-  heureMin?: string | null;
-}) {
-  const [hh, mm] = valeur ? valeur.split(':') : ['', ''];
-  const heures = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0'));
-  const minutes = ['00', '15', '30', '45'];
-  const min = heureMin ? lireHeure(heureMin) : null;
-  const tropTot = (h: string, m: string) => {
-    const v = lireHeure(`${h}:${m}`);
-    return min !== null && v !== null && v < min;
-  };
-  // Heure choisie : minutes ramenées à la première permise si besoin.
-  const minuteDe = (h: string) => {
-    const voulue = mm || '00';
-    if (!tropTot(h, voulue)) return voulue;
-    return minutes.find((m) => !tropTot(h, m)) ?? voulue;
-  };
-  return (
-    <div className="grid gap-3">
-      {heureMin ? <p className="text-sm text-ink-2">Pâtisserie : à partir de {heureMin} ce jour-là.</p> : null}
-      <div className="grid grid-cols-6 gap-1.5">
-        {heures.map((h) => (
-          <button
-            key={h}
-            type="button"
-            disabled={tropTot(h, '45')}
-            onClick={() => onChange(`${h}:${minuteDe(h)}`, false)}
-            className={`chiffres min-h-12 rounded-xl border-2 text-lg disabled:border-line disabled:bg-surface-2 disabled:text-ink-3 disabled:opacity-50 ${h === hh ? 'border-sortie bg-sortie text-sortie-texte' : 'border-line-fort bg-surface text-ink'}`}
-          >
-            {h}h
-          </button>
-        ))}
-      </div>
-      <div className="grid grid-cols-4 gap-1.5">
-        {minutes.map((m) => (
-          <button
-            key={m}
-            type="button"
-            disabled={!hh || tropTot(hh, m)}
-            onClick={() => onChange(`${hh}:${m}`, true)}
-            className={`chiffres min-h-12 rounded-xl border-2 text-lg disabled:opacity-50 ${m === mm ? 'border-sortie bg-sortie text-sortie-texte' : 'border-line-fort bg-surface text-ink'}`}
-          >
-            :{m}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function BoutonSortie({ onClick, children }: { onClick: () => void; children: ReactNode }) {
   return (
     <button
@@ -2025,9 +2031,12 @@ function Case({
   onChange,
   desactive = false,
   aide,
+  compact = false,
   children,
 }: {
   coche: boolean;
+  /** Espacement réduit (bloc « Gâteau », bas du bon) — la zone de toucher reste de 48 px. */
+  compact?: boolean;
   onChange: (v: boolean) => void;
   desactive?: boolean;
   /** Petit texte sous la case (ex. « Ajoutez d’abord un gâteau »). */
@@ -2035,7 +2044,7 @@ function Case({
   children: ReactNode;
 }) {
   return (
-    <label className={`mt-3 flex min-h-12 items-center gap-3 text-base ${desactive ? 'text-ink-3' : 'text-ink'}`}>
+    <label className={`${compact ? 'mt-0.5' : 'mt-3'} flex min-h-12 items-center gap-3 text-base ${desactive ? 'text-ink-3' : 'text-ink'}`}>
       <input
         type="checkbox"
         checked={coche}

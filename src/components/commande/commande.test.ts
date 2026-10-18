@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { controlerLigne } from '../../domaine/commande.ts';
 import { validerAcompte } from '../../domaine/coherence.ts';
 import { formaterEuros, partMinimale } from '../../domaine/argent.ts';
-import { DELAIS_HYPOTHESE, REGLEMENT_COMMANDE } from '../../domaine/constantes.ts';
+import { DELAIS_PAR_DEFAUT, REGLEMENT_COMMANDE } from '../../domaine/constantes.ts';
 import {
   ligneVide,
   resoudreLocal,
@@ -21,6 +21,9 @@ import {
   gateauxAuBon,
   estSupplement,
   majLigneEcran,
+  boutonsFamilles,
+  creneauxRetrait,
+  joursProposes,
   type CatalogueCommande,
   type FicheCatalogue,
   type LigneEcran,
@@ -38,7 +41,7 @@ const comptoir: FicheCatalogue = {
   prix: { prixCentimes: PRIX, basePrix: 'piece', prixEstPlancher: false, minQuantite: null, minParSymbole: null, maxParUnite: null },
 };
 const catalogue: CatalogueCommande = { date: DATE, fiches: [layer, comptoir] };
-const ctx = { resoudre: resoudreLocal(catalogue), delais: DELAIS_HYPOTHESE, reglement: REGLEMENT_COMMANDE };
+const ctx = { resoudre: resoudreLocal(catalogue), delais: DELAIS_PAR_DEFAUT, reglement: REGLEMENT_COMMANDE, correspondancesComptoir: [] };
 
 test('12 parts de Layer Cake : refus à la saisie de la ligne, bouton « Passer à 20 parts »', () => {
   const l = { ...ligneVide('c/layer'), quantite: 12 };
@@ -79,13 +82,23 @@ test('ligne libre sans accord du gérant : refus, sortie « Saisir le code géra
   assert.equal(s.libelle, 'Saisir le code gérant');
 });
 
-test('acompte insuffisant : bouton « Mettre l’acompte à X »', () => {
+test('acompte insuffisant : accepté, avertissement avec le bouton « Mettre l’acompte à X »', () => {
   const total = 9000;
   const r = validerAcompte(0, total, REGLEMENT_COMMANDE.acomptePourcentageMin);
-  assert.equal(r.ok, false);
-  if (r.ok) return;
+  assert.equal(r.ok, true, 'avertissement, plus un refus (18/10/2026)');
+  if (!r.ok) return;
+  const a = r.signalements.find((s) => s.code === 'AVERT_ACOMPTE_INSUFFISANT');
+  assert.ok(a);
   const minimum = partMinimale(total, REGLEMENT_COMMANDE.acomptePourcentageMin);
-  assert.equal(sortieDe(r).libelle, `Mettre l’acompte à ${formaterEuros(minimum)}`);
+  const s = sortieDe(a);
+  assert.equal(s.libelle, `Mettre l’acompte à ${formaterEuros(minimum)}`);
+  assert.equal(s.avecValeur, true);
+});
+
+test('heure hors ouverture : bouton « Passer à 6h00 »', () => {
+  const s = sortieDe({ ok: false, niveau: 'bloquant', code: 'ERR_HEURE_HORS_OUVERTURE', message: '', champ: 'heureRetrait', valeurProposee: '06:00' });
+  assert.equal(s.libelle, 'Passer à 6h00');
+  assert.equal(s.avecValeur, true);
 });
 
 // --- Grille unique et « toucher = +1 » (retour du propriétaire, 15/10/2026) ---
@@ -160,8 +173,9 @@ const simple: FicheCatalogue = {
 };
 const ctxTailles = {
   resoudre: resoudreLocal({ date: DATE, fiches: [simple] }),
-  delais: DELAIS_HYPOTHESE,
+  delais: DELAIS_PAR_DEFAUT,
   reglement: { ...REGLEMENT_COMMANDE, taillesGateau: [6, 8, 10] },
+  correspondancesComptoir: [],
 };
 
 test('gâteau simple : un toucher ajoute la ligne SANS quantité, la taille se choisit aux boutons', () => {
@@ -219,4 +233,51 @@ test('réserve m3 : accord de taille renvoyé sur une taille STANDARD → non tr
     accordManquant({ lignes: [{ prix: false, taille: true }], remise: false }, { lignes: [hors.donnees] }),
     { type: 'taille', ligne: 0 },
   );
+});
+
+// ---------------------------------------------------------------------------
+// Familles mises en avant et bande de retrait (demande du propriétaire, 18/10/2026)
+// ---------------------------------------------------------------------------
+
+test('familles : « Salé » (rayon tout en régime B) et « Gâteau » (tout en C) en tête, repérés par le régime, pas par le nom', () => {
+  const sale: FicheCatalogue = {
+    produit: { ...layer.produit, id: 'b/burger', produit: 'Mini burger', regimePrix: 'B', famille: 'sale', categorie: 'Rayon traiteur' },
+    prix: { ...layer.prix, basePrix: 'piece', prixEstPlancher: false, minQuantite: 10 },
+  };
+  const autreComptoir: FicheCatalogue = { ...comptoir, produit: { ...comptoir.produit, id: 'a/croissant', categorie: 'Viennoiserie' } };
+  const cat: CatalogueCommande = { date: DATE, fiches: [comptoir, autreComptoir, layer, sale] };
+  const b = boutonsFamilles(cat);
+  assert.deepEqual(
+    b.map((x) => [x.libelle, x.rayon, x.enAvant]),
+    [
+      ['Salé', 'Rayon traiteur', true],
+      ['Gâteau', 'Gâteaux', true],
+      ['Boulangerie', 'Boulangerie', false],
+      ['Viennoiserie', 'Viennoiserie', false],
+    ],
+  );
+  // Le libellé de bouton ne change rien au filtre : la catégorie reste celle du catalogue (LOI 5).
+  assert.deepEqual(fichesVisibles(cat, '', b[0].rayon).map((f) => f.produit.id), ['b/burger']);
+  // « Tout » (aucun rayon) : sur-commande + favoris du comptoir.
+  assert.deepEqual(fichesVisibles(cat, '', null).map((f) => f.produit.id).sort(), ['a/croissant', 'a/pain', 'b/burger', 'c/layer']);
+});
+
+test('familles : un rayon mêlant plusieurs régimes n’est jamais mis en avant', () => {
+  const mele: FicheCatalogue = { ...comptoir, produit: { ...comptoir.produit, id: 'a/x', categorie: 'Gâteaux' } };
+  const b = boutonsFamilles({ date: DATE, fiches: [layer, mele] });
+  assert.deepEqual(b.map((x) => x.enAvant), [false]);
+});
+
+test('bande de retrait : créneaux entre ouverture et fermeture incluses, heure choisie hors grille conservée', () => {
+  assert.deepEqual(creneauxRetrait({ ouverture: '09:00', fermeture: '10:00' }, 15, ''), ['09:00', '09:15', '09:30', '09:45', '10:00']);
+  assert.deepEqual(creneauxRetrait({ ouverture: '09:10', fermeture: '09:40' }, 15, ''), ['09:10', '09:15', '09:30', '09:40']);
+  assert.deepEqual(creneauxRetrait({ ouverture: '09:00', fermeture: '09:30' }, 15, '18:05'), ['09:00', '09:15', '09:30', '18:05']);
+  assert.deepEqual(creneauxRetrait(null, 15, ''), []);
+});
+
+test('bande de retrait : jours depuis aujourd’hui, jour choisi hors fenêtre ajouté à sa place', () => {
+  const j = joursProposes('2026-10-18', 3, null);
+  assert.deepEqual(j, ['2026-10-18', '2026-10-19', '2026-10-20']);
+  assert.deepEqual(joursProposes('2026-10-18', 2, '2026-12-24'), ['2026-10-18', '2026-10-19', '2026-12-24']);
+  assert.deepEqual(joursProposes('2026-10-18', 2, '2026-10-19'), ['2026-10-18', '2026-10-19']);
 });

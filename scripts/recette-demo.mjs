@@ -10,7 +10,8 @@
 //   - les prix sont lus dans /api/tarifs (catalogue) ;
 //   - les dates sont essayées l'une après l'autre ; un jour fermé est refusé
 //     par le serveur (ERR_JOUR_FERME) et on passe au suivant ;
-//   - l'acompte est celui que propose le refus ERR_ACOMPTE_INSUFFISANT.
+//   - aucun acompte : la commande est acceptée avec l'avertissement
+//     AVERT_ACOMPTE_INSUFFISANT (décision du propriétaire, 18/10/2026).
 
 import { cleDeSignature, creerJeton, nouvelAppareil, signerJeton } from '../src/lib/auth/session.ts';
 import { decalerJours } from '../src/domaine/calendrier.ts';
@@ -79,13 +80,8 @@ export async function lancerDemo({ base }) {
         heureRetrait: '14:00',
         acompteCentimes: 0,
       };
-      let r = await fetch(`${base}/api/commandes`, { method: 'POST', headers: entetes, body: JSON.stringify(corps) });
-      let j = await r.json();
-      if (!r.ok && j.code === 'ERR_ACOMPTE_INSUFFISANT' && j.valeurProposee != null) {
-        corps.acompteCentimes = Number(j.valeurProposee);
-        r = await fetch(`${base}/api/commandes`, { method: 'POST', headers: entetes, body: JSON.stringify(corps) });
-        j = await r.json();
-      }
+      const r = await fetch(`${base}/api/commandes`, { method: 'POST', headers: entetes, body: JSON.stringify(corps) });
+      const j = await r.json();
       if (r.ok) {
         creees++;
         console.log(`[démo] ${j.numero} — ${modele.client}, retrait le ${corps.dateRetrait} : créée.`);

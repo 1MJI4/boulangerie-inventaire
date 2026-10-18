@@ -6,9 +6,10 @@
 // Depuis le lot 2, AUCUN prix ne se règle ici : prix, minimums et formats
 // viennent du catalogue de commande, mis à jour par l'import du tarif (agent
 // `catalogue-prix`). Restent :
-//   - LOI 11 (15/10/2026) : la première heure de retrait des commandes
-//     pâtisserie, jour par jour et par date exceptionnelle, et les tailles
-//     standard des gâteaux simples (PUT /api/reglages) ;
+//   - LOI 11 (15/10 et 18/10/2026) : les heures d'ouverture du magasin (bornes
+//     de l'heure de retrait), jour par jour et par date exceptionnelle, et les
+//     tailles standard des gâteaux simples et le délai minimum d'un gâteau à
+//     étages, en jours ouvrés (PUT /api/reglages) ;
 //   - les mots proposés au vendeur (parfums, garnitures, décorations) ;
 //   - les produits signalés au comptoir comme absents du tarif, à faire
 //     ajouter au prochain import puis à « ranger ».
@@ -27,15 +28,21 @@ import { PaveEntier, SelecteurDateRetrait } from '@/components/saisie';
 import { libelleLong } from '@/components/saisie/dates';
 import { formaterEuros } from '@/domaine/argent';
 import { fermetureDuJour, type JourFerme } from '@/domaine/calendrier';
-import { heureChamp, heureMinRetrait, lireHeure } from '@/domaine/reglement';
-import { JOURS_ISO_CLES, type JourIsoCle } from '@/domaine/constantes';
+import { heureChamp, horairesOuvertureDuJour, lireHeure } from '@/domaine/reglement';
+import { JOURS_ISO_CLES, type JourIsoCle, type PlageOuverture } from '@/domaine/constantes';
 import type { Echec } from '@/domaine/resultat';
 import type { GenreOption, OptionGateau, OptionsGateau } from '@/lib/gateaux';
 
 type ProduitSignale = { id: number; nom: string; prixCentimes: number };
-type Exception = { date: string; heure: string };
+type Exception = { date: string } & PlageOuverture;
 /** GET / PUT /api/reglages. */
-type Reglages = { parJour: Record<JourIsoCle, string>; exceptions: Exception[]; taillesGateau: number[] };
+type Reglages = {
+  parJour: Record<JourIsoCle, PlageOuverture>;
+  exceptions: Exception[];
+  taillesGateau: number[];
+  /** Délai minimum d'un gâteau à étages, en jours ouvrés. */
+  delaiGateauEtagesJours: number;
+};
 type Calendrier = { aujourdhui: string; joursFermes: JourFerme[]; gerant: boolean };
 type Onglet = 'heures' | 'tailles' | 'mots' | 'signales';
 type Envoyer = (url: string, methode: 'POST' | 'PATCH' | 'PUT', corps: Record<string, unknown>) => Promise<boolean>;
@@ -188,8 +195,8 @@ export default function ReglagesCommandes() {
   }
 
   const onglets: { id: Onglet; libelle: string }[] = [
-    { id: 'heures', libelle: 'Heures de retrait' },
-    { id: 'tailles', libelle: 'Tailles des gâteaux' },
+    { id: 'heures', libelle: 'Heures d’ouverture' },
+    { id: 'tailles', libelle: 'Gâteaux' },
     { id: 'mots', libelle: 'Parfums et garnitures' },
     { id: 'signales', libelle: `Signalés${signales.length > 0 ? ` (${signales.length})` : ''}` },
   ];
@@ -230,7 +237,10 @@ export default function ReglagesCommandes() {
           <Exceptions reglages={reglages} cal={cal} enregistrer={enregistrerReglages} />
         </div>
       ) : onglet === 'tailles' ? (
-        <TaillesGateau tailles={reglages.taillesGateau} enregistrer={enregistrerReglages} />
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          <TaillesGateau tailles={reglages.taillesGateau} enregistrer={enregistrerReglages} />
+          <DelaiEtages jours={reglages.delaiGateauEtagesJours} enregistrer={enregistrerReglages} />
+        </div>
       ) : onglet === 'mots' ? (
         <div className="grid gap-4 lg:grid-cols-3">
           <ListeOptions titre="Parfums" detail="Proposés pour décrire un gâteau sur commande." genre="parfum" liste={options.parfums} envoyer={envoyer} />
@@ -265,13 +275,13 @@ export default function ReglagesCommandes() {
 
 /** − 12:00 + : une heure au doigt, par pas de 30 minutes. */
 function PasHeure({ heure, onChange, libelle }: { heure: string; onChange: (h: string) => void; libelle: string }) {
-  const bouton = 'chiffres min-h-12 min-w-12 rounded-xl border-2 border-line-fort bg-surface text-2xl font-semibold text-ink active:bg-accent-doux';
+  const bouton = 'chiffres min-h-11 min-w-11 rounded-xl border-2 border-line-fort bg-surface text-2xl font-semibold text-ink active:bg-accent-doux';
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1">
       <button type="button" className={bouton} aria-label={`${libelle} : 30 minutes plus tôt`} onClick={() => { const h = decaler(heure, -1); if (h) onChange(h); }}>
         −
       </button>
-      <span className="chiffres w-16 text-center text-xl font-semibold text-ink">{heure}</span>
+      <span className="chiffres w-14 text-center text-lg font-semibold text-ink">{heure}</span>
       <button type="button" className={bouton} aria-label={`${libelle} : 30 minutes plus tard`} onClick={() => { const h = decaler(heure, 1); if (h) onChange(h); }}>
         +
       </button>
@@ -279,12 +289,27 @@ function PasHeure({ heure, onChange, libelle }: { heure: string; onChange: (h: s
   );
 }
 
+/** Ouverture et fermeture d'un jour, au doigt. */
+function PasPlage({ plage, onChange, libelle }: { plage: PlageOuverture; onChange: (p: PlageOuverture) => void; libelle: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <PasHeure heure={plage.ouverture} libelle={`${libelle}, ouverture`} onChange={(h) => onChange({ ...plage, ouverture: h })} />
+      <span className="text-sm text-ink-2">à</span>
+      <PasHeure heure={plage.fermeture} libelle={`${libelle}, fermeture`} onChange={(h) => onChange({ ...plage, fermeture: h })} />
+    </div>
+  );
+}
+
+function memePlage(a: PlageOuverture, b: PlageOuverture): boolean {
+  return a.ouverture === b.ouverture && a.fermeture === b.fermeture;
+}
+
 function HorairesParJour({
   parJour,
   joursFermes,
   enregistrer,
 }: {
-  parJour: Record<JourIsoCle, string>;
+  parJour: Record<JourIsoCle, PlageOuverture>;
   joursFermes: JourFerme[];
   enregistrer: (p: Partial<Reglages>) => Promise<boolean>;
 }) {
@@ -295,22 +320,27 @@ function HorairesParJour({
     setBase(parJour);
     setBrouillon(parJour);
   }
-  const modifies = JOURS_ISO_CLES.filter((j) => brouillon[j] !== parJour[j]);
+  const modifies = JOURS_ISO_CLES.filter((j) => !memePlage(brouillon[j], parJour[j]));
   return (
     <section>
-      <h2 className="text-base font-semibold text-ink">Pâtisserie : retrait à partir de</h2>
-      <p className="mb-2 mt-0.5 text-sm text-ink-2">Une heure par jour. Les heures plus tôt sont refusées à la commande.</p>
+      <h2 className="text-base font-semibold text-ink">Heures d’ouverture du magasin</h2>
+      <p className="mb-2 mt-0.5 text-sm text-ink-2">Ouverture et fermeture, jour par jour. Une heure de retrait en dehors est refusée.</p>
       <Carte className="grid gap-1 p-3">
         {JOURS_ISO_CLES.map((j) => {
           const ferme = fermetureDuJour(dateReference(j), joursFermes)?.nature === 'hebdomadaire';
           return (
-            <div key={j} className="flex items-center justify-between gap-3 border-b border-line py-1 last:border-b-0">
-              <span className={`text-base ${ferme ? 'text-ink-3' : 'text-ink'}`}>
+            <div key={j} className="flex flex-wrap items-center justify-between gap-2 border-b border-line py-0.5 last:border-b-0">
+              <span className={`min-w-0 text-base leading-tight ${ferme ? 'text-ink-3' : 'text-ink'}`}>
                 {nomJour(j)}
-                {ferme ? <span className="ml-2 text-sm">(fermé)</span> : null}
-                {brouillon[j] !== parJour[j] ? <span className="ml-2 text-sm text-accent">modifié</span> : null}
+                {ferme || !memePlage(brouillon[j], parJour[j]) ? (
+                  <span className="block text-xs">
+                    {ferme ? 'fermé' : null}
+                    {ferme && !memePlage(brouillon[j], parJour[j]) ? ' · ' : null}
+                    {!memePlage(brouillon[j], parJour[j]) ? <span className="text-accent">modifié</span> : null}
+                  </span>
+                ) : null}
               </span>
-              <PasHeure heure={brouillon[j]} libelle={nomJour(j)} onChange={(h) => setBrouillon({ ...brouillon, [j]: h })} />
+              <PasPlage plage={brouillon[j]} libelle={nomJour(j)} onChange={(p) => setBrouillon({ ...brouillon, [j]: p })} />
             </div>
           );
         })}
@@ -343,22 +373,22 @@ function Exceptions({
   enregistrer: (p: Partial<Reglages>) => Promise<boolean>;
 }) {
   const [date, setDate] = useState<string | null>(null);
-  const [heure, setHeure] = useState<string | null>(null);
-  // Heure habituelle du jour choisi (sans exception) : point de départ du réglage.
-  const habituelle = (d: string): string | null => {
+  const [plage, setPlage] = useState<PlageOuverture | null>(null);
+  // Heures habituelles du jour choisi (sans exception) : point de départ du réglage.
+  const habituelle = (d: string): PlageOuverture | null => {
     try {
-      return heureMinRetrait(d, { familles: [], parJour: reglages.parJour, exceptions: [] }, cal.joursFermes);
+      return horairesOuvertureDuJour(d, { parJour: reglages.parJour, exceptions: [] });
     } catch {
       return null;
     }
   };
   const aVenir = reglages.exceptions.filter((e) => e.date >= cal.aujourdhui).sort((a, b) => (a.date < b.date ? -1 : 1));
-  const heureAffichee = heure ?? (date ? habituelle(date) : null);
+  const plageAffichee = plage ?? (date ? habituelle(date) : null);
 
   return (
     <section>
       <h2 className="text-base font-semibold text-ink">Exceptions</h2>
-      <p className="mb-2 mt-0.5 text-sm text-ink-2">Un jour précis, une autre heure (ex. ce samedi à 11:00 au lieu de 12:00).</p>
+      <p className="mb-2 mt-0.5 text-sm text-ink-2">Un jour précis, d’autres heures (ex. le 24 décembre, fermeture à 16:00).</p>
       <Carte className="grid gap-2 p-3">
         <SelecteurDateRetrait
           titre="Date de l’exception"
@@ -366,24 +396,25 @@ function Exceptions({
           aujourdhui={cal.aujourdhui}
           onChange={(d) => {
             setDate(d);
-            setHeure(reglages.exceptions.find((e) => e.date === d)?.heure ?? null);
+            const e = reglages.exceptions.find((x) => x.date === d);
+            setPlage(e ? { ouverture: e.ouverture, fermeture: e.fermeture } : null);
           }}
           estJourFerme={(iso) => {
             const f = fermetureDuJour(iso, cal.joursFermes);
             return f ? { ferme: true, libelle: f.nature === 'hebdomadaire' ? undefined : f.libelle } : { ferme: false };
           }}
         />
-        {date && heureAffichee ? (
+        {date && plageAffichee ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-base text-ink">{libelleLong(date)}</span>
-            <PasHeure heure={heureAffichee} libelle="Heure de l’exception" onChange={setHeure} />
+            <PasPlage plage={plageAffichee} libelle="Exception" onChange={setPlage} />
             <Bouton
               variante="principal"
               onClick={async () => {
                 const autres = reglages.exceptions.filter((e) => e.date !== date);
-                if (await enregistrer({ exceptions: [...autres, { date, heure: heureAffichee }] })) {
+                if (await enregistrer({ exceptions: [...autres, { date, ...plageAffichee }] })) {
                   setDate(null);
-                  setHeure(null);
+                  setPlage(null);
                 }
               }}
             >
@@ -399,7 +430,10 @@ function Exceptions({
               {aVenir.map((e) => (
                 <li key={e.date} className="flex items-center justify-between gap-2">
                   <span className="text-base text-ink">
-                    {libelleLong(e.date)} · <span className="chiffres font-semibold">{e.heure}</span>
+                    {libelleLong(e.date)} ·{' '}
+                    <span className="chiffres font-semibold">
+                      {e.ouverture} – {e.fermeture}
+                    </span>
                   </span>
                   <Bouton
                     variante="danger"
@@ -421,7 +455,7 @@ function TaillesGateau({ tailles, enregistrer }: { tailles: number[]; enregistre
   const [ajout, setAjout] = useState(false);
   const [nouvelle, setNouvelle] = useState<number | null>(null);
   return (
-    <section className="max-w-3xl">
+    <section className="min-w-0">
       <h2 className="text-base font-semibold text-ink">Tailles standard des gâteaux (parts)</h2>
       <p className="mb-2 mt-0.5 text-sm text-ink-2">
         Proposées en boutons à la commande d’un gâteau simple. Une autre taille demande le code gérant.
@@ -474,6 +508,57 @@ function TaillesGateau({ tailles, enregistrer }: { tailles: number[]; enregistre
               }}
             />
             <button type="button" onClick={() => setAjout(false)} className="min-h-12 text-sm text-ink-2 underline underline-offset-2">
+              Fermer le pavé
+            </button>
+          </div>
+        ) : null}
+      </Carte>
+    </section>
+  );
+}
+
+/** Délai minimum d'un gâteau à étages (mariage, pièce montée), en jours ouvrés, au pavé de l'application. */
+function DelaiEtages({ jours, enregistrer }: { jours: number; enregistrer: (p: Partial<Reglages>) => Promise<boolean> }) {
+  const [ouvert, setOuvert] = useState(false);
+  const [valeur, setValeur] = useState<number | null>(jours);
+  return (
+    <section className="min-w-0">
+      <h2 className="text-base font-semibold text-ink">Délai des gâteaux à étages</h2>
+      <p className="mb-2 mt-0.5 text-sm text-ink-2">
+        Jours ouvrés minimum entre la commande et le retrait d’un gâteau à étages (mariage, pièce montée). Les jours
+        fermés ne comptent pas. 0 : aucun délai particulier.
+      </p>
+      <Carte className="grid gap-2 p-3">
+        <button
+          type="button"
+          aria-expanded={ouvert}
+          onClick={() => {
+            setValeur(jours);
+            setOuvert(!ouvert);
+          }}
+          className={`flex min-h-14 w-full items-center justify-between gap-3 rounded-xl border-2 bg-surface px-4 text-left ${ouvert ? 'border-accent' : 'border-line-fort'}`}
+        >
+          <span className="text-sm text-ink-2">Délai</span>
+          <span className="chiffres text-xl font-semibold text-ink">
+            {jours} {jours > 1 ? 'jours ouvrés' : 'jour ouvré'}
+          </span>
+        </button>
+        {ouvert ? (
+          <div className="grid max-w-72 gap-1">
+            <PaveEntier
+              libelle="Délai des gâteaux à étages"
+              contexte="inventaire"
+              champ="delaiGateauEtagesJours"
+              libelleUnite="jours"
+              chiffresMax={2}
+              quantite={valeur}
+              onChange={setValeur}
+              libelleValider="Enregistrer"
+              onValider={async (n) => {
+                if (n === jours || (await enregistrer({ delaiGateauEtagesJours: n }))) setOuvert(false);
+              }}
+            />
+            <button type="button" onClick={() => setOuvert(false)} className="min-h-12 text-sm text-ink-2 underline underline-offset-2">
               Fermer le pavé
             </button>
           </div>

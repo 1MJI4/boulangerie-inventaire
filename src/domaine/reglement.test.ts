@@ -1,29 +1,29 @@
 // node --test src/domaine/reglement.test.ts
 // LOI 11 — règlement intérieur. Dates : jeudi 15/10/2026, mardi fermé.
+// Décisions du propriétaire du 18/10/2026 : jour même accepté (information),
+// heure de retrait facultative, dans les heures d'ouverture du magasin.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { JourFerme } from './calendrier.ts';
 import { REGLEMENT_COMMANDE } from './constantes.ts';
-import type { HorairesRetraitPatisserie } from './constantes.ts';
+import type { HorairesOuverture } from './constantes.ts';
 import {
-  convertirHorairesAncienneForme,
   controlerCommandeInhabituelle,
-  heureMinRetrait,
-  nomJourIso,
-  estPatisserie,
+  estPlageOuverture,
   formaterHeure,
   heureChamp,
+  horairesOuvertureDuJour,
   lireHeure,
+  nomJourIso,
   validerHeureRetrait,
+  validerJourMeme,
   validerLendemain,
   validerRemise,
 } from './reglement.ts';
 
 const FERMES: JourFerme[] = [{ id: 1, nature: 'hebdomadaire', jourSemaineIso: 2, libelle: 'mardi' }];
-const HORAIRES = REGLEMENT_COMMANDE.horairesRetraitPatisserie;
-const PATISSERIE = [{ estPatisserie: true }];
-const SALE = [{ estPatisserie: false }];
+const HORAIRES = REGLEMENT_COMMANDE.horairesOuverture;
 
 // ------------------------------------------------------------------ heures
 
@@ -53,15 +53,16 @@ test('R53 retrait le lendemain → ACCEPTÉ avec INFO_COMMANDE_LENDEMAIN (décis
   assert.doesNotMatch(info?.message ?? '', /code|gérant|accord/i, 'aucun code gérant, aucun accord');
 });
 
-test('R53 jour férié en plus du mardi : prise lundi 9/11, mar fermé, mer 11/11 férié → « pour jeudi »', () => {
-  const fermes: JourFerme[] = [...FERMES, { id: 2, nature: 'ferie', dateDebut: '2026-11-11', libelle: 'Armistice' }];
+test('R53 fermeture exceptionnelle en plus du mardi : prise lundi 9/11, mar fermé, mer 11/11 fermé → « pour jeudi »', () => {
+  // Mécanisme seulement : aucune fermeture exceptionnelle n'est prévue (fériés ouverts, 18/10/2026).
+  const fermes: JourFerme[] = [...FERMES, { id: 2, nature: 'exceptionnel', dateDebut: '2026-11-11', libelle: 'Travaux' }];
   const r = validerLendemain('2026-11-12', '2026-11-09', fermes);
   assert.ok(r.ok);
   assert.equal(r.signalements[0]?.code, 'INFO_COMMANDE_LENDEMAIN');
   assert.match(r.signalements[0]?.message ?? '', /^Commande pour jeudi, le prochain jour d’ouverture/);
 });
 
-test('R53 jour même : pas « le lendemain » (le délai le refuse) ; surlendemain → aucune information', () => {
+test('R53 jour même : pas « le lendemain » (il a sa propre information) ; surlendemain → aucune information', () => {
   const r = validerLendemain('2026-10-15', '2026-10-15', FERMES);
   assert.ok(r.ok);
   assert.equal(r.signalements.length, 0);
@@ -104,148 +105,168 @@ test('R53 date passée ou illisible → refus du calendrier', () => {
   assert.equal(x.ok, false);
 });
 
-// ------------------------------------------------------------------ R54 heure de retrait
+// ------------------------------------------------------------------ R53b jour même
 
-test('R54 samedi 11:59 → ERR_HEURE_RETRAIT_TROP_TOT (week-end), 12:00 proposé ; 12:00 accepté', () => {
-  const r = validerHeureRetrait('2026-10-17', '11:59', PATISSERIE, HORAIRES, FERMES);
+test('R53b retrait le jour même → ACCEPTÉ avec INFO_COMMANDE_JOUR_MEME (décision du 18/10/2026)', () => {
+  const r = validerJourMeme('2026-10-15', '2026-10-15', FERMES);
+  assert.ok(r.ok);
+  assert.equal(r.donnees, '2026-10-15');
+  assert.equal(r.signalements.length, 1);
+  const info = r.signalements[0];
+  assert.equal(info?.code, 'INFO_COMMANDE_JOUR_MEME');
+  assert.equal(info?.niveau, 'information');
+  assert.equal(info?.champ, 'dateRetrait');
+  assert.equal(info?.message, 'Commande pour aujourd’hui : prévenez l’atelier tout de suite.');
+  // Le lendemain n'est pas « le jour même » (il a sa propre information).
+  const demain = validerJourMeme('2026-10-16', '2026-10-15', FERMES);
+  assert.ok(demain.ok);
+  assert.equal(demain.signalements.length, 0);
+});
+
+test('R53b jour même : date passée, mardi, date illisible restent refusés', () => {
+  const passee = validerJourMeme('2026-10-14', '2026-10-15', FERMES);
+  assert.equal(passee.ok, false);
+  if (!passee.ok) assert.equal(passee.code, 'ERR_DATE_PASSEE');
+  // Saisie un mardi (hors ligne) pour le mardi même : refusée, quel que soit le jour d'arrivée.
+  const mardi = validerJourMeme('2026-10-20', '2026-10-20', FERMES);
+  assert.equal(mardi.ok, false);
+  if (!mardi.ok) {
+    assert.equal(mardi.code, 'ERR_JOUR_FERME');
+    assert.equal(mardi.valeurProposee, '2026-10-21', 'mercredi proposé');
+  }
+  const x = validerJourMeme('2026-02-29', '2026-02-29', FERMES);
+  assert.equal(x.ok, false, '29 février 2026 n’existe pas');
+  if (!x.ok) assert.equal(x.code, 'ERR_SAISIE_INVALIDE');
+  // 29 février 2028 : existe, mais c'est un mardi → fermé, mercredi 1er mars proposé.
+  const bissextile = validerJourMeme('2028-02-29', '2028-02-29', FERMES);
+  assert.equal(bissextile.ok, false);
+  if (!bissextile.ok) {
+    assert.equal(bissextile.code, 'ERR_JOUR_FERME');
+    assert.equal(bissextile.valeurProposee, '2028-03-01');
+  }
+});
+
+// ------------------------------------------------------------------ R54 heures d'ouverture
+
+test('horairesOuvertureDuJour : 06:00 → 20:00 par défaut, chaque jour', () => {
+  // Lundi 12/10/2026 … dimanche 18/10/2026.
+  for (let i = 0; i < 7; i++) {
+    assert.deepEqual(horairesOuvertureDuJour(`2026-10-${12 + i}`, HORAIRES), { ouverture: '06:00', fermeture: '20:00' });
+  }
+});
+
+test('horairesOuvertureDuJour : date exceptionnelle prioritaire, valable pour SA date seulement', () => {
+  const h: HorairesOuverture = { ...HORAIRES, exceptions: [{ date: '2026-12-24', ouverture: '06:00', fermeture: '16:00' }] };
+  assert.deepEqual(horairesOuvertureDuJour('2026-12-24', h), { ouverture: '06:00', fermeture: '16:00' });
+  assert.deepEqual(horairesOuvertureDuJour('2026-12-31', h), { ouverture: '06:00', fermeture: '20:00' });
+  // Même date saisie deux fois : la plage commune (le plus sûr).
+  const doubles: HorairesOuverture = {
+    ...HORAIRES,
+    exceptions: [
+      { date: '2026-12-24', ouverture: '07:00', fermeture: '18:00' },
+      { date: '2026-12-24', ouverture: '06:00', fermeture: '16:00' },
+    ],
+  };
+  assert.deepEqual(horairesOuvertureDuJour('2026-12-24', doubles), { ouverture: '07:00', fermeture: '16:00' });
+});
+
+test('horairesOuvertureDuJour : réglage cassé ou date illisible → RangeError (bug, jamais une heure inventée)', () => {
+  const casse: HorairesOuverture = { ...HORAIRES, parJour: { ...HORAIRES.parJour, '6': { ouverture: 'midi', fermeture: '20:00' } } };
+  assert.throws(() => horairesOuvertureDuJour('2026-10-17', casse), RangeError);
+  const inverse: HorairesOuverture = { ...HORAIRES, parJour: { ...HORAIRES.parJour, '6': { ouverture: '20:00', fermeture: '06:00' } } };
+  assert.throws(() => horairesOuvertureDuJour('2026-10-17', inverse), RangeError);
+  assert.throws(() => horairesOuvertureDuJour('2026-02-30', HORAIRES), RangeError);
+});
+
+test('estPlageOuverture : deux heures lisibles, ouverture strictement avant fermeture', () => {
+  assert.ok(estPlageOuverture({ ouverture: '06:00', fermeture: '20:00' }));
+  assert.ok(!estPlageOuverture({ ouverture: '20:00', fermeture: '20:00' }));
+  assert.ok(!estPlageOuverture({ ouverture: '21:00', fermeture: '20:00' }));
+  assert.ok(!estPlageOuverture({ ouverture: '24:00', fermeture: '20:00' }));
+  assert.ok(!estPlageOuverture(null));
+  assert.ok(!estPlageOuverture('06:00-20:00'));
+});
+
+test('R54 samedi 05:59 → ERR_HEURE_HORS_OUVERTURE, 06:00 proposé, message du gérant', () => {
+  const r = validerHeureRetrait('2026-10-17', '05:59', HORAIRES);
   assert.equal(r.ok, false);
   if (!r.ok) {
-    assert.equal(r.code, 'ERR_HEURE_RETRAIT_TROP_TOT');
+    assert.equal(r.code, 'ERR_HEURE_HORS_OUVERTURE');
     assert.equal(r.niveau, 'bloquant');
     assert.equal(r.champ, 'heureRetrait');
-    assert.equal(r.valeurProposee, '12:00');
-    assert.match(r.message, /12h00/);
-    assert.match(r.message, /ce samedi/);
+    assert.equal(r.valeurProposee, '06:00', 'trop tôt : l’ouverture');
+    assert.equal(r.message, 'Le magasin est ouvert de 6h00 à 20h00 le samedi — choisissez une heure dans ces horaires.');
   }
-  const ok = validerHeureRetrait('2026-10-17', '12:00', PATISSERIE, HORAIRES, FERMES);
-  assert.ok(ok.ok);
-  assert.equal(ok.donnees, '12:00');
-  assert.equal(validerHeureRetrait('2026-10-18', '11:00', PATISSERIE, HORAIRES, FERMES).ok, false, 'dimanche');
 });
 
-test('R54 semaine : 08:59 refusé (9:00 proposé), 09:00 accepté, minuit refusé', () => {
-  const r = validerHeureRetrait('2026-10-16', '08:59', PATISSERIE, HORAIRES, FERMES);
+test('R54 trop tard → fermeture proposée ; bornes incluses (06:00 et 20:00 acceptées)', () => {
+  const r = validerHeureRetrait('2026-10-16', '20:01', HORAIRES);
   assert.equal(r.ok, false);
   if (!r.ok) {
-    assert.equal(r.valeurProposee, '09:00');
-    assert.match(r.message, /9h00 ce vendredi/);
+    assert.equal(r.valeurProposee, '20:00', 'trop tard : la fermeture');
+    assert.match(r.message, /le vendredi/);
   }
-  assert.ok(validerHeureRetrait('2026-10-16', '9:00', PATISSERIE, HORAIRES, FERMES).ok);
-  const minuit = validerHeureRetrait('2026-10-16', '00:00', PATISSERIE, HORAIRES, FERMES);
+  assert.equal(validerHeureRetrait('2026-10-16', '06:00', HORAIRES).ok, true);
+  const fermeture = validerHeureRetrait('2026-10-16', '20:00', HORAIRES);
+  assert.ok(fermeture.ok);
+  assert.equal(fermeture.donnees, '20:00');
+  const minuit = validerHeureRetrait('2026-10-16', '00:00', HORAIRES);
   assert.equal(minuit.ok, false);
-  if (!minuit.ok) assert.equal(minuit.code, 'ERR_HEURE_RETRAIT_TROP_TOT');
+  if (!minuit.ok) assert.equal(minuit.valeurProposee, '06:00');
+  const tard = validerHeureRetrait('2026-10-16', '23:59', HORAIRES);
+  if (!tard.ok) assert.equal(tard.valeurProposee, '20:00');
+  assert.equal(tard.ok, false);
 });
 
-test('R54 sans pâtisserie : aucune heure minimale ; heure facultative', () => {
-  const r = validerHeureRetrait('2026-10-17', '07:00', SALE, HORAIRES, FERMES);
-  assert.ok(r.ok);
-  const vide = validerHeureRetrait('2026-10-17', '', SALE, HORAIRES, FERMES);
-  assert.ok(vide.ok);
-  assert.equal(vide.donnees, null);
-});
-
-test('R54 pâtisserie sans heure → ERR_CHAMP_OBLIGATOIRE ; heure illisible → ERR_SAISIE_INVALIDE', () => {
-  const vide = validerHeureRetrait('2026-10-17', null, PATISSERIE, HORAIRES, FERMES);
-  assert.equal(vide.ok, false);
-  if (!vide.ok) assert.equal(vide.code, 'ERR_CHAMP_OBLIGATOIRE');
+test('R54 vaut pour TOUS les produits ; heure facultative (vide = acceptée) ; illisible → ERR_SAISIE_INVALIDE', () => {
+  for (const vide of [null, undefined, '', '  ']) {
+    const r = validerHeureRetrait('2026-10-17', vide, HORAIRES);
+    assert.ok(r.ok, String(vide));
+    assert.equal(r.donnees, null);
+    assert.equal(r.signalements.length, 0);
+  }
+  assert.ok(validerHeureRetrait('2026-10-17', '07:00', HORAIRES).ok, 'plus de 12h00 le week-end (règle pâtisserie supprimée)');
+  const lue = validerHeureRetrait('2026-10-17', '9h30', HORAIRES);
+  assert.ok(lue.ok);
+  assert.equal(lue.donnees, '09:30', 'heure normalisée « HH:MM »');
   for (const h of ['24:00', 'midi', '12:5']) {
-    const r = validerHeureRetrait('2026-10-17', h, SALE, HORAIRES, FERMES);
+    const r = validerHeureRetrait('2026-10-17', h, HORAIRES);
     assert.equal(r.ok, false, h);
     if (!r.ok) assert.equal(r.code, 'ERR_SAISIE_INVALIDE');
   }
+  const date = validerHeureRetrait('2026-02-30', '10:00', HORAIRES);
+  assert.equal(date.ok, false);
+  if (!date.ok) assert.equal(date.champ, 'dateRetrait');
 });
 
-test('R54 jour férié ouvert = horaire du dimanche (HYPOTHÈSE n°52)', () => {
-  // Mercredi 11/11/2026, férié rouvert par une ouverture exceptionnelle.
-  const feries: JourFerme[] = [
-    ...FERMES,
-    { id: 2, nature: 'ferie', dateDebut: '2026-11-11', libelle: 'Armistice' },
-    { id: 3, nature: 'ouverture_exceptionnelle', dateDebut: '2026-11-11', libelle: 'Ouvert' },
-  ];
-  assert.equal(heureMinRetrait('2026-11-11', REGLEMENT_COMMANDE, feries), HORAIRES.parJour['7']);
-  const r = validerHeureRetrait('2026-11-11', '11:00', PATISSERIE, HORAIRES, feries);
+test('R54 date exceptionnelle 24/12 06:00–16:00 : 16:30 refusé (16:00 proposé), message avec la date', () => {
+  const h: HorairesOuverture = { ...HORAIRES, exceptions: [{ date: '2026-12-24', ouverture: '06:00', fermeture: '16:00' }] };
+  const r = validerHeureRetrait('2026-12-24', '16:30', h);
   assert.equal(r.ok, false);
-  if (!r.ok) assert.equal(r.valeurProposee, '12:00');
-  assert.ok(validerHeureRetrait('2026-11-11', '11:00', PATISSERIE, HORAIRES, FERMES).ok, 'sans férié : mercredi');
-  // Une date exceptionnelle l'emporte sur le férié.
-  const exc = { ...HORAIRES, exceptions: [{ date: '2026-11-11', heure: '10:00' }] };
-  assert.ok(validerHeureRetrait('2026-11-11', '10:00', PATISSERIE, exc, feries).ok);
-});
-
-test('heureMinRetrait : parJour par défaut — 09:00 du lundi au vendredi, 12:00 samedi et dimanche', () => {
-  // Lundi 12/10/2026 … dimanche 18/10/2026.
-  const attendu = ['09:00', '09:00', '09:00', '09:00', '09:00', '12:00', '12:00'];
-  attendu.forEach((h, i) => assert.equal(heureMinRetrait(`2026-10-${12 + i}`, REGLEMENT_COMMANDE), h, `jour ${i + 1}`));
-  assert.equal(heureMinRetrait('2026-10-17', HORAIRES), '12:00', 'accepte aussi les horaires seuls');
-});
-
-test('R54 samedi 11:00 : refusé avec parJour 12:00, accepté avec une exception du jour à 11:00', () => {
-  const refuse = validerHeureRetrait('2026-10-17', '11:00', PATISSERIE, HORAIRES, FERMES);
-  assert.equal(refuse.ok, false);
-  if (!refuse.ok) {
-    assert.equal(refuse.code, 'ERR_HEURE_RETRAIT_TROP_TOT');
-    assert.equal(refuse.valeurProposee, '12:00');
-    assert.equal(
-      refuse.message,
-      'Les commandes pâtisserie sont disponibles à partir de 12h00 ce samedi. Choisissez une heure de retrait à partir de 12h00.',
-    );
+  if (!r.ok) {
+    assert.equal(r.valeurProposee, '16:00');
+    assert.equal(r.message, 'Le magasin est ouvert de 6h00 à 16h00 le jeudi 24 décembre — choisissez une heure dans ces horaires.');
   }
-  const exception: HorairesRetraitPatisserie = { ...HORAIRES, exceptions: [{ date: '2026-10-17', heure: '11:00' }] };
-  assert.equal(heureMinRetrait('2026-10-17', { horairesRetraitPatisserie: exception }), '11:00');
-  assert.ok(validerHeureRetrait('2026-10-17', '11:00', PATISSERIE, exception, FERMES).ok);
-  assert.equal(validerHeureRetrait('2026-10-17', '10:59', PATISSERIE, exception, FERMES).ok, false);
-  // L'exception ne vaut que pour SA date : le samedi suivant reste à 12:00.
-  assert.equal(validerHeureRetrait('2026-10-24', '11:00', PATISSERIE, exception, FERMES).ok, false);
-  // Date en double : la plus tardive (le plus sûr).
-  const doubles = { ...HORAIRES, exceptions: [{ date: '2026-10-17', heure: '11:00' }, { date: '2026-10-17', heure: '11:30' }] };
-  assert.equal(heureMinRetrait('2026-10-17', doubles), '11:30');
+  assert.ok(validerHeureRetrait('2026-12-24', '16:00', h).ok);
+  assert.ok(validerHeureRetrait('2026-12-31', '19:00', h).ok, 'l’exception ne vaut que pour sa date');
 });
 
-test('R54 parJour modifié par le gérant : les horaires sont des données', () => {
-  const autres: HorairesRetraitPatisserie = {
-    familles: ['patisserie', 'viennoiserie'],
-    parJour: { '1': '09:00', '2': '09:00', '3': '09:00', '4': '09:00', '5': '10:30', '6': '10:30', '7': '08:00' },
+test('R54 horaires modifiés par le gérant jour par jour : ce sont des données', () => {
+  const h: HorairesOuverture = {
+    parJour: { ...HORAIRES.parJour, '7': { ouverture: '07:30', fermeture: '13:00' } },
     exceptions: [],
   };
-  assert.equal(validerHeureRetrait('2026-10-16', '10:00', PATISSERIE, autres).ok, false, 'vendredi 10:30');
-  assert.ok(validerHeureRetrait('2026-10-17', '10:30', PATISSERIE, autres).ok, 'samedi 10:30');
-  assert.ok(validerHeureRetrait('2026-10-18', '08:00', PATISSERIE, autres).ok, 'dimanche 08:00');
-  assert.throws(() => heureMinRetrait('2026-10-18', { ...autres, parJour: { ...autres.parJour, '7': 'midi' } }), RangeError);
+  assert.equal(validerHeureRetrait('2026-10-18', '07:00', h).ok, false, 'dimanche 07:30');
+  assert.ok(validerHeureRetrait('2026-10-18', '12:45', h).ok);
+  const tard = validerHeureRetrait('2026-10-18', '14:00', h);
+  assert.equal(tard.ok, false);
+  if (!tard.ok) assert.equal(tard.valeurProposee, '13:00');
+  assert.ok(validerHeureRetrait('2026-10-17', '19:00', h).ok, 'samedi inchangé');
 });
 
-test('compatibilité : ancienne forme semaine / week-end convertie jour par jour', () => {
-  const ancienne = {
-    familles: ['patisserie'],
-    semaine: '10:30',
-    weekEnd: '08:00',
-    joursWeekEndIso: [7],
-    feriesOuverts: ['2026-11-11'],
-  };
-  const h = convertirHorairesAncienneForme(ancienne);
-  assert.deepEqual(h.parJour, { '1': '10:30', '2': '10:30', '3': '10:30', '4': '10:30', '5': '10:30', '6': '10:30', '7': '08:00' });
-  assert.deepEqual(h.exceptions, [{ date: '2026-11-11', heure: '08:00' }]);
-  assert.deepEqual(h.familles, ['patisserie']);
-  // validerHeureRetrait accepte encore l'ancienne forme (conversion automatique).
-  assert.equal(validerHeureRetrait('2026-10-16', '10:00', PATISSERIE, ancienne).ok, false);
-  assert.ok(validerHeureRetrait('2026-10-17', '10:30', PATISSERIE, ancienne).ok, 'samedi = semaine ici');
-  assert.ok(validerHeureRetrait('2026-10-18', '08:00', PATISSERIE, ancienne).ok);
-  // Valeurs par défaut équivalentes à l'ancien règlement (9h semaine, 12h week-end).
-  assert.deepEqual(
-    convertirHorairesAncienneForme({ familles: HORAIRES.familles, semaine: '09:00', weekEnd: '12:00', joursWeekEndIso: [6, 7] }).parJour,
-    HORAIRES.parJour,
-  );
-});
-
-test('estPatisserie : donnée `famille` du catalogue ; viennoiserie incluse (HYPOTHÈSE) ; inconnue ou ligne libre = oui', () => {
-  const familles = HORAIRES.familles;
-  assert.equal(estPatisserie({ famille: 'patisserie' }, familles), true);
-  assert.equal(estPatisserie({ famille: 'viennoiserie' }, familles), true, 'règle de doute');
-  assert.equal(estPatisserie({ famille: 'boulangerie' }, familles), false);
-  assert.equal(estPatisserie({ famille: 'sale' }, familles), false);
-  assert.equal(estPatisserie({ famille: 'boisson' }, familles), false);
-  assert.equal(estPatisserie({ famille: '' }, familles), true, 'famille inconnue : le plus sûr');
-  assert.equal(estPatisserie(null, familles), true, 'ligne libre');
-  assert.equal(estPatisserie({ famille: 'sale' }, ['patisserie', 'sale']), true, 'liste = donnée (question n°50)');
+test('R54 changement d’heure (25/10/2026) : heure locale, plage inchangée', () => {
+  assert.deepEqual(horairesOuvertureDuJour('2026-10-25', HORAIRES), { ouverture: '06:00', fermeture: '20:00' });
+  assert.ok(validerHeureRetrait('2026-10-25', '06:00', HORAIRES).ok);
 });
 
 // ------------------------------------------------------------------ R55 inhabituelle

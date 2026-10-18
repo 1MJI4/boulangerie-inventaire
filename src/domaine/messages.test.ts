@@ -96,10 +96,11 @@ const EXEMPLES: Partial<Record<CodeCatalogue, unknown>> = {
   ERR_LIGNE_SANS_PRODUIT: {},
   ERR_STATUT_INCOHERENT: { de: 'Remise au client', vers: 'À imprimer' },
   ERR_COMMANDE_FIGEE: { etat: 'annulée' },
-  ERR_ACOMPTE_INSUFFISANT: { acompteFormate: 'A €', minimumFormate: 'M €', pourcentage: 50 },
+  AVERT_ACOMPTE_INSUFFISANT: { acompteFormate: 'A €', minimumFormate: 'M €', pourcentage: 50 },
   ERR_COMMANDE_LENDEMAIN: { dateRetrait: 'jeudi 16 octobre' },
-  ERR_HEURE_RETRAIT_TROP_TOT: { heureMin: 'Hh', jour: 'samedi' },
+  ERR_HEURE_HORS_OUVERTURE: { ouverture: 'Ho', fermeture: 'Hf', jour: 'le samedi', heureProposee: 'Hp' },
   ERR_TAILLE_NON_STANDARD: { parts: 7, inferieure: 6, superieure: 8 },
+  ERR_PRIX_COMPTOIR: { produit: 'P', parts: 6 },
   AVERT_TAILLE_NON_STANDARD_AUTORISEE: { par: 'Karim' },
   ERR_DECOMPTE_INCOMPLET: { restants: 2 },
   AVERT_COMMANDE_INHABITUELLE: {},
@@ -125,6 +126,7 @@ const EXEMPLES: Partial<Record<CodeCatalogue, unknown>> = {
   INFO_TARIF_EN_VIGUEUR: { dateEffet: '01/09/2026' },
   INFO_EN_ATTENTE_ENVOI: { nombre: 3 },
   INFO_COMMANDE_LENDEMAIN: { jour: 'vendredi', demain: true },
+  INFO_COMMANDE_JOUR_MEME: {},
   ERR_TARIF_ABSENT: { produit: 'P', date: '15/10/2026' },
   ERR_CATALOGUE_ABSENT: {},
   ERR_PRODUIT_SANS_REGIME: { produit: 'P' },
@@ -245,13 +247,23 @@ test('rapport d’import : repère et précision insérés, sinon message sans t
 
 test('règlement intérieur (LOI 11) : un exemple par code, sortie et statut', () => {
   // Montants, pourcentage et heures arrivent en paramètre : rien en dur.
+  // R52 (18/10/2026) : acompte faible = avertissement bienveillant, sortie conservée.
   const acompte = { acompteFormate: 'A €', minimumFormate: 'M €', pourcentage: 37 };
   assert.equal(
-    messagePour('ERR_ACOMPTE_INSUFFISANT', acompte),
-    'L’acompte doit être d’au moins 37 % du total pour valider la commande (A € saisi). ' +
-      'Demandez au client un acompte de M € au minimum.',
+    messagePour('AVERT_ACOMPTE_INSUFFISANT', acompte),
+    'Essayez d’obtenir au moins 37 % d’acompte (M €) : A € saisi. La commande reste acceptée.',
   );
-  assert.deepEqual(sortiePour('ERR_ACOMPTE_INSUFFISANT', acompte), { type: 'correction', libelle: 'Mettre l’acompte à M €' });
+  assert.equal(
+    messagePour('AVERT_ACOMPTE_INSUFFISANT', { minimumFormate: 'M €', pourcentage: 50 }),
+    'Essayez d’obtenir au moins 50 % d’acompte (M €). La commande reste acceptée.',
+  );
+  assert.deepEqual(sortiePour('AVERT_ACOMPTE_INSUFFISANT', acompte), { type: 'correction', libelle: 'Mettre l’acompte à M €' });
+  assert.equal(CATALOGUE.AVERT_ACOMPTE_INSUFFISANT.niveau, 'avertissement');
+  assert.ok(!estCodeCatalogue('ERR_ACOMPTE_INSUFFISANT'), 'un acompte faible ne bloque plus');
+
+  // R53b (18/10/2026) : le jour même est accepté, simple information.
+  assert.equal(messagePour('INFO_COMMANDE_JOUR_MEME', {}), 'Commande pour aujourd’hui : prévenez l’atelier tout de suite.');
+  assert.equal(niveauDuCode('INFO_COMMANDE_JOUR_MEME'), 'information');
 
   // R53 (15/10/2026) : le lendemain est accepté, simple information sans friction.
   const lendemain = { jour: 'vendredi', demain: true };
@@ -267,14 +279,14 @@ test('règlement intérieur (LOI 11) : un exemple par code, sortie et statut', (
   // ERR_COMMANDE_LENDEMAIN : obsolète, gardé tant que la base le produit encore.
   assert.match(messagePour('ERR_COMMANDE_LENDEMAIN', { dateRetrait: 'jeudi 16 octobre' }), /^Retrait le jeudi 16 octobre : .*responsable/);
 
+  // R54 (18/10/2026) : heures d'ouverture du magasin, pour tous les produits.
+  const horaires = { ouverture: 'Ho', fermeture: 'Hf', jour: 'le samedi', heureProposee: 'Hp' };
   assert.equal(
-    messagePour('ERR_HEURE_RETRAIT_TROP_TOT', { heureMin: 'Hs', jour: 'samedi' }),
-    'Les commandes pâtisserie sont disponibles à partir de Hs ce samedi. Choisissez une heure de retrait à partir de Hs.',
+    messagePour('ERR_HEURE_HORS_OUVERTURE', horaires),
+    'Le magasin est ouvert de Ho à Hf le samedi — choisissez une heure dans ces horaires.',
   );
-  assert.deepEqual(sortiePour('ERR_HEURE_RETRAIT_TROP_TOT', { heureMin: 'Hw', jour: 'dimanche' }), {
-    type: 'correction',
-    libelle: 'Passer à Hw',
-  });
+  assert.deepEqual(sortiePour('ERR_HEURE_HORS_OUVERTURE', horaires), { type: 'correction', libelle: 'Passer à Hp' });
+  assert.ok(!estCodeCatalogue('ERR_HEURE_RETRAIT_TROP_TOT'), 'règle pâtisserie 9h/12h supprimée');
 
   // Tailles standard : les deux tailles proches citées, sortie vers la supérieure.
   assert.equal(
@@ -316,14 +328,15 @@ test('règlement intérieur (LOI 11) : un exemple par code, sortie et statut', (
     messagePour('ERR_COMMANDE_LENDEMAIN', { dateRetrait: 'demain' }),
     messagePour('INFO_COMMANDE_LENDEMAIN', { jour: 'J', demain: true }),
     messagePour('INFO_COMMANDE_LENDEMAIN', { jour: 'J', demain: false }),
-    messagePour('ERR_HEURE_RETRAIT_TROP_TOT', { heureMin: 'H', jour: 'samedi' }),
+    messagePour('ERR_HEURE_HORS_OUVERTURE', { ouverture: 'H', fermeture: 'H', jour: 'le samedi', heureProposee: 'H' }),
+    messagePour('INFO_COMMANDE_JOUR_MEME', {}),
     messagePour('AVERT_TAILLE_NON_STANDARD_AUTORISEE', { par: 'Karim' }),
     messagePour('AVERT_INVENTAIRE_AVANT_FERMETURE', { heureFermeture: 'H' }),
     messagePour('AVERT_COMMANDE_INHABITUELLE', {}),
   ]) assert.doesNotMatch(m, /\d|€|%/, m);
 
   // Refus métier : requête comprise, règle qui refuse.
-  for (const code of ['ERR_ACOMPTE_INSUFFISANT', 'ERR_COMMANDE_LENDEMAIN', 'ERR_HEURE_RETRAIT_TROP_TOT', 'ERR_DECOMPTE_INCOMPLET', 'ERR_TAILLE_NON_STANDARD'] as const) {
+  for (const code of ['ERR_COMMANDE_LENDEMAIN', 'ERR_HEURE_HORS_OUVERTURE', 'ERR_DECOMPTE_INCOMPLET', 'ERR_TAILLE_NON_STANDARD'] as const) {
     assert.equal(statutHttp({ code }), 422, code);
   }
 });
@@ -331,7 +344,7 @@ test('règlement intérieur (LOI 11) : un exemple par code, sortie et statut', (
 test('refus venus de la base : paramètres absents → variante générique, jamais « undefined »', () => {
   // Codes dont la base peut ne transmettre aucun paramètre (src/lib/erreurBase.ts).
   const sansParametre = [
-    'ERR_COMMANDE_LENDEMAIN', 'ERR_DATE_PASSEE', 'ERR_ACOMPTE_INSUFFISANT', 'ERR_ACOMPTE_SUPERIEUR_TOTAL',
+    'ERR_COMMANDE_LENDEMAIN', 'ERR_DATE_PASSEE', 'ERR_ACOMPTE_SUPERIEUR_TOTAL',
     'ERR_TOTAL_INCOHERENT', 'ERR_REMISE_NON_AUTORISEE', 'ERR_QUANTITE_MIN', 'ERR_NB_SYMBOLES_MANQUANT',
     'ERR_DROIT_INSUFFISANT', 'ERR_MONTANT_NUL', 'ERR_SAISIE_INVALIDE',
   ] as const;
@@ -343,12 +356,6 @@ test('refus venus de la base : paramètres absents → variante générique, jam
     const s = sortiePour(code, {});
     assert.ok(s && s.libelle.length > 3 && !/undefined/.test(s.libelle), code);
   }
-  // Variantes partielles (base : minimum et pourcentage seulement).
-  assert.equal(
-    messagePour('ERR_ACOMPTE_INSUFFISANT', { minimumFormate: 'M €', pourcentage: 30 }),
-    'L’acompte doit être d’au moins 30 % du total pour valider la commande. Demandez au client un acompte de M € au minimum.',
-  );
-  assert.deepEqual(sortiePour('ERR_ACOMPTE_INSUFFISANT', { minimumFormate: 'M €' }), { type: 'correction', libelle: 'Mettre l’acompte à M €' });
   assert.equal(messagePour('ERR_QUANTITE_MIN', { minimum: 20 }), 'Minimum 20 pour ce produit. Passez à 20 pour continuer.');
   assert.deepEqual(sortiePour('ERR_QUANTITE_MIN', { minimum: 20 }), { type: 'correction', libelle: 'Passer à 20' });
   // Paramètres complets : textes historiques inchangés.

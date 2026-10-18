@@ -11,6 +11,31 @@
 > Les numéros ne changent jamais : une question ajoutée prend le numéro suivant, même si
 > elle est rangée plus haut dans la liste.
 
+## Déjà tranché — 18/10/2026
+
+- ✅ **Retrait le jour même : accepté.** Aucun délai minimum pour le comptoir commandé, les
+  plateaux salés et les gâteaux simples. L'application affiche seulement « Commande pour
+  aujourd'hui : prévenez l'atelier tout de suite. » Une date passée et le mardi restent
+  refusés. *(ancienne question 40)*
+- ✅ **Gâteau de mariage et pièce montée : aucun délai minimum par défaut.** Vous pouvez en
+  régler un vous-même (nombre de jours ouvrés, dans les réglages). *(ancienne question 17)*
+- ✅ **Acompte sous 50 % : accepté**, avec le message « Essayez d'obtenir au moins 50 %
+  d'acompte (X €) » et le bouton « Mettre l'acompte à X € ». Le message est gardé avec la
+  commande. Un acompte plus élevé que le total reste refusé.
+- ✅ **Heures d'ouverture du magasin, pour tous les produits** : par défaut 6h00 → 20h00
+  tous les jours, réglables par vous jour par jour et pour une date précise (exemple :
+  24 décembre, 6h00 → 16h00). Une heure de retrait en dehors est refusée, avec l'heure la
+  plus proche proposée en un geste. L'heure de retrait est facultative. La règle
+  « pâtisserie à partir de 9h en semaine, 12h le week-end » est **supprimée** : la
+  viennoiserie, les plateaux salés, les jours fériés suivent simplement les heures
+  d'ouverture. *(anciennes questions 50, 52 et 56)*
+- ✅ **Une même date ne se règle qu'une fois** dans les dates exceptionnelles : l'écran des
+  réglages refuse un doublon, la question de deux heures pour un même jour ne se pose
+  plus. *(ancienne question 63)*
+- ✅ **Seul le mardi est fermé. Les jours fériés sont ouverts, il n'y a pas de congés.**
+  Rien n'est inscrit d'office ; une fermeture exceptionnelle reste possible si un jour vous
+  en avez besoin. *(ancienne question 15)*
+
 ## Déjà tranché — 15/10/2026
 
 - ✅ **Minimum de parts non atteint → refusé.** Pas de supplément. L'application oblige à
@@ -30,15 +55,13 @@
   dans l'inventaire.
 - ✅ **Tous les chiffres de la prise de commande se tapent sur le pavé de l'application**,
   comme pour l'inventaire.
-- ✅ **Acompte obligatoire : au moins 50 % du total**, pour toute commande (règlement
-  intérieur). Sous 50 %, l'application refuse et propose le bon montant. Un acompte plus
-  élevé que le total reste refusé. *(ancienne question 25)*
+- ✅ **Acompte : au moins 50 % du total**, pour toute commande (règlement intérieur).
+  *(ancienne question 25 — depuis le 18/10/2026 : conseillé, plus refusé, voir plus haut)*
 - ✅ **Commande pour le lendemain : acceptée.** Pas de code gérant. L'application affiche
-  seulement « commande pour demain : prévenez l'atelier ». Une commande pour le jour même
-  reste refusée. *(ancienne question 49)*
-- ✅ **Heures de retrait pâtisserie réglables par vous**, jour par jour (lundi … dimanche),
-  et pour une date précise (exemple : samedi 20/12 à 11h au lieu de 12h). Par défaut :
-  9h du lundi au vendredi, 12h samedi et dimanche.
+  seulement « commande pour demain : prévenez l'atelier ». *(ancienne question 49 — le
+  jour même est accepté aussi depuis le 18/10/2026)*
+- ✅ ~~Heures de retrait pâtisserie réglables jour par jour~~ → remplacées le 18/10/2026
+  par les **heures d'ouverture du magasin** (voir plus haut).
 - ✅ **Gâteaux simples sur commande : tailles standard 4, 6, 8, 10, 15, 20, 25, 30 parts.**
   Une autre taille est refusée. L'application propose les deux tailles voisines en un
   geste (13 parts → « Passer à 10 » ou « Passer à 15 » ; 1 part → « Passer à 4 »). Le code
@@ -121,45 +144,24 @@
 
 ### Jours de fermeture et délais
 
-15. Le mardi est-il votre seul jour de fermeture dans la semaine ? Quels jours fériés et
-    quels congés faut-il inscrire pour l'année ?
-    *(en attendant, l'application fait : seul le mardi est fermé ; aucun férié ni congé
-    n'est inscrit.)*
-
 16. Peut-il vous arriver d'ouvrir un jour normalement fermé (par exemple le mardi avant
     Noël) ?
     *(en attendant, l'application fait : aucune ouverture exceptionnelle n'est prévue, le
     mardi est toujours refusé.)*
 
-17. **Gâteau de mariage et pièce montée** : combien de jours ouvrés à l'avance ? Le
-    lendemain est-il possible pour eux aussi ?
-    *(en attendant, l'application fait : 5 jours ouvrés, le mardi ne compte pas. Exemple :
-    commande prise un lundi → retrait possible au plus tôt le dimanche. Tout le reste —
-    comptoir, plateau salé, gâteau simple — se commande au plus tard la veille.)*
-
-40. Un produit du **comptoir commandé à l'avance** (par exemple 30 baguettes) : combien de
-    jours à l'avance faut-il le commander ?
-    *(en attendant, l'application fait : 1 jour ouvré.)*
-
 41. Une date de retrait **déjà passée** doit-elle être refusée ?
     *(en attendant, l'application fait : refusée.)*
 
-50. Les horaires de retrait **pâtisserie (9h en semaine / 12h le week-end)** valent-ils
-    aussi pour la **viennoiserie** ? Et pour les plateaux salés ?
-    *(en attendant, l'application fait : pâtisserie **et viennoiserie** — 20 croissants
-    pour un samedi ne sortent qu'à partir de 12h. Les plateaux salés et le pain ne sont
-    pas concernés. Un produit dont le rayon est inconnu, ou une « autre demande », suit
-    l'horaire pâtisserie.)*
+51. L'inventaire doit-il commencer à l'**heure de fermeture du jour** (celle que vous
+    réglez dans les heures d'ouverture : 20h00 par défaut, 16h00 un 24 décembre réglé
+    ainsi), ou toujours à 20h00 ?
+    *(en attendant, l'application fait : l'heure de fermeture du jour ; un inventaire
+    commencé avant est signalé, pas refusé.)*
 
-51. L'heure de fermeture est-elle **20h00 tous les jours ouverts**, week-end compris ?
-    C'est elle qui décide quand l'inventaire peut commencer.
-    *(en attendant, l'application fait : 20h00 tous les jours ; un inventaire commencé avant
-    est signalé, pas refusé.)*
-
-52. Un **jour férié où vous ouvrez** : la pâtisserie se retire-t-elle à la même heure
-    que le dimanche ?
-    *(en attendant, l'application fait : l'heure du dimanche, donc 12h par défaut. Pour un
-    férié précis, vous pouvez régler une autre heure dans les réglages.)*
+64. Un client peut-il retirer sa commande **pile à l'heure de fermeture** (20h00 quand vous
+    fermez à 20h00), ou faut-il un peu de marge (par exemple 19h45 au plus tard) ?
+    *(en attendant, l'application fait : 20h00 est accepté, 20h01 est refusé avec 20h00
+    proposé.)*
 
 61. **Gâteau simple** : l'application range dans cette famille tout gâteau sur commande
     au prix par personne, sans minimum de parts et sans étages. Layer Cake, Number Cake,
@@ -170,17 +172,9 @@
 62. Si vous **videz la liste des tailles standard**, faut-il accepter toutes les tailles ?
     *(en attendant, l'application fait : oui, plus aucune taille n'est imposée.)*
 
-63. Deux heures différentes saisies **pour la même date** (par erreur, 11h et 10h le même
-    samedi) : laquelle compte ?
-    *(en attendant, l'application fait : la plus tardive, 11h. On ne promet jamais une
-    pâtisserie trop tôt.)*
-
 54. **Inventaire avant 20h00** : votre règlement dit « jamais avant ». L'application, elle,
     prévient seulement. Faut-il le refuser, sauf code gérant ?
     *(en attendant, l'application fait : un message prévient, l'inventaire continue.)*
-
-56. Une **heure de retrait après la fermeture** (par exemple 21h00) doit-elle être refusée ?
-    *(en attendant, l'application fait : l'heure n'est pas contrôlée.)*
 
 ## Important — change le comportement de l'application
 

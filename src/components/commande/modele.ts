@@ -16,8 +16,11 @@ import { resoudreDepuisCatalogue } from '../../domaine/commande.ts';
 import { signaler } from '../../domaine/messages.ts';
 import { gateauxDeLigne } from '../../domaine/supplements.ts';
 import { estGateauSimpleSurCommande } from '../../domaine/minimums.ts';
+import { gateauSurCommandeDe, produitComptoirPourTaille, type CorrespondanceComptoir } from '../../domaine/prixComptoir.ts';
 import type { JourFerme } from '../../domaine/calendrier.ts';
-import type { DelaisCommande, ReglementCommande } from '../../domaine/constantes.ts';
+import { decalerJours, estDateISO } from '../../domaine/calendrier.ts';
+import { heureChamp, lireHeure } from '../../domaine/reglement.ts';
+import type { DelaisCommande, PlageOuverture, ReglementCommande } from '../../domaine/constantes.ts';
 
 // ---------------------------------------------------------------------------
 // Données reçues du serveur
@@ -97,7 +100,7 @@ export function toucherProduit(
 ): { lignes: LigneEcran[]; cle: string; champ: 'quantite' | 'symboles' | 'taille' } {
   if (estGateauSimpleSurCommande(fiche)) {
     let deja: LigneEcran | undefined;
-    for (const l of lignes) if (l.produitId === fiche.produit.id) deja = l;
+    for (const l of lignes) if (l.produitId === fiche.produit.id || l.origineSurCommande === fiche.produit.id) deja = l;
     if (deja) return { lignes: [...lignes], cle: deja.cle, champ: 'taille' };
     const ligne = ligneVide(fiche.produit.id);
     return { lignes: [...lignes, ligne], cle: ligne.cle, champ: 'taille' };
@@ -139,14 +142,7 @@ export function gateauxAuBon(
   famillesGateau: readonly string[],
 ): number {
   let n = 0;
-  for (const l of lignes) {
-    const f = ficheDe(catalogue, l.produitId);
-    if (!f) continue;
-    n += gateauxDeLigne(
-      { regimePrix: f.produit.regimePrix, basePrix: f.prix.basePrix, quantite: l.quantite ?? 0, famille: f.produit.famille },
-      famillesGateau,
-    );
-  }
+  for (const l of lignes) n += gateauxDeLigneEcran(l, catalogue, famillesGateau);
   return n;
 }
 
@@ -202,6 +198,12 @@ export type LigneEcran = {
   deverrouillage: Deverrouillage | null;
   /** Accord du gérant pour une taille de gâteau hors standard (LOI 11) — distinct du prix. */
   deverrouillageTaille: Deverrouillage | null;
+  /**
+   * R60 : gâteau sur commande d'origine quand la ligne a été remplacée par le
+   * gâteau du comptoir à une taille standard (les boutons de taille restent
+   * affichés pour revenir à une autre taille). Absent / null sinon.
+   */
+  origineSurCommande?: string | null;
 };
 
 let compteur = 0;
@@ -401,6 +403,65 @@ export function refusAncienTarif(): Echec {
   );
 }
 
+// ---------------------------------------------------------------------------
+// R60 — gâteau sur commande au prix du comptoir (décision du 18/10/2026)
+// ---------------------------------------------------------------------------
+// La règle est au domaine (src/domaine/prixComptoir.ts), la correspondance au
+// catalogue (src/catalogue/correspondancesComptoir.ts) : l'écran ne fait que
+// remplacer la ligne quand le domaine dit qu'un équivalent existe.
+
+/** Gâteau sur commande dont la ligne montre les boutons de taille (la ligne elle-même, ou son origine). */
+export function gateauDeLaLigne(l: LigneEcran): string | null {
+  return l.origineSurCommande ?? l.produitId;
+}
+
+/** Taille (parts) affichée comme choisie : celle de l'équivalent comptoir, sinon la quantité. */
+export function tailleChoisie(l: LigneEcran, table: readonly CorrespondanceComptoir[]): number | null {
+  if (l.origineSurCommande) return gateauSurCommandeDe(l.produitId, table)?.parts ?? null;
+  return l.quantite;
+}
+
+/** Fiche du gâteau du comptoir qui remplace (gâteau, parts), si elle est au catalogue reçu. */
+export function ficheComptoirPourTaille(
+  produitId: string | null,
+  parts: number,
+  catalogue: CatalogueCommande | null,
+  table: readonly CorrespondanceComptoir[],
+): FicheCatalogue | null {
+  const cle = produitComptoirPourTaille(produitId, parts, table);
+  return cle && catalogue ? (catalogue.fiches.find((f) => f.produit.id === cle) ?? null) : null;
+}
+
+/**
+ * Toucher d'une taille : si le gâteau du comptoir existe à cette taille, la
+ * ligne DEVIENT ce produit (quantité 1, prix du catalogue, accords retirés) ;
+ * sinon elle redevient le gâteau sur commande à ce nombre de parts.
+ */
+export function choisirTaille(
+  l: LigneEcran,
+  parts: number,
+  catalogue: CatalogueCommande | null,
+  table: readonly CorrespondanceComptoir[],
+): LigneEcran {
+  const origine = gateauDeLaLigne(l);
+  const comptoir = ficheComptoirPourTaille(origine, parts, catalogue, table);
+  if (comptoir) {
+    return {
+      ...l,
+      produitId: comptoir.produit.id,
+      origineSurCommande: origine,
+      quantite: 1,
+      prixUnitaireCentimes: null,
+      deverrouillage: null,
+      deverrouillageTaille: null,
+    };
+  }
+  if (l.origineSurCommande) {
+    return { ...l, produitId: origine, origineSurCommande: null, quantite: parts, prixUnitaireCentimes: null, deverrouillage: null, deverrouillageTaille: null };
+  }
+  return majLigneEcran(l, { quantite: parts });
+}
+
 /**
  * Mise à jour d'une ligne de l'écran. Un accord de taille (LOI 11) porte sur
  * UNE quantité : si la quantité change sans nouvel accord, il tombe (le
@@ -412,4 +473,202 @@ export function majLigneEcran(l: LigneEcran, partiel: Partial<LigneEcran>): Lign
     suivante.deverrouillageTaille = null;
   }
   return suivante;
+}
+
+// ---------------------------------------------------------------------------
+// Bloc « Gâteau » et suppléments automatiques (demande du propriétaire, 18/10/2026)
+// ---------------------------------------------------------------------------
+// Écriture, photo WhatsApp et photo à imprimer s'affichent SOUS LA LIGNE du
+// premier gâteau du bon (champs au niveau de la commande en base : un seul
+// bloc, même avec plusieurs gâteaux). « Gâteau » = notion du domaine
+// (`gateauxDeLigne`, R7), y compris le gâteau du comptoir qui remplace un
+// gâteau sur commande (R60). Cocher « photo à imprimer » / écrire un texte
+// ajoute le supplément correspondant au bon ; le décocher / vider le texte le
+// retire. Le domaine reste juge (R7 : une fois par gâteau, jamais sans gâteau).
+
+/**
+ * Identifiants catalogue des suppléments ajoutés automatiquement. Clés de
+ * produit (pas de prix : le prix est lu au catalogue reçu, LOI 1).
+ */
+export const SUPPLEMENT_PHOTO = 'gateaux-sur-commande/supplement-photo';
+export const SUPPLEMENT_ECRITURE = 'gateaux-sur-commande/supplement-ecriture-simple';
+
+/** Gâteaux apportés par UNE ligne de l'écran (domaine : `gateauxDeLigne`). */
+function gateauxDeLigneEcran(l: LigneEcran, catalogue: CatalogueCommande | null, famillesGateau: readonly string[]): number {
+  const f = ficheDe(catalogue, l.produitId);
+  if (!f) return 0;
+  return gateauxDeLigne(
+    { regimePrix: f.produit.regimePrix, basePrix: f.prix.basePrix, quantite: l.quantite ?? 0, famille: f.produit.famille },
+    famillesGateau,
+  );
+}
+
+/** Index de la ligne sous laquelle s'affiche le bloc « Gâteau » (premier gâteau), null s'il n'y en a pas. */
+export function indexPremierGateau(
+  lignes: readonly LigneEcran[],
+  catalogue: CatalogueCommande | null,
+  famillesGateau: readonly string[],
+): number | null {
+  const i = lignes.findIndex((l) => gateauxDeLigneEcran(l, catalogue, famillesGateau) > 0);
+  return i < 0 ? null : i;
+}
+
+/** true si le bon porte une ligne de ce supplément. */
+export function aSupplement(lignes: readonly LigneEcran[], produitId: string): boolean {
+  return lignes.some((l) => l.produitId === produitId);
+}
+
+/**
+ * Met (voulu = true) ou retire (voulu = false) le supplément au bon.
+ * Ajout : une seule ligne, quantité 1 (« une fois par gâteau » : le vendeur
+ * peut monter à la main s'il y a plusieurs gâteaux), seulement s'il y a un
+ * gâteau au bon et si le supplément est au catalogue reçu — sinon rien (jamais
+ * de supplément sans gâteau, R7). Ligne déjà présente : laissée telle quelle.
+ * Retrait : toutes les lignes de ce supplément.
+ */
+export function basculerSupplement(
+  lignes: readonly LigneEcran[],
+  produitId: string,
+  voulu: boolean,
+  catalogue: CatalogueCommande | null,
+  famillesGateau: readonly string[],
+): LigneEcran[] {
+  if (!voulu) return lignes.filter((l) => l.produitId !== produitId);
+  if (aSupplement(lignes, produitId)) return [...lignes];
+  if (!ficheDe(catalogue, produitId)) return [...lignes];
+  if (gateauxAuBon(lignes, catalogue, famillesGateau) === 0) return [...lignes];
+  return [...lignes, { ...ligneVide(produitId), quantite: 1 }];
+}
+
+/**
+ * Saisie du texte d'écriture. Texte non vide → supplément « Écriture » au bon
+ * (s'il n'y est pas : un vendeur qui l'a retiré le voit revenir seulement
+ * quand il MODIFIE le texte — jamais de boucle sur un simple rendu) ; texte
+ * vidé → supplément retiré.
+ */
+export function saisirEcriture(
+  lignes: readonly LigneEcran[],
+  texte: string,
+  catalogue: CatalogueCommande | null,
+  famillesGateau: readonly string[],
+): LigneEcran[] {
+  return basculerSupplement(lignes, SUPPLEMENT_ECRITURE, texte.trim() !== '', catalogue, famillesGateau);
+}
+
+export type PrecisionsGateau = {
+  texteGateau: string;
+  sansEcriture: boolean;
+  photoWhatsapp: boolean;
+  photoImprimee: boolean;
+};
+
+/**
+ * Précisions « gâteau » réellement enregistrées. Sans gâteau au bon (dernier
+ * gâteau retiré), le bloc n'existe plus : rien ne part en base (texte null,
+ * cases à false) — la saisie reste en mémoire sur l'écran et réapparaît si un
+ * gâteau est remis au bon. Les lignes de supplément ne sont PAS retirées en
+ * silence : le domaine les refuse (ERR_SUPPLEMENT_SANS_GATEAU) avec le bouton
+ * « Retirer la ligne », visible du vendeur.
+ */
+export function precisionsAEnregistrer(p: PrecisionsGateau, nbGateaux: number): PrecisionsGateau {
+  if (nbGateaux > 0) return { ...p, texteGateau: p.sansEcriture ? '' : p.texteGateau };
+  return { texteGateau: '', sansEcriture: false, photoWhatsapp: false, photoImprimee: false };
+}
+
+// ---------------------------------------------------------------------------
+// Familles mises en avant (demande du propriétaire, 18/10/2026)
+// ---------------------------------------------------------------------------
+// Les deux familles les plus utiles à la prise de commande passent EN PREMIER,
+// en gros boutons, sous un libellé de BOUTON court. Ce n'est qu'un libellé
+// d'affichage : la catégorie du catalogue et les noms de produits restent à la
+// lettre (LOI 5). La catégorie est repérée par le RÉGIME de ses produits
+// (donnée du catalogue, LOI 6), jamais par son nom : un rayon dont tous les
+// produits vendables sont du régime B est le salé sur commande, du régime C
+// les gâteaux sur commande.
+
+/** Libellé de bouton de la famille dont tous les produits sont de ce régime. */
+export const FAMILLES_EN_AVANT: ReadonlyArray<{ regime: RegimePrix; libelle: string }> = [
+  { regime: 'B', libelle: 'Salé' },
+  { regime: 'C', libelle: 'Gâteau' },
+];
+
+/** Un bouton de famille : `rayon` = catégorie du catalogue (filtre), `libelle` = texte du bouton. */
+export type BoutonFamille = { rayon: string; libelle: string; enAvant: boolean };
+
+/**
+ * Boutons de famille, dans l'ordre d'affichage : d'abord les familles mises en
+ * avant (ordre de FAMILLES_EN_AVANT), puis les autres dans l'ordre du catalogue.
+ * Si plusieurs rayons ont le même régime unique, ils restent en avant mais
+ * gardent leur nom du catalogue (pas deux boutons « Salé » indiscernables).
+ */
+export function boutonsFamilles(catalogue: CatalogueCommande): BoutonFamille[] {
+  const rayons = rayonsDe(catalogue);
+  const regimeUnique = new Map<string, RegimePrix | null>();
+  for (const r of rayons) {
+    const regimes = new Set<RegimePrix>();
+    for (const f of catalogue.fiches) {
+      if (f.produit.categorie === r && f.produit.regimePrix !== null) regimes.add(f.produit.regimePrix);
+    }
+    regimeUnique.set(r, regimes.size === 1 ? [...regimes][0] : null);
+  }
+  const enAvant: BoutonFamille[] = [];
+  for (const { regime, libelle } of FAMILLES_EN_AVANT) {
+    const trouves = rayons.filter((r) => regimeUnique.get(r) === regime);
+    for (const r of trouves) enAvant.push({ rayon: r, libelle: trouves.length === 1 ? libelle : r, enAvant: true });
+  }
+  const pris = new Set(enAvant.map((b) => b.rayon));
+  return [...enAvant, ...rayons.filter((r) => !pris.has(r)).map((r) => ({ rayon: r, libelle: r, enAvant: false }))];
+}
+
+// ---------------------------------------------------------------------------
+// Bande « jour et heure de retrait » (demande du propriétaire, 18/10/2026)
+// ---------------------------------------------------------------------------
+// Ce ne sont que des LISTES à proposer au doigt : savoir si un jour est fermé,
+// trop tôt, ou si une heure tombe dans les heures d'ouverture reste au domaine
+// (fermetureDuJour, horairesOuvertureDuJour, validerHeureRetrait).
+
+/** Nombre de jours proposés dans la bande, à partir d'aujourd'hui. */
+export const JOURS_PROPOSES_RETRAIT = 45;
+/** Pas des créneaux d'heure proposés (minutes) — granularité d'affichage, pas une règle. */
+export const PAS_CRENEAU_MINUTES = 15;
+
+/**
+ * Jours proposés : `nombre` jours consécutifs depuis `aujourdhui` (inclus).
+ * Un jour déjà choisi hors de cette fenêtre (commande modifiée) est ajouté à
+ * sa place chronologique : la sélection reste toujours visible.
+ */
+export function joursProposes(aujourdhui: DateISO, nombre: number, choisi: string | null): DateISO[] {
+  const jours: DateISO[] = [];
+  for (let i = 0; i < nombre; i++) jours.push(decalerJours(aujourdhui, i));
+  if (choisi && estDateISO(choisi) && !jours.includes(choisi)) {
+    jours.push(choisi);
+    jours.sort();
+  }
+  return jours;
+}
+
+/**
+ * Créneaux « HH:MM » entre l'ouverture et la fermeture du jour (bornes
+ * incluses, comme `validerHeureRetrait`), par pas de `pas` minutes alignés sur
+ * l'heure. Une heure déjà choisie hors grille est ajoutée à sa place (jamais
+ * perdue ni corrigée en silence : le domaine la juge). Plage absente ou
+ * illisible → aucun créneau (le domaine refusera avec son message).
+ */
+export function creneauxRetrait(plage: PlageOuverture | null, pas: number, choisie: string): string[] {
+  const creneaux: string[] = [];
+  const debut = plage ? lireHeure(plage.ouverture) : null;
+  const fin = plage ? lireHeure(plage.fermeture) : null;
+  if (debut !== null && fin !== null && debut <= fin && pas > 0) {
+    creneaux.push(heureChamp(debut));
+    for (let m = debut - (debut % pas) + pas; m < fin; m += pas) {
+      if (m > debut) creneaux.push(heureChamp(m));
+    }
+    if (fin > debut) creneaux.push(heureChamp(fin));
+  }
+  const lue = lireHeure(choisie);
+  if (lue !== null && !creneaux.includes(heureChamp(lue))) {
+    creneaux.push(heureChamp(lue));
+    creneaux.sort();
+  }
+  return creneaux;
 }

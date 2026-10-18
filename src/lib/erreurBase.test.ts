@@ -8,7 +8,6 @@ import {
   type Diagnostic,
 } from './erreurBase.ts';
 import { CATALOGUE, messagePour } from '../domaine/messages.ts';
-import { formaterEuros } from '../domaine/argent.ts';
 import { definirDestination, type LigneJournal } from './journal.ts';
 import { bloquant } from '../domaine/resultat.ts';
 
@@ -157,8 +156,6 @@ const CAS_BASE: CasBase[] = [
     message: messagePour('ERR_COMMANDE_LENDEMAIN', {}) },
   { code: 'ERR_DATE_PASSEE', sqlstate: 'P0001', detail: 'Retrait 2026-10-14, saisie 2026-10-15.', hint: 'champ=retraitLe', champ: 'retraitLe',
     message: messagePour('ERR_DATE_PASSEE', {}) },
-  { code: 'ERR_ACOMPTE_INSUFFISANT', sqlstate: 'P0001', detail: 'minimum=1050;pourcentage=30', hint: 'champ=acompte', champ: 'acompte',
-    message: messagePour('ERR_ACOMPTE_INSUFFISANT', { minimumFormate: formaterEuros(1050), pourcentage: 30 }), valeurProposee: 1050 },
   { code: 'ERR_ACOMPTE_SUPERIEUR_TOTAL', sqlstate: 'P0001', detail: 'Acompte 5000 centimes, total 3500 centimes.', hint: 'champ=acompte', champ: 'acompte',
     message: messagePour('ERR_ACOMPTE_SUPERIEUR_TOTAL', {}) },
   { code: 'ERR_TOTAL_INCOHERENT', sqlstate: 'P0001', detail: 'Total 9000 centimes, tarif 8000 centimes.', hint: 'champ=total', champ: 'total',
@@ -361,24 +358,14 @@ test('DETAIL absent ou illisible : variante générique, champ par défaut, pas 
   const retablir = definirDestination(() => {});
   try {
     for (const detail of [null, 'minimum=abc;pourcentage=', 'texte libre']) {
-      const a = diagnostiquer(erreurDeclencheur('P0001', 'ERR_ACOMPTE_INSUFFISANT', detail, null));
-      assert.equal(a.code, 'ERR_ACOMPTE_INSUFFISANT');
-      assert.equal(a.message, messagePour('ERR_ACOMPTE_INSUFFISANT', {}));
-      assert.equal(a.champ, 'acompte');
-      assert.equal(a.valeurProposee, undefined);
-      assert.doesNotMatch(a.message, /undefined|NaN/);
-
       const q = diagnostiquer(erreurDeclencheur('P0001', 'ERR_QUANTITE_MIN', detail, null));
       assert.equal(q.message, messagePour('ERR_QUANTITE_MIN', {}));
       assert.equal(q.champ, 'quantite');
       assert.equal(q.valeurProposee, undefined);
     }
-    // Pourcentage seul : cité ; minimum seul : proposé.
-    const p = diagnostiquer(erreurDeclencheur('P0001', 'ERR_ACOMPTE_INSUFFISANT', 'pourcentage=30', 'champ=acompte'));
-    assert.equal(p.message, messagePour('ERR_ACOMPTE_INSUFFISANT', { pourcentage: 30 }));
-    const m = diagnostiquer(erreurDeclencheur('P0001', 'ERR_ACOMPTE_INSUFFISANT', 'minimum=2000', 'champ=acompte'));
-    assert.equal(m.valeurProposee, 2000);
-    assert.ok(m.message.includes(formaterEuros(2000)));
+    // Minimum lisible : proposé.
+    const m = diagnostiquer(erreurDeclencheur('P0001', 'ERR_QUANTITE_MIN', 'minimum=20', 'champ=quantite'));
+    assert.equal(m.valeurProposee, 20);
     // Tous les nouveaux codes, sans DETAIL ni HINT : champ par défaut.
     const defauts: Record<string, string | undefined> = {
       ERR_COMMANDE_LENDEMAIN: 'retraitLe', ERR_DATE_PASSEE: 'retraitLe', ERR_ACOMPTE_SUPERIEUR_TOTAL: 'acompte',
@@ -396,12 +383,12 @@ test('DETAIL absent ou illisible : variante générique, champ par défaut, pas 
   }
 });
 
-test('requête brute P2010 : ERR_ACOMPTE_INSUFFISANT avec DETAIL texte PostgreSQL', () => {
+test('requête brute P2010 : ERR_QUANTITE_MIN avec DETAIL texte PostgreSQL', () => {
   const retablir = definirDestination(() => {});
   try {
-    const texte = 'ERROR: ERR_ACOMPTE_INSUFFISANT\nDETAIL: minimum=1050;pourcentage=30\nHINT: champ=acompte';
+    const texte = 'ERROR: ERR_QUANTITE_MIN\nDETAIL: minimum=20\nHINT: champ=quantite';
     const { corps, statut } = traiterErreur(connue(`Raw query failed. Code: \`P0001\`. Message: \`${texte}\``, 'P2010', { code: 'P0001', message: texte }));
-    verifierRefus(corps, CAS_BASE.find((c) => c.code === 'ERR_ACOMPTE_INSUFFISANT')!, statut);
+    verifierRefus(corps, CAS_BASE.find((c) => c.code === 'ERR_QUANTITE_MIN')!, statut);
   } finally {
     retablir();
   }

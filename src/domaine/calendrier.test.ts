@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 
 import {
   ajouterJoursOuvres,
+  dateProduction,
   estDateISO,
   estJourFerme,
   fermetureDuJour,
@@ -167,6 +168,17 @@ test('tout fermé (donnée incohérente) : refus sans date inventée', () => {
 test('veilleOuvree : retrait le mercredi → production le lundi (mardi fermé)', () => {
   assert.equal(veilleOuvree(MERCREDI, FERMES), LUNDI);
   assert.equal(veilleOuvree('2026-10-22', FERMES), MERCREDI);
+});
+
+test('dateProduction : veille ouverte, jamais avant le jour de la prise (jour même autorisé, 18/10/2026)', () => {
+  // Prise lundi pour mercredi : production lundi (mardi fermé).
+  assert.equal(dateProduction(MERCREDI, LUNDI, FERMES), LUNDI);
+  // Prise mercredi pour mercredi (jour même) : production mercredi, pas lundi.
+  assert.equal(dateProduction(MERCREDI, MERCREDI, FERMES), MERCREDI);
+  // Prise jeudi 15 pour vendredi 16 : production jeudi.
+  assert.equal(dateProduction('2026-10-16', '2026-10-15', FERMES), '2026-10-15');
+  // Prise lointaine : la veille ouverte.
+  assert.equal(dateProduction('2026-10-22', '2026-10-15', FERMES), MERCREDI);
 });
 
 test('validerDelai : compté en jours ouvrés, mardi exclu, première date proposée', () => {

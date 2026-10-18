@@ -74,37 +74,45 @@ test('acompte négatif ou décimal → ERR_SAISIE_INVALIDE, minimum proposé ; a
   assert.equal(validerAcompte(1.5, 2930, 50).ok, false);
 });
 
-test('R52 acompte sous 50 % → ERR_ACOMPTE_INSUFFISANT, minimum proposé ; 0 € refusé', () => {
+/** Avertissement « acompte insuffisant » d'un résultat accepté, ou undefined. */
+function avertAcompte(r: ReturnType<typeof validerAcompte>) {
+  return r.ok ? r.signalements.find((x) => x.code === 'AVERT_ACOMPTE_INSUFFISANT') : undefined;
+}
+
+test('R52 acompte sous 50 % → ACCEPTÉ avec AVERT_ACOMPTE_INSUFFISANT, minimum proposé ; 0 € accepté aussi (18/10/2026)', () => {
   const r = validerAcompte(4499, 9000, 50);
-  assert.equal(r.ok, false);
-  if (!r.ok) {
-    assert.equal(r.code, 'ERR_ACOMPTE_INSUFFISANT');
-    assert.equal(r.niveau, 'bloquant');
-    assert.equal(r.valeurProposee, 4500);
-    assert.equal(r.champ, 'acompte');
-    assert.match(r.message, /50 %/);
-    assert.match(r.message, /45,00 €/);
-  }
+  assert.ok(r.ok, 'plus jamais bloquant');
+  assert.equal(r.donnees, 4499, 'l’acompte saisi est gardé tel quel');
+  const a = avertAcompte(r);
+  assert.ok(a);
+  assert.equal(a.niveau, 'avertissement');
+  assert.equal(a.valeurProposee, 4500);
+  assert.equal(a.champ, 'acompte');
+  assert.equal(a.message, 'Essayez d’obtenir au moins 50 % d’acompte (45,00 €) : 44,99 € saisi. La commande reste acceptée.');
   const zero = validerAcompte(0, 9000, 50);
-  assert.equal(zero.ok, false, 'plus d’acompte facultatif');
-  if (!zero.ok) assert.equal(zero.code, 'ERR_ACOMPTE_INSUFFISANT');
+  assert.ok(zero.ok, '0 € : accepté, signalé');
+  assert.equal(avertAcompte(zero)?.valeurProposee, 4500);
 });
 
-test('R52 acompte pile 50 % accepté ; total impair → minimum arrondi au centime supérieur', () => {
-  assert.equal(validerAcompte(4500, 9000, 50).ok, true, 'pile 50 %');
+test('R52 acompte pile 50 % sans avertissement ; total impair → minimum arrondi au centime supérieur', () => {
+  const pile = validerAcompte(4500, 9000, 50);
+  assert.ok(pile.ok);
+  assert.equal(pile.signalements.length, 0, 'pile 50 %');
   const impair = validerAcompte(1465, 2931, 50);
-  assert.equal(impair.ok, false, '1465 < 1465,5');
-  if (!impair.ok) assert.equal(impair.valeurProposee, 1466);
-  assert.equal(validerAcompte(1466, 2931, 50).ok, true);
-  assert.equal(validerAcompte(1, 1, 50).ok, true, '1 centime : minimum 1');
-  assert.equal(validerAcompte(0, 1, 50).ok, false);
+  assert.equal(avertAcompte(impair)?.valeurProposee, 1466, '1465 < 1465,5');
+  assert.equal(avertAcompte(validerAcompte(1466, 2931, 50)), undefined);
+  assert.equal(avertAcompte(validerAcompte(1, 1, 50)), undefined, '1 centime : minimum 1');
+  assert.ok(avertAcompte(validerAcompte(0, 1, 50)));
 });
 
-test('R52 le pourcentage est une donnée', () => {
-  assert.equal(validerAcompte(2999, 10000, 30).ok, false);
-  assert.equal(validerAcompte(3000, 10000, 30).ok, true);
-  assert.equal(validerAcompte(0, 10000, 0).ok, true);
+test('R52 le pourcentage est une donnée ; acompte > total reste BLOQUANT', () => {
+  assert.ok(avertAcompte(validerAcompte(2999, 10000, 30)));
+  assert.equal(avertAcompte(validerAcompte(3000, 10000, 30)), undefined);
+  assert.equal(avertAcompte(validerAcompte(0, 10000, 0)), undefined);
   assert.throws(() => validerAcompte(0, 10000, 150), RangeError, 'configuration impossible = bug');
+  const trop = validerAcompte(10001, 10000, 30);
+  assert.equal(trop.ok, false);
+  if (!trop.ok) assert.equal(trop.code, 'ERR_ACOMPTE_SUPERIEUR_TOTAL');
 });
 
 test('prix convenu absent ou égal au tarif → total du tarif', () => {

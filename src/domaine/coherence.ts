@@ -64,15 +64,18 @@ export function validerTelephone(telephone: string | null | undefined, champ = '
 // ---------------------------------------------------------------------------
 
 /**
- * Règle R52 (règlement intérieur) : l'acompte est un montant entier, d'au
- * moins `pourcentageMin` % du total (arrondi au centime SUPÉRIEUR) et jamais
- * supérieur au total. Vaut pour TOUTE commande (plus d'acompte facultatif).
- * Niveau : BLOQUANT.
- *  - illisible / négatif → ERR_SAISIE_INVALIDE, sortie « mettre le minimum » ;
- *  - supérieur au total → ERR_ACOMPTE_SUPERIEUR_TOTAL, `valeurProposee` = total ;
- *  - sous le minimum → ERR_ACOMPTE_INSUFFISANT, `valeurProposee` = minimum.
- * `pourcentageMin` est une DONNÉE (REGLEMENT_COMMANDE.acomptePourcentageMin).
- * N'interdit pas : un acompte entre le minimum et le total (total payé d'avance).
+ * Règle R52 (règlement intérieur, décision du propriétaire du 18/10/2026) :
+ * l'acompte est un montant entier, jamais supérieur au total ; on essaie
+ * d'obtenir au moins `pourcentageMin` % du total (arrondi au centime SUPÉRIEUR).
+ * Niveaux :
+ *  - illisible / négatif → BLOQUANT ERR_SAISIE_INVALIDE, sortie « mettre le minimum » ;
+ *  - supérieur au total → BLOQUANT ERR_ACOMPTE_SUPERIEUR_TOTAL, `valeurProposee` = total ;
+ *  - sous le minimum (0 € compris) → ACCEPTÉ avec l'AVERTISSEMENT
+ *    AVERT_ACOMPTE_INSUFFISANT (signalé, tracé avec la commande),
+ *    `valeurProposee` = minimum (bouton « Mettre l'acompte à X € »).
+ * `pourcentageMin` est une DONNÉE (réglage `reglement:acompte_min_pourcent`).
+ * N'interdit pas : un acompte faible ou nul (la vente n'est plus perdue pour
+ * un acompte), un acompte entre le minimum et le total (total payé d'avance).
  */
 export function validerAcompte(
   acompteCentimes: number,
@@ -92,14 +95,17 @@ export function validerAcompte(
     );
   }
   if (acompteCentimes < minimum) {
-    return signaler(
-      'ERR_ACOMPTE_INSUFFISANT',
-      {
-        acompteFormate: formaterEuros(acompteCentimes),
-        minimumFormate: formaterEuros(minimum),
-        pourcentage: pourcentageMin,
-      },
-      { champ, valeurProposee: minimum },
+    return succes(
+      acompteCentimes,
+      signaler(
+        'AVERT_ACOMPTE_INSUFFISANT',
+        {
+          acompteFormate: formaterEuros(acompteCentimes),
+          minimumFormate: formaterEuros(minimum),
+          pourcentage: pourcentageMin,
+        },
+        { champ, valeurProposee: minimum },
+      ),
     );
   }
   return succes(acompteCentimes);

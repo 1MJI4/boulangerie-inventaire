@@ -12,17 +12,17 @@ Niveaux : 🔴 **bloquant** (refus) · 🟠 **avertissement** (accepté, signal�
 
 | # | Règle | Niveau | Code | Confirmé |
 |---|---|---|---|---|
-| R1 | Fermé le mardi — toute date de retrait un mardi est refusée à la saisie, aux 3 niveaux (UI, domaine, serveur) | 🔴 | `ERR_JOUR_FERME` | **non** |
-| R1b | Jours fériés et fermetures exceptionnelles : même traitement, liste en base | 🔴 | `ERR_JOUR_FERME` | **non** |
-| R1c | Congés annuels : période bloquée, annoncée à l'écran 3 semaines avant | 🔴 | `ERR_PERIODE_CONGES` | **non** |
-| R2 | Délai minimum de commande, en **jours ouvrés** (fermetures exclues) | 🔴 | `ERR_DELAI_TROP_COURT` | **non** |
-| R2b | Délai « tendu mais acceptable » → avertissement, pas refus : l'employé appelle le labo | 🟠 | `AVERT_DELAI_COURT` | **non** |
+| R1 | Fermé le mardi — toute date de retrait un mardi est refusée à la saisie, aux 3 niveaux (UI, domaine, serveur), avec le mercredi proposé. **Seul le mardi est fermé** | 🔴 | `ERR_JOUR_FERME` | **oui — propriétaire 18/10/2026** |
+| R1b | Les **jours fériés sont ouverts**. Une fermeture exceptionnelle reste possible (liste réglable en base, même refus que le mardi), mais **aucune n'est prévue** : rien n'est ajouté automatiquement (pas de calendrier des fériés) | 🔴 si une fermeture est saisie | `ERR_JOUR_FERME` | **oui — propriétaire 18/10/2026** |
+| R1c | **Pas de congés annuels.** Le mécanisme existe (période fermée en base) mais aucune période n'est enregistrée | 🔴 si une période est saisie | `ERR_PERIODE_CONGES` | **oui — propriétaire 18/10/2026** |
+| R2 | Délai minimum de commande, en **jours ouvrés** (fermetures exclues) : **aucun** (0) — le retrait **le jour même** est autorisé. Seul un gâteau à étages (mariage, pièce montée) peut avoir un délai, **réglé par le gérant** (0 par défaut) ; en dessous, refus avec la première date possible proposée | 🔴 (gâteau à étages, si un délai est réglé) | `ERR_DELAI_TROP_COURT` | **oui — propriétaire 18/10/2026** |
+| R2b | Délai court (jour même, lendemain) : **accepté**, simple message pour prévenir l'atelier (voir R53 et R53b) | 🔵 | `INFO_COMMANDE_JOUR_MEME` · `INFO_COMMANDE_LENDEMAIN` | **oui — propriétaire 15/10 et 18/10/2026** |
 | ~~R2c~~ | ~~Heure limite de commande dans la journée (cut-off)~~ | — | — | **écarté par le gérant — 15/10/2026** |
-| R2d | Production la veille : si la veille est un jour fermé, le délai s'allonge automatiquement | 🔴 | `ERR_PRODUCTION_IMPOSSIBLE` | **non** |
+| R2d | Production la veille ouverte du retrait (retrait mercredi → production lundi, mardi fermé), **jamais avant le jour de la prise** : une commande pour le jour même se produit le jour même | — | — | **non** |
 
-**Délais appliqués** : comptoir commandé, plateau salé, gâteau simple → **1 jour ouvré**
-(le lendemain passe, le jour même est refusé — lendemain confirmé le 15/10/2026, voir R53) ·
-gâteau de mariage / pièce montée → **5 jours ouvrés** (**hypothèse**, question 17).
+**Délais appliqués** (décision du propriétaire, 18/10/2026) : comptoir commandé, plateau salé,
+gâteau simple → **aucun délai** (le jour même passe) · gâteau de mariage / pièce montée →
+**réglage du gérant**, 0 jour par défaut (écran des réglages).
 
 ## B. Prix
 
@@ -36,6 +36,7 @@ gâteau de mariage / pièce montée → **5 jours ouvrés** (**hypothèse**, que
 | R7 | Suppléments photo 15 € / écriture 2 € : **une fois par gâteau**, jamais par personne | 🔴 | — | oui (affiche) |
 | R8 | Arrondi espèces belge à 5 centimes sur le **total payé en liquide** uniquement, jamais sur les prix unitaires — *optionnel, activable plus tard, utile seulement si l'application encaisse* | — | — | **reporté — 15/10/2026** |
 | R9 | TVA 6 % emporter / 12 % sur place — champ par produit, configurable | — | — | **non** |
+| R60 | Gâteau simple commandé dans une taille qui **existe au comptoir** : il se vend **au prix du comptoir**. La ligne devient le gâteau du comptoir (1 pièce, prix exact du tarif en vigueur, **jamais modifiable, même par le gérant**). Correspondances : Bavarois sur commande (toutes variantes) 4 / 6 / 8 / 10 parts → Bavarois 4P / 6P / 8P / 10P du comptoir · Crème fraîche 6 / 8 parts → Crème fraîche 6P / 8P. Autres tailles (Crème fraîche 4 parts, Bavarois 15 parts…) : prix par personne (R5). Sur l'écran, le bouton de taille affiche le prix du comptoir (« 6 · 31,00 € ») et le toucher remplace la ligne ; une ligne au prix par personne dans une de ces tailles est refusée avec le bouton « Prendre le gâteau du comptoir ». Le gâteau du comptoir compte comme un gâteau (photo, écriture) | 🔴 | `ERR_PRIX_COMPTOIR` · `ERR_TARIF_INCOHERENT` | **oui — propriétaire 18/10/2026** |
 
 ## C. Quantités
 
@@ -118,16 +119,17 @@ gâteau de mariage / pièce montée → **5 jours ouvrés** (**hypothèse**, que
 ## J. Règlement intérieur — commandes et inventaire
 
 Ces règles viennent du règlement de la direction et des décisions du propriétaire du
-15/10/2026.
+15/10/2026 et du 18/10/2026.
 
 | # | Règle | Niveau | Code | Confirmé |
 |---|---|---|---|---|
-| R52 | Acompte d'**au moins 50 %** du total pour valider une commande. Sous 50 % : refusé, avec le bouton « Mettre l'acompte à X € ». Exemple : commande de 90 € → acompte minimum 45 € | 🔴 | `ERR_ACOMPTE_INSUFFISANT` | **oui — règlement intérieur 15/10/2026** |
-| R53 | Commande à retirer **le lendemain** (premier jour ouvert suivant : prise un lundi → mercredi) : **acceptée**, sans code gérant. Simple message « prévenez l'atelier ». Le jour même reste refusé (R2) | 🔵 | `INFO_COMMANDE_LENDEMAIN` | **oui — propriétaire 15/10/2026** |
-| R54 | Commande en pâtisserie et viennoiserie : retrait à partir d'une heure **réglable par le gérant, jour par jour** (défaut : 9h lundi-vendredi, 12h samedi-dimanche) **et pour une date précise** (ex. samedi à 11h). Une heure plus tôt est refusée, bouton « Passer à 12h00 ». Heure de retrait obligatoire dès qu'il y a de la pâtisserie | 🔴 | `ERR_HEURE_RETRAIT_TROP_TOT` | **oui — propriétaire 15/10/2026** · viennoiserie : **non** (q. 50) · férié ouvert = heure du dimanche : **non** (q. 52) · deux heures pour une même date = la plus tardive : **non** (q. 63) |
+| R52 | On essaie d'obtenir un acompte d'**au moins 50 %** du total (pourcentage réglable). Sous 50 % (même 0 €) : la commande est **acceptée**, avec un message « Essayez d'obtenir au moins 50 % d'acompte (45,00 €) » et le bouton « Mettre l'acompte à 45,00 € » ; le message est enregistré avec la commande. Exemple : commande de 90 € → 45 € conseillés. Un acompte **plus élevé que le total** reste refusé (R39) | 🟠 | `AVERT_ACOMPTE_INSUFFISANT` | **oui — propriétaire 18/10/2026** |
+| R53 | Commande à retirer **le lendemain** (premier jour ouvert suivant : prise un lundi → mercredi) : **acceptée**, sans code gérant. Simple message « prévenez l'atelier » | 🔵 | `INFO_COMMANDE_LENDEMAIN` | **oui — propriétaire 15/10/2026** |
+| R53b | Commande à retirer **le jour même** : **acceptée**, sans code gérant. Message « Commande pour aujourd'hui : prévenez l'atelier tout de suite. » Une date passée reste refusée, le mardi aussi | 🔵 | `INFO_COMMANDE_JOUR_MEME` | **oui — propriétaire 18/10/2026** |
+| R54 | **Heures d'ouverture du magasin**, pour **tous** les produits : une heure de retrait doit tomber entre l'ouverture et la fermeture du jour (incluses). Défaut : **6h00 → 20h00 tous les jours**, réglable par le gérant **jour par jour** et **pour une date précise** (ex. 24 décembre : 6h00 → 16h00). Hors horaires : refus, « Le magasin est ouvert de 6h00 à 20h00 le samedi — choisissez une heure dans ces horaires », bouton vers l'heure la plus proche (« Passer à 6h00 » si trop tôt, « Passer à 20h00 » si trop tard). L'heure de retrait est **facultative**. L'ancienne règle « pâtisserie à partir de 9h en semaine, 12h le week-end » est **supprimée** | 🔴 | `ERR_HEURE_HORS_OUVERTURE` | **oui — propriétaire 18/10/2026** · retrait possible pile à l'heure de fermeture : **non** (q. 64) · une même date exceptionnelle ne se règle qu'une fois : **oui** (q. 63, 18/10/2026) |
 | R55 | Commande inhabituelle (ingrédient particulier, moule spécial…) : acceptée mais signalée, avec la sortie « Appeler le responsable » ou « Passer par WhatsApp » | 🟠 | `AVERT_COMMANDE_INHABITUELLE` | **oui — règlement intérieur 15/10/2026** |
 | R56 | Nom et téléphone du client **obligatoires**. La date et l'heure de prise de commande s'enregistrent toutes seules | 🔴 | `ERR_CHAMP_OBLIGATOIRE` | **oui — règlement intérieur 15/10/2026** |
-| R57 | Inventaire commencé **avant 20h00** (heure de fermeture, réglable) : accepté mais signalé | 🟠 | `AVERT_INVENTAIRE_AVANT_FERMETURE` | **oui — règlement intérieur 15/10/2026** |
+| R57 | Inventaire commencé **avant l'heure de fermeture du jour** (20h00 par défaut, celle des heures d'ouverture R54, donc 16h00 un 24 décembre réglé ainsi) : accepté mais signalé | 🟠 | `AVERT_INVENTAIRE_AVANT_FERMETURE` | **oui — règlement intérieur 15/10/2026** · fermeture du jour plutôt que 20h00 fixe : **non** (q. 51) |
 | R58 | À la remise de la commande : liste des articles à cocher **devant le client**. Tant qu'un article n'est pas coché, la remise est refusée | 🔴 | `ERR_DECOMPTE_INCOMPLET` | **oui — règlement intérieur 15/10/2026** |
 | R59 | Gâteau simple sur commande : **tailles standard uniquement** — 4, 6, 8, 10, 15, 20, 25, 30 parts (liste réglable). Autre taille refusée à la saisie, avec deux boutons vers les tailles voisines : 13 parts → « Passer à 10 » / « Passer à 15 » ; 1 part → « Passer à 4 » ; 35 parts → « Passer à 30 ». Exception possible par code gérant, nom enregistré | 🔴 (🟠 si gérant) | `ERR_TAILLE_NON_STANDARD` · `AVERT_TAILLE_NON_STANDARD_AUTORISEE` | **oui — propriétaire 15/10/2026** · définition du « gâteau simple » : **non** (q. 61) · liste vide = aucune taille imposée : **non** (q. 62) |
 
@@ -156,13 +158,23 @@ visibles du client.
   commande inhabituelle, nom et téléphone, inventaire à 20h00, décompte à la remise
   (R52 à R58).
 - **Commande pour le lendemain acceptée**, simple information (R53).
-- **Horaires de retrait réglables** jour par jour et par date (R54).
 - **Tailles standard des gâteaux simples** : 4, 6, 8, 10, 15, 20, 25, 30 parts (R59).
+
+## Décisions du propriétaire — 18/10/2026
+
+- **Retrait le jour même autorisé** (R2, R53b) : simple information « prévenez l'atelier ».
+- **Gâteau à étages** : plus de délai minimum par défaut ; le gérant peut en régler un (R2).
+- **Acompte sous 50 %** : accepté avec un avertissement et le bouton « Mettre l'acompte à X € » (R52).
+- **Heures d'ouverture du magasin** (6h00 → 20h00, réglables jour par jour et par date) pour
+  tous les produits ; la règle « pâtisserie 9h / 12h » est supprimée ; l'heure de retrait
+  est facultative (R54).
+- **Fermetures** : seul le mardi est fermé, les jours fériés sont ouverts, pas de congés (R1, R1b, R1c).
+- **Gâteau simple commandé dans une taille du comptoir** : prix du comptoir, ligne remplacée par le gâteau du comptoir, prix non modifiable (R60).
 
 ## Comportements par défaut appliqués en l'absence de réponse
 
 Chacun est marqué `// HYPOTHÈSE À VALIDER` dans le code et visible à l'écran :
 
-1. **Délais** → mariage / pièce montée 5 jours ouvrés (le reste : 1 jour ouvré, tranché)
+1. ~~**Délais** → mariage / pièce montée 5 jours ouvrés~~ → **tranché** (18/10/2026) : aucun délai, sauf réglage du gérant pour un gâteau à étages (R2)
 2. **Minimum 10/15 pièces** → par ligne de produit, pas par panier
 3. ~~**Acompte** → aucun acompte exigé automatiquement~~ → **tranché** : au moins 50 % (R52)

@@ -1,11 +1,12 @@
 // src/domaine/reglement.ts
 //
-// LOI 11 — règlement intérieur (docs/REGLEMENT-INTERIEUR.md, points 9, 51, 52, 53).
+// LOI 11 — règlement intérieur (docs/REGLEMENT-INTERIEUR.md, points 9, 51, 52, 53)
+// et décisions du propriétaire du 15/10/2026 et du 18/10/2026.
 // Propriétaire : agent `regles-metier`. Orchestré par `commande.ts`.
 //
-// Toutes les valeurs (heures, week-end, fériés ouverts, heure de fermeture)
+// Toutes les valeurs (heures d'ouverture jour par jour, dates exceptionnelles)
 // sont des DONNÉES passées en paramètre : défauts dans constantes.ts
-// (REGLEMENT_COMMANDE, HEURE_FERMETURE_HYPOTHESE). Aucun jour, aucune heure
+// (REGLEMENT_COMMANDE), réglages du gérant en base. Aucun jour, aucune heure
 // n'est écrit dans une fonction.
 //
 // L'acompte minimum (R52) est dans coherence.ts (`validerAcompte`) ;
@@ -17,20 +18,15 @@ import { signaler } from './messages.ts';
 import {
   decalerJours,
   estDateISO,
-  estJourFerie,
+  formaterDate,
   jourSemaineIso,
   prochainJourOuvert,
   validerDateRetrait,
 } from './calendrier.ts';
 import type { JourFerme } from './calendrier.ts';
 import { JOURS_ISO_CLES } from './constantes.ts';
-import type {
-  HorairesRetraitAncienneForme,
-  HorairesRetraitPatisserie,
-  JourIsoCle,
-  ReglementCommande,
-} from './constantes.ts';
-import type { DateISO, ProduitRegle } from './types.ts';
+import type { HorairesOuverture, JourIsoCle, PlageOuverture } from './constantes.ts';
+import type { DateISO } from './types.ts';
 
 // ---------------------------------------------------------------------------
 // Heures « HH:MM »
@@ -81,10 +77,10 @@ export function heureChamp(minutes: number): string {
  * que si c'est le lendemain CALENDAIRE ; sinon il nomme le jour réel
  * (« Commande pour mercredi, le prochain jour d'ouverture… »), tiré de la date.
  *
- * N'interdit RIEN. Le jour même n'est pas « le lendemain » (aucune information
- * ici) : il est refusé par le délai minimum (`validerDelai`, ERR_DELAI_TROP_COURT),
- * contrôlé avant par `controlerCommande`. Un gâteau à étages pour le lendemain
- * reste refusé par son délai (DELAIS_HYPOTHESE).
+ * N'interdit RIEN. Le jour même n'est pas « le lendemain » : il a sa propre
+ * information (`validerJourMeme`). Un gâteau à étages n'est refusé que si le
+ * gérant a réglé un délai (`reglement:delai_gateau_etages_jours`, contrôlé avant
+ * par `validerDelai` dans `controlerCommande`).
  * HYPOTHÈSE À VALIDER : `aujourdhui` = jour de la saisie (une modification faite
  * la veille du retrait affiche donc l'information).
  */
@@ -111,84 +107,91 @@ export function validerLendemain(
 }
 
 // ---------------------------------------------------------------------------
-// R54 — heure de retrait d'une commande de pâtisserie
+// R53b — commande pour le jour même
 // ---------------------------------------------------------------------------
 
-export type ReperePatisserie = Pick<ProduitRegle, 'famille'>;
-
 /**
- * Un produit est-il soumis aux horaires de retrait pâtisserie ? Lu dans la
- * DONNÉE `famille` du catalogue (tirée du rayon), comparée à la liste
- * `familles` (donnée, REGLEMENT_COMMANDE) — jamais dans le nom ni le régime.
- * HYPOTHÈSE À VALIDER : famille vide/inconnue, ou ligne libre (`null`) →
- * soumise aux horaires (on ne sait pas ce qu'elle contient : le plus sûr).
+ * Règle R53b (décision du propriétaire du 18/10/2026) : une commande à retirer
+ * LE JOUR MÊME de la saisie est ACCEPTÉE ; l'employé prévient l'atelier tout
+ * de suite.
+ * Niveau : INFORMATION (INFO_COMMANDE_JOUR_MEME) — aucune friction, aucun accord.
+ * N'interdit RIEN. Reste refusé (contrôlé ici aussi, pour un appel isolé depuis
+ * l'écran) : une date passée (ERR_DATE_PASSEE), un jour fermé (ERR_JOUR_FERME),
+ * une date illisible (ERR_SAISIE_INVALIDE).
+ * `aujourdhui` = jour de la saisie : une commande saisie hors ligne puis
+ * synchronisée le lendemain reste « du jour même » de sa prise.
  */
-export function estPatisserie(produit: ReperePatisserie | null, familles: readonly string[]): boolean {
-  if (produit === null) return true;
-  if (typeof produit.famille !== 'string' || produit.famille === '') return true;
-  return familles.includes(produit.famille);
+export function validerJourMeme(
+  dateRetrait: DateISO,
+  aujourdhui: DateISO,
+  joursFermes: readonly JourFerme[],
+  champ = 'dateRetrait',
+): Resultat<DateISO> {
+  const base = validerDateRetrait(dateRetrait, joursFermes, aujourdhui, champ);
+  if (!base.ok) return base;
+  if (dateRetrait !== aujourdhui) return succes(dateRetrait);
+  return succes(dateRetrait, signaler('INFO_COMMANDE_JOUR_MEME', {}, { champ }));
 }
 
-/**
- * Compatibilité : convertit l'ANCIENNE forme des horaires (semaine / weekEnd /
- * joursWeekEndIso / feriesOuverts) en la forme jour par jour. Les jours listés
- * en week-end prennent `weekEnd`, les autres `semaine` ; chaque férié ouvert
- * connu devient une date exceptionnelle à l'heure du week-end (comportement
- * d'avant inchangé).
- */
-export function convertirHorairesAncienneForme(ancienne: HorairesRetraitAncienneForme): HorairesRetraitPatisserie {
-  const parJour = {} as Record<JourIsoCle, string>;
-  for (const cle of JOURS_ISO_CLES) {
-    parJour[cle] = ancienne.joursWeekEndIso.includes(Number(cle)) ? ancienne.weekEnd : ancienne.semaine;
+// ---------------------------------------------------------------------------
+// R54 — heure de retrait dans les heures d'ouverture du magasin
+// ---------------------------------------------------------------------------
+
+/** Plage lue en minutes ; RangeError si illisible ou si l'ouverture n'est pas avant la fermeture. */
+function lirePlage(plage: PlageOuverture | undefined): { ouverture: number; fermeture: number } {
+  const ouverture = lireHeure(plage?.ouverture);
+  const fermeture = lireHeure(plage?.fermeture);
+  if (ouverture === null || fermeture === null || ouverture >= fermeture) {
+    throw new RangeError('reglement.ts : heures d’ouverture illisibles.');
   }
-  return {
-    familles: [...ancienne.familles],
-    parJour,
-    exceptions: (ancienne.feriesOuverts ?? []).map((date) => ({ date, heure: ancienne.weekEnd })),
-  };
+  return { ouverture, fermeture };
 }
 
-/** Ce que les fonctions d'horaires acceptent : le règlement entier, ou ses horaires (nouvelle ou ancienne forme). */
-export type SourceHoraires =
-  | Pick<ReglementCommande, 'horairesRetraitPatisserie'>
-  | HorairesRetraitPatisserie
-  | HorairesRetraitAncienneForme;
-
-function horairesDe(source: SourceHoraires): HorairesRetraitPatisserie {
-  const h = 'horairesRetraitPatisserie' in source ? source.horairesRetraitPatisserie : source;
-  if ('parJour' in h) return h;
-  return convertirHorairesAncienneForme(h);
+/** Plage en minutes et provenance (date exceptionnelle ou jour de la semaine). */
+function plageDuJour(
+  date: DateISO,
+  horaires: HorairesOuverture,
+): { ouverture: number; fermeture: number; exceptionnelle: boolean } {
+  if (!estDateISO(date)) throw new RangeError('reglement.ts : date illisible.');
+  const exceptions = horaires.exceptions.filter((e) => e.date === date).map(lirePlage);
+  if (exceptions.length > 0) {
+    // Une même date saisie deux fois (impossible via les réglages, décision du
+    // 18/10/2026, n°63 ; défense si la donnée arrive autrement) : la plage
+    // COMMUNE, le plus sûr — on ne promet pas un retrait magasin fermé.
+    const ouverture = Math.max(...exceptions.map((e) => e.ouverture));
+    const fermeture = Math.min(...exceptions.map((e) => e.fermeture));
+    if (ouverture >= fermeture) throw new RangeError('reglement.ts : dates exceptionnelles contradictoires.');
+    return { ouverture, fermeture, exceptionnelle: true };
+  }
+  const cle = String(jourSemaineIso(date)) as JourIsoCle;
+  return { ...lirePlage(horaires.parJour[cle]), exceptionnelle: false };
 }
 
 /**
- * Première heure de retrait d'une commande de pâtisserie à `date`, « HH:MM ».
- * Ordre (réglages du gérant, décision du 15/10/2026) :
- *   1. date exceptionnelle (`exceptions`) si présente — prioritaire sur tout ;
- *   2. jour férié OUVERT (ligne `ferie` de JourFerme rouverte) → horaire du
- *      DIMANCHE. HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°52) : comportement
- *      d'avant (un férié ouvert suit le week-end), le plus prudent ;
- *   3. sinon l'horaire du jour de la semaine (`parJour`).
- * Si une date figure plusieurs fois dans `exceptions`, la plus TARDIVE
- * s'applique (le plus sûr : on ne promet pas une pâtisserie trop tôt).
+ * Heures d'ouverture du magasin à `date`, « HH:MM » (réglages du gérant,
+ * décision du propriétaire du 18/10/2026) :
+ *   1. date exceptionnelle (`exceptions`) si présente — prioritaire ;
+ *   2. sinon la plage du jour de la semaine (`parJour`).
+ * Ne dit RIEN des jours fermés (LOI 3, `validerDateRetrait`) : un mardi a une
+ * plage, mais il est refusé avant.
  * Horaires illisibles (réglage cassé) ou date illisible : RangeError (bug).
  */
-export function heureMinRetrait(
-  date: DateISO,
-  reglement: SourceHoraires,
-  joursFermes: readonly JourFerme[] = [],
-): string {
-  if (!estDateISO(date)) throw new RangeError('reglement.ts : date de retrait illisible.');
-  const horaires = horairesDe(reglement);
-  const lire = (texte: string): number => {
-    const m = lireHeure(texte);
-    if (m === null) throw new RangeError('reglement.ts : horaires de retrait pâtisserie illisibles.');
-    return m;
-  };
-  const exceptions = horaires.exceptions.filter((e) => e.date === date).map((e) => lire(e.heure));
-  if (exceptions.length > 0) return heureChamp(Math.max(...exceptions));
-  const cleDimanche = JOURS_ISO_CLES[JOURS_ISO_CLES.length - 1] as JourIsoCle;
-  const cle = estJourFerie(date, joursFermes) ? cleDimanche : (String(jourSemaineIso(date)) as JourIsoCle);
-  return heureChamp(lire(horaires.parJour[cle]));
+export function horairesOuvertureDuJour(date: DateISO, horaires: HorairesOuverture): PlageOuverture {
+  const p = plageDuJour(date, horaires);
+  return { ouverture: heureChamp(p.ouverture), fermeture: heureChamp(p.fermeture) };
+}
+
+/**
+ * Vrai si `plage` est une plage d'ouverture valable : deux heures « HH:MM »
+ * lisibles, l'ouverture STRICTEMENT avant la fermeture. Sert au contrôle des
+ * réglages du gérant (src/lib/serveur/reglages.ts), miroir du CHECK de la base.
+ */
+export function estPlageOuverture(plage: unknown): plage is PlageOuverture {
+  if (typeof plage !== 'object' || plage === null) return false;
+  const p = plage as Record<string, unknown>;
+  const ouverture = lireHeure(p.ouverture);
+  const fermeture = lireHeure(p.fermeture);
+  return ouverture !== null && fermeture !== null && ouverture < fermeture;
 }
 
 /** « samedi » — nom du jour d'une date, pour les messages (Intl, jamais écrit dans le code). */
@@ -208,48 +211,44 @@ export function nomJourIso(jourIso: number | JourIsoCle): string {
 }
 
 /**
- * Règle R54 : une commande contenant de la pâtisserie se retire à partir de
- * `heureMinRetrait(date)` (horaires réglables jour par jour et par date
- * exceptionnelle).
- * Niveau : BLOQUANT, `valeurProposee` = première heure possible (« HH:MM »).
+ * Règle R54 (décision du propriétaire du 18/10/2026) : pour TOUT produit, une
+ * heure de retrait doit tomber dans les heures d'ouverture du magasin ce
+ * jour-là (`horairesOuvertureDuJour`), bornes incluses.
+ * Niveau : BLOQUANT (ERR_HEURE_HORS_OUVERTURE), `valeurProposee` = la borne la
+ * plus proche (« HH:MM ») : l'ouverture si trop tôt, la fermeture si trop tard.
  * Heure illisible → ERR_SAISIE_INVALIDE.
- * HYPOTHÈSE À VALIDER : commande avec pâtisserie SANS heure de retrait →
- * ERR_CHAMP_OBLIGATOIRE (sinon la règle se contourne en laissant le champ vide).
- * HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°50) : ne vaut que pour la pâtisserie.
- * N'interdit pas : toute heure ≥ l'heure minimale ; aucune heure maximale n'est
- * contrôlée (heure de fermeture : non demandée par le règlement).
+ * N'interdit pas : une heure VIDE (l'heure de retrait est facultative, pour
+ * tous les produits) ; toute heure entre l'ouverture et la fermeture incluses
+ * (« 20:00 » passe quand le magasin ferme à 20h00 : c'est la borne proposée).
+ * HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°64) : la fermeture est une heure de retrait possible.
  * Les horaires mal configurés (illisibles) sont un bug : RangeError.
- * `horaires` : nouvelle forme, ancienne forme (convertie) ou règlement entier.
  */
 export function validerHeureRetrait(
   dateRetrait: DateISO,
   heureRetrait: string | null | undefined,
-  lignes: readonly { estPatisserie: boolean }[],
-  horaires: SourceHoraires,
-  joursFermes: readonly JourFerme[] = [],
+  horaires: HorairesOuverture,
   champ = 'heureRetrait',
 ): Resultat<string | null> {
-  const patisserie = lignes.some((l) => l.estPatisserie);
   const vide = heureRetrait === null || heureRetrait === undefined || String(heureRetrait).trim() === '';
-  if (vide) {
-    if (!patisserie) return succes(null);
-    return signaler('ERR_CHAMP_OBLIGATOIRE', { champLibelle: 'heure de retrait' }, { champ });
-  }
+  if (vide) return succes(null);
   const minutes = lireHeure(heureRetrait);
   if (minutes === null) return signaler('ERR_SAISIE_INVALIDE', { champLibelle: 'heure de retrait' }, { champ });
-  const heure = heureChamp(minutes);
-  if (!patisserie) return succes(heure);
   if (!estDateISO(dateRetrait)) {
     return signaler('ERR_SAISIE_INVALIDE', { champLibelle: 'date de retrait' }, { champ: 'dateRetrait' });
   }
-
-  const minimum = heureMinRetrait(dateRetrait, horaires, joursFermes);
-  const min = lireHeure(minimum) as number;
-  if (minutes >= min) return succes(heure);
+  const plage = plageDuJour(dateRetrait, horaires);
+  if (minutes >= plage.ouverture && minutes <= plage.fermeture) return succes(heureChamp(minutes));
+  const proposee = minutes < plage.ouverture ? plage.ouverture : plage.fermeture;
   return signaler(
-    'ERR_HEURE_RETRAIT_TROP_TOT',
-    { heureMin: formaterHeure(min), jour: nomJour(dateRetrait) },
-    { champ, valeurProposee: minimum },
+    'ERR_HEURE_HORS_OUVERTURE',
+    {
+      ouverture: formaterHeure(plage.ouverture),
+      fermeture: formaterHeure(plage.fermeture),
+      // Date exceptionnelle : la date en clair (« le jeudi 24 décembre ») ; sinon le jour.
+      jour: plage.exceptionnelle ? `le ${formaterDate(dateRetrait)}` : `le ${nomJour(dateRetrait)}`,
+      heureProposee: formaterHeure(proposee),
+    },
+    { champ, valeurProposee: heureChamp(proposee) },
   );
 }
 

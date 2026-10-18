@@ -60,7 +60,7 @@ function parametres(s: S, uniteQuantite: string): Record<string, unknown> {
       return { unite: 'piece', proposition: entier(v) === null ? undefined : String(v) };
     case 'ERR_DELAI_TROP_COURT':
       return { delaiJoursOuvres: 0, premiereDate: estDateISO(v) ? formaterDate(v) : '' };
-    case 'ERR_ACOMPTE_INSUFFISANT':
+    case 'AVERT_ACOMPTE_INSUFFISANT':
       return { acompteFormate: '', minimumFormate: euros(v), pourcentage: 0 };
     case 'ERR_ACOMPTE_SUPERIEUR_TOTAL':
       return { acompteFormate: '', totalFormate: euros(v) };
@@ -69,10 +69,10 @@ function parametres(s: S, uniteQuantite: string): Record<string, unknown> {
       return { totalFormate: euros(v) };
     case 'ERR_SOUS_PLANCHER':
       return entier(v) === null ? {} : { plancherFormate: euros(v) };
-    case 'ERR_HEURE_RETRAIT_TROP_TOT': {
+    case 'ERR_HEURE_HORS_OUVERTURE': {
       const m = lireHeure(v);
-      // Seul le libellé du bouton est construit ici : le jour n'y figure pas.
-      return { heureMin: m === null ? String(v ?? '') : formaterHeure(m), jour: '' };
+      // Seul le libellé du bouton est construit ici : les horaires n'y figurent pas.
+      return { ouverture: '', fermeture: '', jour: '', heureProposee: m === null ? String(v ?? '') : formaterHeure(m) };
     }
     case 'ERR_TAILLE_NON_STANDARD':
       // Une seule taille proposée par bouton (l'écran en montre deux : dessous / dessus).

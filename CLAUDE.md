@@ -87,8 +87,10 @@ données arrivent aussi par la synchronisation.
 retirer le mercredi matin impliquerait une production le mardi (fermé). Les délais se
 comptent donc en **jours ouvrés**, jamais en heures calendaires.
 
-Jours fériés et fermetures exceptionnelles : même mécanisme. La liste des jours fermés est
-une **donnée**, pas une constante.
+Fermetures exceptionnelles : même mécanisme. La liste des jours fermés est une **donnée**,
+pas une constante. Décision du propriétaire (18/10/2026) : **seul le mardi est fermé** — les
+jours fériés sont ouverts, pas de congés. La liste reste disponible (vide) pour une
+fermeture exceptionnelle décidée par le gérant.
 
 ## LOI N°4 — « Favoris » n'est pas une catégorie
 
@@ -125,6 +127,10 @@ vitrine = 31,00 €. Le même commandé en régime C = 4,50 €/pers minimum, pr
 → `total = nb_parts × prix_par_personne`, le prix/personne pré-rempli au plancher.
 → Un prix/personne saisi **sous** le plancher est refusé (`ERR_SOUS_PLANCHER`), sauf
   déverrouillage explicite par le gérant, tracé avec son identité.
+→ Exception (décision du propriétaire, 18/10/2026, R60) : un gâteau simple commandé dans une
+  taille qui existe au comptoir (Bavarois 4/6/8/10, Crème fraîche 6/8) devient le gâteau du
+  comptoir, au prix exact du tarif, **non modifiable**. Correspondance = donnée explicite
+  (`src/catalogue/correspondancesComptoir.ts`), jamais déduite du nom.
 → Chaque produit porte un `regime_prix` explicite. **Le régime ne se déduit jamais du nom.**
 
 ## LOI N°7 — Tous les minimums sont BLOQUANTS
@@ -209,13 +215,13 @@ Ces points ont un effet direct sur l'application :
 
 | Point du règlement | Règle appliquée |
 |---|---|
-| Acompte de **minimum 50 %** pour valider toute commande | Bloquant sous 50 % du total, sortie « Mettre l'acompte à X € » |
-| Commande pour **le lendemain** | **Acceptée** (décision du propriétaire, 15/10/2026 : « généralement acceptées ») — simple information « commande pour demain : prévenir l'atelier », sans blocage ni code |
-| Commandes pâtisserie disponibles à partir de **9h en semaine, 12h le week-end** | Heure de retrait plus tôt refusée — horaires = **donnée**, jamais en dur. **Réglable par le gérant, jour par jour** (lundi … dimanche) **et par date exceptionnelle** (ex. un samedi à 11h au lieu de 12h), depuis l'écran des réglages (décision du 15/10/2026) |
+| Acompte de **minimum 50 %** pour valider toute commande | **Avertissement** sous 50 % du total (`AVERT_ACOMPTE_INSUFFISANT`, « essayez d'obtenir 50 % »), sortie « Mettre l'acompte à X € » — la commande est acceptée (décision du propriétaire, 18/10/2026). Acompte supérieur au total : bloquant |
+| Commande pour **le jour même** ou **le lendemain** | **Acceptée** (décisions du propriétaire, 15/10 et 18/10/2026) — simple information « prévenez l'atelier », sans blocage ni code. Aucun délai minimum par défaut, y compris gâteau de mariage / pièce montée ; le délai des gâteaux à étages est un **réglage** du gérant (défaut 0 jour) |
+| Retrait pendant les **heures d'ouverture du magasin** (remplace la règle « pâtisserie 9h / 12h », décision du 18/10/2026) | Pour **tous** les produits : heure de retrait hors ouverture refusée (`ERR_HEURE_HORS_OUVERTURE`), sortie vers l'heure d'ouverture ou de fermeture la plus proche. Défaut **6h00 – 20h00**, horaires = **donnée**, réglables par le gérant **jour par jour** et **par date exceptionnelle**. Heure de retrait facultative |
 | Tailles de gâteau « bizarres » (Bavarois 3P, 7P…) : généralement pas possibles | Nombre de parts d'un gâteau simple sur commande limité aux **tailles standard** (liste = donnée réglable, par défaut 4, 6, 8, 10, 15, 20, 25, 30 — confirmé par le propriétaire). Une autre taille est **refusée** avec la sortie en un geste vers la taille standard la plus proche en dessous et au-dessus (« Passer à 6 » / « Passer à 8 ») ; exception possible par le code gérant, tracée (décision du 15/10/2026) |
 | Commande inhabituelle (ingrédients, moules spéciaux…) : demander d'abord au responsable | Avertissement avec sortie « Appeler le responsable / passer par WhatsApp » |
 | Toujours indiquer nom, numéro, date et heure de prise de commande | Nom et téléphone obligatoires ; date/heure de prise enregistrées automatiquement |
-| Inventaire à **20h00, jamais avant** | Avertissement si un inventaire est commencé avant l'heure de fermeture (donnée) |
+| Inventaire à **20h00, jamais avant** | Avertissement si un inventaire est commencé avant l'heure de fermeture du jour (heures d'ouverture, donnée) |
 | Vérifier devant le client que tous les produits sont remis | Liste à cocher au moment de la remise de la commande |
 
 Les autres points (tenue, hygiène, pauses, respect…) ne sont pas des règles de saisie : ils

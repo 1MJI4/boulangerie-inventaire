@@ -135,15 +135,6 @@ export function fermetureDuJour(date: DateISO, joursFermes: readonly JourFerme[]
   return fermetures[0]?.f ?? null;
 }
 
-/**
- * Vrai si une ligne ACTIVE de nature `ferie` couvre `date` — que le magasin
- * soit fermé ce jour-là ou rouvert par une `ouverture_exceptionnelle`.
- * Sert aux horaires de retrait (un férié ouvert suit l'horaire du week-end).
- */
-export function estJourFerie(date: DateISO, joursFermes: readonly JourFerme[]): boolean {
-  return joursFermes.some((f) => f.nature === 'ferie' && f.actif !== false && couvre(f, date));
-}
-
 /** Règle : le magasin est-il fermé ce jour-là ? (LOI 3 — la liste est une donnée.) */
 export function estJourFerme(date: DateISO, joursFermes: readonly JourFerme[]): boolean {
   return fermetureDuJour(date, joursFermes) !== null;
@@ -237,6 +228,7 @@ export function ajouterJoursOuvres(
  * Règle R2d — cascade de production : on produit la veille OUVERTE du retrait.
  * Retrait le lendemain d'un jour fermé → production l'avant-veille (ou avant).
  * `null` si aucun jour ouvert dans l'horizon.
+ * Ne tient pas compte de la date de prise : voir `dateProduction`.
  */
 export function veilleOuvree(date: DateISO, joursFermes: readonly JourFerme[]): DateISO | null {
   let d = date;
@@ -248,14 +240,33 @@ export function veilleOuvree(date: DateISO, joursFermes: readonly JourFerme[]): 
 }
 
 /**
+ * Règle R2d (suite, décision du propriétaire du 18/10/2026 : retrait le jour
+ * même autorisé) : jour de production d'une commande = veille ouverte du
+ * retrait, mais JAMAIS avant le jour de la prise — une commande prise le jour
+ * même (ou la veille d'un retrait qui suit un jour fermé) se produit le jour de
+ * la prise ; sinon elle tomberait sur une fiche de production déjà passée.
+ * `null` si aucun jour ouvert dans l'horizon.
+ */
+export function dateProduction(
+  dateRetrait: DateISO,
+  datePrise: DateISO,
+  joursFermes: readonly JourFerme[],
+): DateISO | null {
+  const veille = veilleOuvree(dateRetrait, joursFermes);
+  if (veille === null) return null;
+  return veille < datePrise && datePrise <= dateRetrait ? datePrise : veille;
+}
+
+/**
  * Règle R2 : le retrait doit laisser au moins `delaiJoursOuvres` jours ouvrés
  * après la prise de commande (jours fermés exclus, jamais en heures calendaires).
  * Niveau : BLOQUANT, avec la première date possible en `valeurProposee`.
  *
- * Le délai est une DONNÉE fournie par l'appelant (cf. DELAIS_HYPOTHESE,
- * HYPOTHÈSE À VALIDER — QUESTIONS-GERANT n°17).
- * Avec un délai ≥ 1, la veille ouvrée du retrait (jour de production) est
- * toujours ≥ la date de prise : la cascade R2d est couverte.
+ * Le délai est une DONNÉE fournie par l'appelant : 0 pour tous les régimes
+ * (retrait le jour même autorisé, décision du propriétaire du 18/10/2026) ;
+ * gâteau à étages = réglage du gérant (`reglement:delai_gateau_etages_jours`).
+ * Avec un délai 0, la production d'un retrait du jour même se fait le jour
+ * même : voir `dateProduction` (cascade R2d).
  */
 export function validerDelai(
   dateRetrait: DateISO,

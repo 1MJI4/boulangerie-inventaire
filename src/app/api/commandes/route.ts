@@ -20,8 +20,9 @@
 // enregistré est conservé tel quel s'il couvre encore ce qui est demandé
 // (src/components/commande/accords.ts) : ligne → même produit, même prix,
 // quantité égale ou inférieure ; remise → même total convenu ET même total
-// au tarif. Retrait le LENDEMAIN : accepté sans le gérant (décision du
-// 15/10/2026, LOI 11) — plus aucun accord lu ni enregistré pour cela. Sinon : code gérant redemandé.
+// au tarif. Retrait le JOUR MÊME ou le LENDEMAIN : accepté sans le gérant
+// (décisions du 15/10/2026 et du 18/10/2026, LOI 11) — plus aucun accord lu ni
+// enregistré pour cela. Sinon : code gérant redemandé.
 // Commande prise avant le lot 2 (lignes sans produit du catalogue) : sans le
 // gérant, seuls les champs sans effet sur les prix se modifient (réserve 4).
 // HYPOTHÈSE À VALIDER : identité déclarée (nom saisi), pas de compte individuel.
@@ -61,7 +62,7 @@ import { formaterQuantite } from '@/domaine/unites';
 import { signaler } from '@/domaine/messages';
 import type { Echec } from '@/domaine/resultat';
 import type { Deverrouillage } from '@/domaine/types';
-import { chargerContexte, priseBruxelles, resoudreServeur } from './contexteServeur';
+import { chargerContexte, correspondancesServeur, priseBruxelles, resoudreServeur } from './contexteServeur';
 
 const inclusions = {
   lignes: { orderBy: { ordre: 'asc' } as const, include: { produitCatalogue: { select: { cleCatalogue: true } } } },
@@ -313,11 +314,15 @@ async function controler(
   const contexte = await chargerContexte(route);
   const ids = saisie.lignes.flatMap((l) => (l.produitId ? [l.produitId] : []));
   const { resoudre, fiches } = await resoudreServeur(ids, saisie.datePrise);
+  // R60 : gâteau sur commande au prix du comptoir (correspondances contrôlées en base).
+  const correspondances = await correspondancesServeur(ids, saisie.datePrise, contexte.reglement.taillesGateau, route);
+  if (!correspondances.ok) return { resultat: correspondances, fiches };
   const resultat = controlerCommande(saisie, {
     resoudre,
     joursFermes: contexte.joursFermes,
     delais: contexte.delais,
     reglement: contexte.reglement,
+    correspondancesComptoir: correspondances.donnees,
     aujourdhui,
     existante,
     joursAvantArchivage: JOURS_AVANT_ARCHIVAGE,
@@ -617,14 +622,11 @@ export async function PATCH(request: Request) {
           const telephone = validerTelephone(texte(corps.telephone, 30));
           if (!telephone.ok) return refus(telephone, route);
           const contexte = await chargerContexte(route);
-          // HYPOTHÈSE À VALIDER : le produit d'une ligne ancienne est inconnu du
-          // catalogue ; on la traite comme de la pâtisserie (horaire le plus strict).
+          // Heure facultative, dans les heures d'ouverture du jour (R54, 18/10/2026).
           const heure = validerHeureRetrait(
             etatExistant.retraitLe,
             texte(corps.heureRetrait, 5) || null,
-            existante.lignes.map(() => ({ estPatisserie: true })),
-            contexte.reglement.horairesRetraitPatisserie,
-            contexte.joursFermes,
+            contexte.reglement.horairesOuverture,
           );
           if (!heure.ok) return refus(heure, route);
           const texteGateau = texte(corps.texteGateau, 200) || null;

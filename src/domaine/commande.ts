@@ -9,27 +9,30 @@
 //
 // Ordre des contrôles = ordre des champs à l'écran : statut/modification,
 // client, téléphone, date et heure de prise (automatiques), date de retrait,
-// heure de retrait, lignes (une par une : quantité, minimum, taille standard, prix), délai, lendemain, prix convenu,
+// heure de retrait, lignes (une par une : quantité, minimum, taille standard, prix du comptoir, prix), délai, jour même /
+// lendemain (informations), prix convenu,
 // acompte, puis les signalements non bloquants (écriture, commande inhabituelle).
 
 import type { Echec, Resultat, Signalement } from './resultat.ts';
 import { succes } from './resultat.ts';
 import { signaler } from './messages.ts';
 import { multiplier, resteDu, somme } from './argent.ts';
-import { estDateISO, formaterDate, validerDateRetrait, validerDelai, veilleOuvree } from './calendrier.ts';
+import { dateProduction, estDateISO, formaterDate, validerDateRetrait, validerDelai } from './calendrier.ts';
 import type { JourFerme } from './calendrier.ts';
 import { FAMILLES_GATEAU } from './constantes.ts';
 import type { DelaisCommande, ReglementCommande } from './constantes.ts';
 import { controlerSupplements, gateauxDeLigne } from './supplements.ts';
 import { validerQuantiteMin, validerMaximum, validerTailleGateau } from './minimums.ts';
 import { deverrouillageValide, prixLigne } from './regimes.ts';
+import { gateauSurCommandeDe, validerPrixComptoir } from './prixComptoir.ts';
+import type { CorrespondanceComptoir } from './prixComptoir.ts';
 import { validerQuantite } from './unites.ts';
 import {
   controlerCommandeInhabituelle,
-  estPatisserie,
   heureChamp,
   lireHeure,
   validerHeureRetrait,
+  validerJourMeme,
   validerLendemain,
 } from './reglement.ts';
 import {
@@ -100,8 +103,6 @@ export type LigneControlee = {
   nbSymboles: number | null;
   /** Délai de cette ligne, en jours ouvrés. */
   delaiJoursOuvres: number;
-  /** Pâtisserie (horaires de retrait R54) : donnée du produit, ligne libre = oui. */
-  estPatisserie: boolean;
   /** Gâteaux apportés par la ligne, pour les suppléments au forfait (R7, supplements.ts). */
   nbGateaux: number;
   versionCode?: string;
@@ -121,7 +122,7 @@ export type CommandeSaisie = {
   /** Heure locale de prise de commande « HH:MM », automatique comme datePrise (R56). */
   heurePrise: string;
   dateRetrait: DateISO;
-  /** Heure de retrait « HH:MM ». Obligatoire si la commande contient de la pâtisserie (R54). */
+  /** Heure de retrait « HH:MM », FACULTATIVE ; si donnée, dans les heures d'ouverture du jour (R54). */
   heureRetrait?: string | null;
   /**
    * @deprecated R53 : le lendemain est accepté sans accord depuis le 15/10/2026.
@@ -146,7 +147,7 @@ export type ContexteCommande = {
   resoudre: ResoudreProduit;
   /** Lignes de la table JourFerme (dates « AAAA-MM-JJ »). */
   joursFermes: readonly JourFerme[];
-  /** Délais en jours ouvrés (DELAIS_HYPOTHESE en attendant le gérant). */
+  /** Délais en jours ouvrés (DELAIS_PAR_DEFAUT + délai « gâteau à étages » réglé par le gérant). */
   delais: DelaisCommande;
   /** Date de la saisie (création ou modification). Défaut : datePrise. */
   aujourdhui?: DateISO;
@@ -154,8 +155,14 @@ export type ContexteCommande = {
   existante?: EtatCommandeExistante | null;
   /** Donnée (aujourd'hui 2, src/lib/commandes.ts). Requis si `existante`. */
   joursAvantArchivage?: number;
-  /** Chiffres du règlement intérieur (REGLEMENT_COMMANDE) : acompte minimum, horaires pâtisserie. */
+  /** Chiffres du règlement intérieur (REGLEMENT_COMMANDE) : acompte minimum, heures d'ouverture, tailles. */
   reglement: ReglementCommande;
+  /**
+   * R60 : gâteaux sur commande vendus au prix du comptoir dans certaines tailles
+   * (donnée du catalogue, CORRESPONDANCES_COMPTOIR de src/catalogue). Liste vide =
+   * règle sans objet.
+   */
+  correspondancesComptoir: readonly CorrespondanceComptoir[];
 };
 
 export type CommandeControlee = {
@@ -170,14 +177,14 @@ export type CommandeControlee = {
   acompteCentimes: number;
   resteDuCentimes: number;
   dateRetrait: DateISO;
-  /** « HH:MM », ou null si non précisée (commande sans pâtisserie). */
+  /** « HH:MM », ou null si non précisée (facultative). */
   heureRetrait: string | null;
   /**
    * @deprecated R53 : plus jamais renseigné (lendemain accepté sans accord,
    * 15/10/2026). Gardé le temps que la route et la base retirent le champ.
    */
   accordLendemain?: Deverrouillage;
-  /** Veille ouvrée du retrait (fiche de production). */
+  /** Veille ouvrée du retrait, jamais avant le jour de la saisie (fiche de production, R2d). */
   dateProduction: DateISO | null;
   delaiJoursOuvres: number;
   remise?: Deverrouillage;
@@ -226,7 +233,7 @@ export function controlerLigne(
   saisie: LigneSaisie,
   index: number,
   datePrise: DateISO,
-  ctx: Pick<ContexteCommande, 'resoudre' | 'delais' | 'reglement'>,
+  ctx: Pick<ContexteCommande, 'resoudre' | 'delais' | 'reglement' | 'correspondancesComptoir'>,
 ): Resultat<LigneControlee> {
   const p = `lignes[${index}].`;
   const r = controlerLigneSansPrefixe(saisie, index, datePrise, ctx);
@@ -238,7 +245,7 @@ function controlerLigneSansPrefixe(
   saisie: LigneSaisie,
   index: number,
   datePrise: DateISO,
-  ctx: Pick<ContexteCommande, 'resoudre' | 'delais' | 'reglement'>,
+  ctx: Pick<ContexteCommande, 'resoudre' | 'delais' | 'reglement' | 'correspondancesComptoir'>,
 ): Resultat<LigneControlee> {
   const produitId = saisie.produitId?.trim() || null;
   const libelleLibre = saisie.libelle?.trim() || '';
@@ -264,6 +271,10 @@ function controlerLigneSansPrefixe(
   const taille = validerTailleGateau(fiche, saisie.quantite, ctx.reglement.taillesGateau, saisie.deverrouillageTaille);
   if (!taille.ok) return taille;
   signalements.push(...taille.signalements);
+
+  // R60 : taille qui existe au comptoir → la ligne doit être le gâteau du comptoir.
+  const comptoir = validerPrixComptoir(fiche, saisie.quantite, ctx.correspondancesComptoir);
+  if (!comptoir.ok) return comptoir;
 
   const prixFixe = !(fiche.produit.regimePrix === 'C' && fiche.prix.prixEstPlancher);
   if (prixFixe && saisie.prixUnitaireCentimes != null && saisie.prixUnitaireCentimes !== fiche.prix.prixCentimes) {
@@ -300,7 +311,6 @@ function controlerLigneSansPrefixe(
     totalCentimes: prix.donnees.totalCentimes,
     nbSymboles: nbSymboles ?? null,
     delaiJoursOuvres: delaiPourFiche(fiche, ctx.delais),
-    estPatisserie: estPatisserie(fiche.produit, ctx.reglement.horairesRetraitPatisserie.familles),
     nbGateaux: gateauxDeLigne(
       {
         regimePrix: prix.donnees.regimePrix,
@@ -350,7 +360,6 @@ function controlerLigneLibre(saisie: LigneSaisie, libelle: string, delais: Delai
     totalCentimes: multiplier(saisie.quantite, prixSaisi),
     nbSymboles: null,
     delaiJoursOuvres: delaiMaximal(delais),
-    estPatisserie: estPatisserie(null, []),
     // Ligne libre : contenu inconnu, ne porte pas de supplément (le plus sûr).
     nbGateaux: 0,
     autorisation: { par: saisie.deverrouillage.par.trim(), le: saisie.deverrouillage.le },
@@ -396,17 +405,14 @@ function analyser(c: CommandeSaisie, ctx: ContexteCommande): Analyse {
   garder(validerTelephone(c.telephone));
   const dateRetrait = garder(validerDateRetrait(c.dateRetrait, ctx.joursFermes, aujourdhui));
 
-  // Lignes contrôlées d'abord (l'heure de retrait dépend de leur contenu),
-  // rapportées ensuite dans l'ordre de l'écran.
-  const resultatsLignes = c.lignes.map((l, i) => controlerLigne(l, i, c.datePrise, ctx));
-  const reperes = resultatsLignes.flatMap((r) => (r.ok ? [{ estPatisserie: r.donnees.estPatisserie }] : []));
+  // Heure de retrait (R54) : facultative, dans les heures d'ouverture du jour.
   let heureRetrait: string | null = null;
   if (dateRetrait) {
-    const h = garder(
-      validerHeureRetrait(dateRetrait, c.heureRetrait, reperes, ctx.reglement.horairesRetraitPatisserie, ctx.joursFermes),
-    );
+    const h = garder(validerHeureRetrait(dateRetrait, c.heureRetrait, ctx.reglement.horairesOuverture));
     if (h !== undefined) heureRetrait = h;
   }
+
+  const resultatsLignes = c.lignes.map((l, i) => controlerLigne(l, i, c.datePrise, ctx));
 
   if (c.lignes.length === 0) {
     blocages.push(signaler('ERR_COMMANDE_VIDE', {}, { champ: 'lignes' }));
@@ -423,15 +429,19 @@ function analyser(c: CommandeSaisie, ctx: ContexteCommande): Analyse {
   if (lignesOk) blocages.push(...controlerSupplements(lignes));
   signalements.push(...reperesDoublons(lignes.map((l) => ({ produitId: l.produitId, libelle: l.libelle }))));
 
-  // Délai (n°17) puis lendemain (R53). Le délai refuse le jour même (et un
-  // gâteau à étages trop tôt) ; le lendemain, s'il passe le délai, est ACCEPTÉ
-  // avec une simple information (décision du propriétaire du 15/10/2026).
+  // Délai (n°17) puis jour même / lendemain (R53b, R53). Délai 0 par défaut
+  // (jour même autorisé, décision du propriétaire du 18/10/2026) ; seul un
+  // gâteau à étages peut être refusé, si le gérant a réglé un délai. Jour même
+  // et lendemain ACCEPTÉS avec une simple information (15/10 et 18/10/2026).
   const delai = lignes.length > 0 ? Math.max(...lignes.map((l) => l.delaiJoursOuvres)) : 0;
   let delaiOk = true;
   if (dateRetrait && lignes.length > 0) {
     delaiOk = garder(validerDelai(dateRetrait, aujourdhui, delai, ctx.joursFermes)) !== undefined;
   }
-  if (dateRetrait && delaiOk) garder(validerLendemain(dateRetrait, aujourdhui, ctx.joursFermes));
+  if (dateRetrait && delaiOk) {
+    garder(validerJourMeme(dateRetrait, aujourdhui, ctx.joursFermes));
+    garder(validerLendemain(dateRetrait, aujourdhui, ctx.joursFermes));
+  }
 
   const totalTarif = somme(lignes.map((l) => l.totalCentimes));
   let total = totalTarif;
@@ -443,9 +453,13 @@ function analyser(c: CommandeSaisie, ctx: ContexteCommande): Analyse {
     if (a !== undefined) acompte = a;
   }
 
-  // Gâteau sur commande = ligne vendue par personne (régime C) : lu dans les
-  // données, jamais dans le libellé.
-  const contientGateau = lignes.some((l) => l.regimePrix === 'C' && l.basePrix === 'personne');
+  // Gâteau sur commande = ligne vendue par personne (régime C), ou gâteau du
+  // comptoir qui le remplace (R60) : lu dans les données, jamais dans le libellé.
+  const contientGateau = lignes.some(
+    (l) =>
+      (l.regimePrix === 'C' && l.basePrix === 'personne') ||
+      gateauSurCommandeDe(l.produitId, ctx.correspondancesComptoir) !== null,
+  );
   signalements.push(
     ...controlerEcriture({ contientGateau, texteGateau: c.texteGateau, sansEcriture: c.sansEcriture }),
     ...controlerCommandeInhabituelle({
@@ -466,7 +480,7 @@ function analyser(c: CommandeSaisie, ctx: ContexteCommande): Analyse {
     resteDuCentimes: resteDu(total, acompte),
     dateRetrait,
     heureRetrait,
-    dateProduction: veilleOuvree(dateRetrait, ctx.joursFermes),
+    dateProduction: dateProduction(dateRetrait, aujourdhui, ctx.joursFermes),
     delaiJoursOuvres: delai,
   };
   if (total < totalTarif && c.remise) donnees.remise = { par: c.remise.par.trim(), le: c.remise.le };

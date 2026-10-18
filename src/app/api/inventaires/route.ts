@@ -23,7 +23,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { reponseEchec, traiterErreur } from '@/lib/erreurBase';
 import { journaliser } from '@/lib/journal';
-import { estUneRupture, journeeProduction } from '@/lib/dateProduction';
+import { dateDuJour, estUneRupture, journeeProduction } from '@/lib/dateProduction';
 import { estPoste } from '@/lib/postes';
 import { exigerRole } from '@/lib/auth/garde';
 import { lireReglages } from '@/lib/serveur/reglages';
@@ -39,6 +39,7 @@ import {
 } from '@/lib/inventaire/lot';
 import { signaler } from '@/domaine/messages';
 import { totalInventaire } from '@/domaine/inventaire';
+import { horairesOuvertureDuJour } from '@/domaine/reglement';
 import type { Unite } from '@/domaine/types';
 import type { Echec } from '@/domaine/resultat';
 
@@ -334,16 +335,19 @@ export async function POST(request: Request) {
 
 /**
  * Heure de fermeture (LOI 11, R57) pour l'avertissement « inventaire avant
- * fermeture ». Lue seulement si l'écran la demande (`reglages=1`), en
+ * fermeture » : la FERMETURE DU JOUR (heures d'ouverture réglées par le gérant,
+ * jour par jour et par date exceptionnelle — décision du 18/10/2026), calculée
+ * par le domaine. Lue seulement si l'écran la demande (`reglages=1`), en
  * parallèle de la requête principale : aucun aller-retour ajouté.
  * Réglage absent ou illisible → pas d'en-tête, l'écran retombe sur
  * HEURE_FERMETURE_HYPOTHESE (jamais d'échec de l'inventaire pour un avertissement).
  */
 async function heureFermeture(): Promise<string | null> {
   try {
-    return (await lireReglages(prisma)).heureFermeture;
+    const { reglement } = await lireReglages(prisma);
+    return horairesOuvertureDuJour(dateDuJour(), reglement.horairesOuverture).fermeture;
   } catch (e) {
-    journaliser({ niveau: 'avertissement', code: 'ERR_CONFIGURATION_SERVEUR', route: 'GET /api/inventaires', piste: 'Réglage reglement:heure_fermeture illisible : heure par défaut utilisée.', detail: e });
+    journaliser({ niveau: 'avertissement', code: 'ERR_CONFIGURATION_SERVEUR', route: 'GET /api/inventaires', piste: 'Heures d’ouverture (reglement:ouverture_*) illisibles : heure de fermeture par défaut utilisée.', detail: e });
     return null;
   }
 }

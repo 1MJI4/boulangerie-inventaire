@@ -117,34 +117,31 @@ export type ParametresMessages = {
   /** `etat` : « annulée », « remise au client », « archivée », « anonymisée ». */
   ERR_COMMANDE_FIGEE: { etat: string };
   /**
-   * LOI 11 — acompte minimum. Montants déjà formatés par `formaterEuros` ;
-   * `pourcentage` : taux minimum (donnée fournie par regles-metier, jamais en dur ici).
-   * Refus de la base : `minimumFormate` et `pourcentage` tirés du DETAIL, pas
-   * d'`acompteFormate` ; chacun peut manquer → variante générique.
-   */
-  ERR_ACOMPTE_INSUFFISANT: { acompteFormate?: string; minimumFormate?: string; pourcentage?: number };
-  /**
    * OBSOLÈTE (R53 : lendemain accepté depuis le 15/10/2026, plus émis par le domaine).
    * Gardé tant que le déclencheur de la base (migration 20261015140000) et
    * src/lib/erreurBase.ts le produisent encore. À retirer avec eux.
    */
   ERR_COMMANDE_LENDEMAIN: { dateRetrait?: string };
   /**
-   * LOI 11 — heure de retrait avant l'ouverture des commandes pâtisserie.
-   * `heureMin` déjà formatée (« 9h00 ») ; horaires = donnée fournie par l'appelant.
+   * Heure de retrait hors des heures d'ouverture du magasin (décision du
+   * propriétaire, 18/10/2026). Heures déjà formatées (« 6h00 ») ; `jour` : « le
+   * samedi », ou la date en clair pour une date exceptionnelle (« le jeudi 24
+   * décembre »), fourni par regles-metier. `heureProposee` : borne la plus
+   * proche, déjà formatée (libellé du bouton).
    */
-  /**
-   * `heureMin` : première heure de retrait, déjà formatée (« 12h00 »).
-   * `jour` : nom du jour de retrait (« samedi »), fourni par regles-metier.
-   * Horaires réglables jour par jour et par date exceptionnelle (15/10/2026).
-   */
-  ERR_HEURE_RETRAIT_TROP_TOT: { heureMin: string; jour: string };
+  ERR_HEURE_HORS_OUVERTURE: { ouverture: string; fermeture: string; jour: string; heureProposee: string };
   /**
    * LOI 11 — gâteau simple sur commande hors des tailles standard (donnée réglable).
    * `parts` : taille demandée ; `inferieure` / `superieure` : tailles standard les
    * plus proches, `null` s'il n'y en a pas de ce côté.
    */
   ERR_TAILLE_NON_STANDARD: { parts: number; inferieure: number | null; superieure: number | null };
+  /**
+   * R60 — gâteau sur commande dans une taille qui existe au comptoir : il se vend
+   * comme le gâteau du comptoir (décision du 18/10/2026). `produit` : libellé du
+   * gâteau sur commande ; `parts` : taille demandée.
+   */
+  ERR_PRIX_COMPTOIR: { produit: string; parts: number };
   /** LOI 11 — décompte des articles devant le client non terminé à la remise. */
   ERR_DECOMPTE_INCOMPLET: { restants: number };
 
@@ -177,6 +174,12 @@ export type ParametresMessages = {
   AVERT_TAILLE_NON_STANDARD_AUTORISEE: { par: string };
   /** LOI 11 — commande inhabituelle (ingrédients, moules spéciaux…). */
   AVERT_COMMANDE_INHABITUELLE: Record<string, never>;
+  /**
+   * LOI 11 — acompte sous le pourcentage minimum : ACCEPTÉ, signalé, tracé
+   * (décision du propriétaire, 18/10/2026). Montants déjà formatés par
+   * `formaterEuros` ; `pourcentage` : donnée fournie par regles-metier.
+   */
+  AVERT_ACOMPTE_INSUFFISANT: { acompteFormate?: string; minimumFormate: string; pourcentage: number };
   /** LOI 11 — inventaire commencé avant l'heure de fermeture. `heureFermeture` déjà formatée (donnée). */
   AVERT_INVENTAIRE_AVANT_FERMETURE: { heureFermeture: string };
   /** `reference` : repère historique (moyenne arrondie) ou plafond, déjà formaté. */
@@ -196,6 +199,8 @@ export type ParametresMessages = {
    * `demain` : vrai seulement si le retrait est le lendemain CALENDAIRE de la prise.
    */
   INFO_COMMANDE_LENDEMAIN: { jour: string; demain: boolean };
+  /** Retrait le jour même de la prise : accepté (décision du propriétaire, 18/10/2026), l'atelier est prévenu. */
+  INFO_COMMANDE_JOUR_MEME: Record<string, never>;
 
   // --- Données incohérentes (famille 5) ---------------------------------------
   ERR_TARIF_ABSENT: { produit: string; date: string };
@@ -534,19 +539,6 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
 
 
   // --- Règlement intérieur (LOI 11) ------------------------------------------------
-  ERR_ACOMPTE_INSUFFISANT: {
-    niveau: 'bloquant',
-    cas: 'Acompte inférieur au pourcentage minimum du total (règlement intérieur, LOI 11).',
-    message: (p) =>
-      (p.pourcentage !== undefined
-        ? `L’acompte doit être d’au moins ${p.pourcentage} % du total pour valider la commande`
-        : `L’acompte est inférieur au minimum demandé pour valider la commande`) +
-      (p.acompteFormate ? ` (${p.acompteFormate} saisi)` : '') +
-      (p.minimumFormate
-        ? `. Demandez au client un acompte de ${p.minimumFormate} au minimum.`
-        : `. Demandez au client un acompte plus élevé ; en cas de doute, appelez le responsable.`),
-    correction: (p) => (p.minimumFormate ? `Mettre l’acompte à ${p.minimumFormate}` : 'Corriger l’acompte'),
-  },
   ERR_COMMANDE_LENDEMAIN: {
     niveau: 'bloquant',
     cas: 'OBSOLÈTE — refus du lendemain encore émis par la base ; le domaine l’accepte depuis le 15/10/2026 (LOI 11).',
@@ -558,13 +550,12 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     correction: () => 'Saisir le code gérant',
     autreSortie: APPELER_LE_RESPONSABLE,
   },
-  ERR_HEURE_RETRAIT_TROP_TOT: {
+  ERR_HEURE_HORS_OUVERTURE: {
     niveau: 'bloquant',
-    cas: 'Heure de retrait avant l’heure d’ouverture des commandes pâtisserie (horaires = donnée, LOI 11).',
+    cas: 'Heure de retrait hors des heures d’ouverture du magasin (réglées par le gérant, décision du 18/10/2026).',
     message: (p) =>
-      `Les commandes pâtisserie sont disponibles à partir de ${p.heureMin} ce ${p.jour}. ` +
-      `Choisissez une heure de retrait à partir de ${p.heureMin}.`,
-    correction: (p) => `Passer à ${p.heureMin}`,
+      `Le magasin est ouvert de ${p.ouverture} à ${p.fermeture} ${p.jour} — choisissez une heure dans ces horaires.`,
+    correction: (p) => `Passer à ${p.heureProposee}`,
   },
   ERR_TAILLE_NON_STANDARD: {
     niveau: 'bloquant',
@@ -582,6 +573,14 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
       const t = p.superieure ?? p.inferieure;
       return t === null ? 'Choisir une taille standard' : `Passer à ${t} parts`;
     },
+  },
+  ERR_PRIX_COMPTOIR: {
+    niveau: 'bloquant',
+    cas: 'Gâteau sur commande dans une taille qui existe au comptoir : il se vend au prix du comptoir (décision du 18/10/2026).',
+    message: (p) =>
+      `« ${p.produit} » en ${p.parts} parts existe au comptoir : il se vend au prix du comptoir. ` +
+      `Prenez le gâteau du comptoir à la place.`,
+    correction: () => 'Prendre le gâteau du comptoir',
   },
   ERR_DECOMPTE_INCOMPLET: {
     niveau: 'bloquant',
@@ -705,6 +704,15 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
       `avant de la confirmer au client. Vous pouvez aussi l’inviter à passer commande par WhatsApp pour un meilleur suivi.`,
     autreSortie: 'Appeler le responsable ou proposer WhatsApp',
   },
+  AVERT_ACOMPTE_INSUFFISANT: {
+    niveau: 'avertissement',
+    cas: 'Acompte sous le pourcentage minimum du total : accepté, signalé et tracé (règlement intérieur, décision du propriétaire du 18/10/2026).',
+    message: (p) =>
+      `Essayez d’obtenir au moins ${p.pourcentage} % d’acompte (${p.minimumFormate})` +
+      (p.acompteFormate ? ` : ${p.acompteFormate} saisi` : '') +
+      `. La commande reste acceptée.`,
+    correction: (p) => `Mettre l’acompte à ${p.minimumFormate}`,
+  },
   AVERT_INVENTAIRE_AVANT_FERMETURE: {
     niveau: 'avertissement',
     cas: 'Inventaire commencé avant l’heure de fermeture (heure = donnée, LOI 11).',
@@ -755,6 +763,11 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
       p.demain
         ? `Commande pour demain : prévenez l’atelier.`
         : `Commande pour ${p.jour}, le prochain jour d’ouverture : prévenez l’atelier dès aujourd’hui.`,
+  },
+  INFO_COMMANDE_JOUR_MEME: {
+    niveau: 'information',
+    cas: 'Retrait le jour même de la prise de commande : accepté, l’atelier doit être prévenu tout de suite (décision du propriétaire, 18/10/2026).',
+    message: () => `Commande pour aujourd’hui : prévenez l’atelier tout de suite.`,
   },
 
   // --- Données incohérentes -----------------------------------------------------------

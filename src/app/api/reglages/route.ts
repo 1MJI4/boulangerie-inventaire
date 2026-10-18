@@ -1,8 +1,9 @@
 // src/app/api/reglages/route.ts
 //
-// Réglages du règlement intérieur modifiables par le gérant (LOI 11, décision
-// du 15/10/2026) : heure minimale de retrait des commandes pâtisserie jour par
-// jour, dates exceptionnelles, tailles standard des gâteaux simples.
+// Réglages du règlement intérieur modifiables par le gérant (LOI 11, décisions
+// du 15/10/2026 et du 18/10/2026) : heures d'ouverture du magasin jour par jour
+// et par date exceptionnelle (bornes de l'heure de retrait), tailles standard
+// des gâteaux simples, délai minimum d'un gâteau à étages (jours ouvrés).
 // Lecture : toute tablette (l'écran de commande en a besoin, via aussi
 // GET /api/calendrier). Écriture : gérant seulement.
 // Le format est contrôlé par `ecrireReglages` (src/lib/serveur/reglages.ts,
@@ -19,8 +20,13 @@ import { signaler } from '@/domaine/messages';
 
 /** Ce que voit l'écran : seulement ce qui se règle ici. */
 function vue(r: ReglagesReglement) {
-  const h = r.reglement.horairesRetraitPatisserie;
-  return { parJour: h.parJour, exceptions: h.exceptions, taillesGateau: r.reglement.taillesGateau };
+  const h = r.reglement.horairesOuverture;
+  return {
+    parJour: h.parJour,
+    exceptions: h.exceptions,
+    taillesGateau: r.reglement.taillesGateau,
+    delaiGateauEtagesJours: r.delaiGateauEtagesJours,
+  };
 }
 
 export async function GET(request: Request) {
@@ -36,8 +42,11 @@ export async function GET(request: Request) {
 
 /**
  * Corps accepté (chaque champ facultatif) :
- *   { parJour?: { "1": "HH:MM", … }, exceptions?: [{ date, heure }], taillesGateau?: number[] }
- * `exceptions` et `taillesGateau` remplacent la liste entière.
+ *   { parJour?: { "1": { ouverture: "HH:MM", fermeture: "HH:MM" }, … },
+ *     exceptions?: [{ date: "AAAA-MM-JJ", ouverture: "HH:MM", fermeture: "HH:MM" }],
+ *     taillesGateau?: number[], delaiGateauEtagesJours?: number }
+ * `parJour` peut ne contenir que les jours modifiés ; `exceptions` et
+ * `taillesGateau` remplacent la liste entière.
  */
 export async function PUT(request: Request) {
   const garde = exigerRole(request, 'gerant', 'modifier les réglages');
@@ -55,9 +64,12 @@ export async function PUT(request: Request) {
       return NextResponse.json(c, { status: statut });
     }
     const partiel: ReglagesPartiels = {};
-    if (corps.parJour !== undefined) partiel.retraitParJour = corps.parJour as ReglagesPartiels['retraitParJour'];
-    if (corps.exceptions !== undefined) partiel.retraitExceptions = corps.exceptions as ReglagesPartiels['retraitExceptions'];
+    if (corps.parJour !== undefined) partiel.ouvertureParJour = corps.parJour as ReglagesPartiels['ouvertureParJour'];
+    if (corps.exceptions !== undefined) partiel.ouvertureExceptions = corps.exceptions as ReglagesPartiels['ouvertureExceptions'];
     if (corps.taillesGateau !== undefined) partiel.taillesGateau = corps.taillesGateau as ReglagesPartiels['taillesGateau'];
+    if (corps.delaiGateauEtagesJours !== undefined) {
+      partiel.delaiGateauEtagesJours = corps.delaiGateauEtagesJours as ReglagesPartiels['delaiGateauEtagesJours'];
+    }
 
     const r = await ecrireReglages(prisma, partiel);
     if (!r.ok) {
