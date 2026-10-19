@@ -23,6 +23,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { confirmationReussie } from '@/lib/cloudprnt';
 
 // Accès : cette route est la seule exception au proxy (src/lib/auth/chemins.ts).
 // L'imprimante ne sait pas ouvrir de session : elle est authentifiée par la clé
@@ -138,7 +139,7 @@ export async function DELETE(requete: NextRequest, { params }: { params: Promise
   if (!cleValide(cle)) return new NextResponse('', { status: 403 });
 
   const code = requete.nextUrl.searchParams.get('code') ?? 'OK';
-  const reussi = code.toUpperCase() === 'OK';
+  const reussi = confirmationReussie(code);
 
   const travail = await prisma.travailImpression.findFirst({
     where: { statut: 'remis' },

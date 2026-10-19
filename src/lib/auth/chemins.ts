@@ -14,16 +14,12 @@ const RESSOURCE_STATIQUE_RACINE = /^\/[A-Za-z0-9._-]+\.(?:png|svg|ico|jpg|jpeg|w
  *  - la page de connexion (et ses Server Actions, qui y sont postées) ;
  *  - les ressources techniques de Next (`/_next/…`) et les fichiers statiques ;
  *  - `/api/cloudprnt/…` : l'imprimante ne sait pas ouvrir de session, elle est
- *    authentifiée par sa clé dans l'URL, vérifiée dans la route elle-même ;
- *    idem pour son relais `/.netlify/functions/cloudprnt-relais/…`.
+ *    authentifiée par sa clé dans l'URL, vérifiée dans la route elle-même.
  */
 export function estCheminPublic(chemin: string): boolean {
   if (chemin === CHEMIN_CONNEXION) return true;
   if (chemin.startsWith('/_next/')) return true;
   if (chemin.startsWith('/api/cloudprnt/')) return true;
-  // Relais CloudPRNT (netlify/functions/cloudprnt-relais.mjs) : il ne fait que
-  // transmettre à /api/cloudprnt/<clé>, qui vérifie la clé.
-  if (chemin.startsWith('/.netlify/functions/cloudprnt-relais/')) return true;
   if (RESSOURCE_STATIQUE_RACINE.test(chemin)) return true;
   return false;
 }
