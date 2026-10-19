@@ -12,6 +12,7 @@ test('exceptions explicites : connexion, statiques, imprimante', () => {
     '/icone-192.png',
     '/manifest.webmanifest',
     '/api/cloudprnt/une-cle',
+    '/.netlify/functions/cloudprnt-relais/une-cle',
   ]) {
     assert.equal(estCheminPublic(c), true, c);
   }
@@ -30,6 +31,8 @@ test('tout le reste est protégé par défaut', () => {
     '/api/impression',
     '/api/gestion',
     '/api/cloudprnt',
+    '/.netlify/functions/cloudprnt-relais',
+    '/.netlify/functions/autre-fonction/une-cle',
     '/api/nouvelle-route-oubliee',
     '/dossier/fichier.png',
     '/api/fichier.png',
