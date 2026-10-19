@@ -115,6 +115,12 @@ export function proxy(requete: NextRequest) {
 
 export const config = {
   // Tout passe par le proxy, sauf les fichiers compilés de Next (immuables,
-  // sans donnée). Les autres exceptions sont dans `estCheminPublic`, en clair.
-  matcher: ['/((?!_next/static|_next/image).*)'],
+  // sans donnée) et l'imprimante. Les autres exceptions sont dans
+  // `estCheminPublic`, en clair.
+  // Imprimante (18/10/2026) : sur Netlify, le proxy s'exécute en edge function
+  // et renvoie toute réponse « en morceaux » (chunked), sans Content-Length ;
+  // la TSP100IV imprime alors le premier ticket et reste bloquée. Ses adresses
+  // (route CloudPRNT et son relais) ne passent donc pas du tout par le proxy :
+  // elles sont authentifiées par la clé, vérifiée dans la route.
+  matcher: ['/((?!_next/static|_next/image|api/cloudprnt/|\\.netlify/functions/cloudprnt-relais/).*)'],
 };
