@@ -16,6 +16,7 @@ import { useEquipe } from '@/lib/vendeurs';
 import { useMemoireLocale } from '@/lib/memoireLocale';
 import { CSS_TICKET, Ticket, reglesPagesTicket } from '@/components/TicketCommande';
 import { ApercuReseau } from '@/components/ApercuReseau';
+import { dateRetraitTicket, demandeAConfirmer, estExemplaireInterne, mentionHeureRetrait } from '@/lib/ticketCanvas';
 import { depuisApi, messageConfirmation, type Commande, type CommandeApi, type ModePaiement } from '@/lib/commandes';
 import { formaterEuros, resteDu } from '@/domaine/argent';
 import { formaterQuantite, totalLigne } from '@/domaine/unites';
@@ -346,9 +347,11 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
 
       <div className="bon-retrait">
         <span>Pour le</span>
-        <b>{formaterDateCourte(commande.retraitLe)}</b>
-        <span>à</span>
-        <b className="chiffres">{commande.retraitHeure}</b>
+        {/* « SAMEDI 24/10 » : jour en toutes lettres (domaine), forme courte faute de place en A6. */}
+        <b>{dateRetraitTicket(commande.retraitLe).courte}</b>
+        {mentionHeureRetrait(commande.retraitHeure) ? (
+          <b className="chiffres">{mentionHeureRetrait(commande.retraitHeure)}</b>
+        ) : null}
       </div>
 
       <div className="bon-produits">
@@ -360,7 +363,7 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
               {ligne.libelle}
               {ligne.precision ? ` — ${ligne.precision}` : ''}
               {/* Ligne libre (hors catalogue) : prix fixé avec le gérant, à confirmer. */}
-              {ligne.ligneLibreAutoriseePar ? ' — à confirmer par le pâtissier' : ''}
+              {ligne.ligneLibreAutoriseePar && estExemplaireInterne(destination) ? ' — à confirmer par le pâtissier' : ''}
             </span>
             <span>{montantLigne(ligne)}</span>
           </div>
@@ -380,7 +383,7 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
         </div>
       ) : null}
 
-      {commande.demandeInhabituelle || commande.gateauComplexe ? (
+      {demandeAConfirmer(commande, destination) ? (
         <div className="bon-mention">
           <span>Inhabituelle</span>
           <b>À CONFIRMER — PRIX ET FAISABILITÉ</b>
@@ -442,12 +445,6 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
 function formaterDate(iso: string): string {
   const d = new Date(iso);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-}
-
-function formaterDateCourte(date: string): string {
-  const [a, m, j] = date.split('-');
-  const jour = new Date(`${date}T12:00:00Z`).toLocaleDateString('fr-BE', { weekday: 'short' });
-  return `${jour} ${j}/${m}/${a.slice(2)}`;
 }
 
 /* ------------------------------------------------------------------- CSS */

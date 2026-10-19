@@ -19,6 +19,7 @@
 import { formaterEuros, type Commande } from '@/lib/commandes';
 import {
   MENTION_LIGNE_LIBRE,
+  dateRetraitTicket,
   demandeAConfirmer,
   formaterLigneTicket,
   mentionHeureRetrait,
@@ -56,9 +57,9 @@ export function Ticket({
 
       <div className="tk-dest">{destination}</div>
 
+      {/* Numéro en petit (19/10/2026) : toujours présent, la place va au retrait. */}
       <div className="tk-numero">
-        <span>Commande n°</span>
-        <b>{commande.numero}</b>
+        Commande n° <b>{commande.numero}</b>
       </div>
 
       <div className="tk-meta">
@@ -77,7 +78,7 @@ export function Ticket({
 
       <div className="tk-retrait">
         <span>Pour le</span>
-        <b>{formaterDateCourte(commande.retraitLe)}</b>
+        <b>{dateRetraitTicket(commande.retraitLe).longue}</b>
         {heure ? <i>{heure}</i> : null}
       </div>
 
@@ -177,12 +178,6 @@ function formaterDate(iso: string): string {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
-function formaterDateCourte(date: string): string {
-  const [a, m, j] = date.split('-');
-  const jour = new Date(`${date}T12:00:00Z`).toLocaleDateString('fr-BE', { weekday: 'short' });
-  return `${jour} ${j}/${m}/${a.slice(2)}`;
-}
-
 /* ------------------------------------------------------------------- CSS */
 
 /**
@@ -229,9 +224,8 @@ export const CSS_TICKET = `
   font-size: 13pt; letter-spacing: .2em; padding: 1.4mm 0; margin-top: 2mm;
 }
 
-.tk-numero { display: flex; justify-content: space-between; align-items: baseline; margin-top: 2.5mm; }
-.tk-numero span { font-size: 7.5pt; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
-.tk-numero b { font-size: 14pt; font-weight: 700; }
+.tk-numero { font-size: 9pt; margin-top: 2.5mm; }
+.tk-numero b { font-weight: 700; }
 .tk-meta { font-size: 7pt; margin-top: .4mm; }
 
 .tk-champ { display: flex; justify-content: space-between; align-items: baseline; gap: 2mm; border-bottom: .2mm dotted #000; padding: 1.2mm 0 .6mm; }
@@ -240,16 +234,17 @@ export const CSS_TICKET = `
 
 .tk-retrait { border: .6mm solid #000; margin-top: 2.5mm; padding: 1.6mm 2mm; text-align: center; }
 .tk-retrait span { display: block; font-size: 7pt; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
-.tk-retrait b { display: block; font-size: 13pt; font-weight: 700; line-height: 1.15; }
+.tk-retrait b { display: block; font-size: 13pt; font-weight: 700; line-height: 1.15; text-wrap: balance; }
 .tk-retrait i { display: block; font-style: normal; font-size: 13pt; font-weight: 700; }
 
 .tk-titre { font-size: 7pt; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; border-bottom: .4mm solid #000; padding-bottom: .6mm; margin-top: 3mm; }
-.tk-ligne { display: grid; grid-template-columns: 9mm 1fr 17mm; gap: 1mm; font-size: 9pt; padding: .8mm 0; align-items: baseline; border-bottom: .15mm dotted #999; }
-.tk-avec-kg .tk-ligne { grid-template-columns: 15mm 1fr 17mm; }
+.tk-ligne { display: grid; grid-template-columns: 11mm minmax(0, 1fr) 19mm; gap: 1mm; font-size: 11pt; padding: .8mm 0; align-items: baseline; border-bottom: .15mm dotted #999; }
+.tk-avec-kg .tk-ligne { grid-template-columns: 18mm minmax(0, 1fr) 19mm; }
 .tk-ligne .q { font-weight: 700; white-space: nowrap; }
-.tk-ligne .n strong { display: block; font-size: 7.5pt; font-weight: 700; text-transform: uppercase; }
-.tk-ligne .n em { display: block; font-style: normal; font-size: 7.5pt; }
-.tk-ligne .p { text-align: right; font-variant-numeric: tabular-nums; }
+.tk-ligne .n { overflow-wrap: break-word; }
+.tk-ligne .n strong { display: block; font-size: 9pt; font-weight: 700; text-transform: uppercase; }
+.tk-ligne .n em { display: block; font-style: normal; font-size: 9pt; }
+.tk-ligne .p { text-align: right; white-space: nowrap; font-size: 10.5pt; font-variant-numeric: tabular-nums; }
 
 .tk-mention { border: .4mm solid #000; padding: 1.2mm 1.6mm; margin-top: 1.6mm; }
 .tk-mention.discret { border-style: dashed; border-width: .25mm; }

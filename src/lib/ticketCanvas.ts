@@ -17,6 +17,7 @@
 import type { Commande, LigneCommande } from './commandes';
 import { formaterEuros } from '../domaine/argent.ts';
 import { formaterQuantite, totalLigne } from '../domaine/unites.ts';
+import { formaterHeure, lireHeure, nomJour } from '../domaine/reglement.ts';
 
 export const DESTINATIONS = ['CLIENT', 'BUREAU', 'MAGASIN', 'ATELIER'] as const;
 export type Destination = (typeof DESTINATIONS)[number];
@@ -72,11 +73,92 @@ export function formaterLigneTicket(ligne: LigneCommande, destination: Destinati
   };
 }
 
-/** « à 14h30 », ou null si l'heure de retrait n'a pas été fixée (facultative). */
+/**
+ * « à 14h30 », ou null si l'heure de retrait n'a pas été fixée (facultative).
+ * L'heure est stockée « 14:30 » (champ horaire) : elle s'imprime « 14h30 »,
+ * comme sur les affiches. Une valeur illisible s'imprime telle quelle plutôt
+ * que de disparaître — une heure de retrait ne doit jamais se perdre en route.
+ */
 export function mentionHeureRetrait(heure: string | null | undefined): string | null {
   const propre = (heure ?? '').trim();
-  return propre ? `à ${propre}` : null;
+  if (!propre) return null;
+  const minutes = lireHeure(propre);
+  return `à ${minutes === null ? propre : formaterHeure(minutes)}`;
 }
+
+/**
+ * La date de retrait en toutes lettres et en capitales (demande du
+ * propriétaire du 19/10/2026) : « SAMEDI 24 OCTOBRE 2026 », et sa forme
+ * courte « SAMEDI 24/10 » quand la place manque. Le nom du jour vient du
+ * domaine (`nomJour`), jamais d'une liste écrite ici.
+ */
+export function dateRetraitTicket(date: string): { longue: string; courte: string } {
+  const iso = date.slice(0, 10);
+  const [a, m, j] = iso.split('-');
+  const jour = nomJour(iso).toUpperCase();
+  const mois = new Intl.DateTimeFormat('fr-BE', { month: 'long', timeZone: 'UTC' })
+    .format(new Date(`${iso}T00:00:00Z`))
+    .toUpperCase();
+  const quantieme = Number(j) === 1 ? '1ER' : String(Number(j));
+  return { longue: `${jour} ${quantieme} ${mois} ${a}`, courte: `${jour} ${j}/${m}` };
+}
+
+/**
+ * Découpe un texte en lignes qui tiennent dans `largeurMax`, toujours entre
+ * deux mots. Un mot seul plus large que la colonne (rare : libellé collé par
+ * des tirets) est coupé en dernier recours après un trait d'union s'il en a
+ * un, sinon au caractère — plutôt que de déborder hors du papier.
+ * `mesurer` est injecté : le canvas en vrai, une approximation dans les tests.
+ */
+export function couperTexte(texte: string, largeurMax: number, mesurer: (s: string) => number): string[] {
+  const mots = texte
+    .split(/\s+/)
+    .filter(Boolean)
+    .flatMap((mot) => scinderMot(mot, largeurMax, mesurer));
+  const lignes: string[] = [];
+  let courante = '';
+  for (const mot of mots) {
+    const essai = courante ? `${courante} ${mot}` : mot;
+    if (!courante || mesurer(essai) <= largeurMax) {
+      courante = essai;
+    } else {
+      lignes.push(courante);
+      courante = mot;
+    }
+  }
+  if (courante) lignes.push(courante);
+  return lignes.length ? lignes : [''];
+}
+
+/** Regroupe des morceaux tant qu'ils tiennent dans la largeur. */
+function regrouper(morceaux: string[], largeurMax: number, mesurer: (s: string) => number): string[] {
+  const sortie: string[] = [];
+  let courant = '';
+  for (const morceau of morceaux) {
+    if (courant && mesurer(courant + morceau) > largeurMax) {
+      sortie.push(courant);
+      courant = morceau;
+    } else {
+      courant += morceau;
+    }
+  }
+  if (courant) sortie.push(courant);
+  return sortie;
+}
+
+function scinderMot(mot: string, largeurMax: number, mesurer: (s: string) => number): string[] {
+  if (mesurer(mot) <= largeurMax) return [mot];
+  // D'abord après les traits d'union existants (« Mini-sandwichs » → « Mini- » « sandwichs »).
+  const parties = mot.split(/(?<=-)/);
+  return regrouper(parties, largeurMax, mesurer).flatMap((m) =>
+    mesurer(m) <= largeurMax ? [m] : regrouper(Array.from(m), largeurMax, mesurer)
+  );
+}
+
+/** Corps des lignes de produits : +27 % par rapport à l'ancien 22 points (demande du 19/10/2026). */
+export const TAILLE_PRODUIT = 28;
+/** En dessous, un libellé se lit mal sur un feuillet accroché : on coupe plutôt. */
+const TAILLE_PRODUIT_MIN = 22;
 
 /**
  * Les mentions « à confirmer » sont internes : le client qui vient de verser
@@ -126,34 +208,29 @@ class Plume {
     this.ctx.restore();
   }
 
-  /** Découpe un texte pour qu'il tienne dans une largeur donnée. */
+  /** Découpe un texte pour qu'il tienne dans une largeur donnée (voir couperTexte). */
   private couper(texte: string, police: string, largeurMax: number): string[] {
-    if (!this.ctx) {
-      // Passe de mesure sans contexte : approximation par le nombre de
-      // caractères. Jamais utilisée en pratique — on mesure toujours avec un
-      // canvas — mais évite un plantage si quelqu'un appelle sans.
-      const parLigne = Math.max(1, Math.floor(largeurMax / 9));
-      const lignes: string[] = [];
-      for (let i = 0; i < texte.length; i += parLigne) lignes.push(texte.slice(i, i + parLigne));
-      return lignes.length ? lignes : [''];
+    const ctx = this.ctx;
+    if (!ctx) {
+      // Passe sans contexte : approximation par le nombre de caractères.
+      // Jamais utilisée en pratique — on mesure toujours avec un canvas.
+      return couperTexte(texte, largeurMax, (s) => s.length * 9);
     }
+    ctx.save();
+    ctx.font = police;
+    const lignes = couperTexte(texte, largeurMax, (s) => ctx.measureText(s).width);
+    ctx.restore();
+    return lignes;
+  }
+
+  /** Largeur d'un texte dans une police donnée (approximation sans canvas). */
+  mesurer(texte: string, taille: number, gras = false): number {
+    if (!this.ctx) return texte.length * taille * 0.6;
     this.ctx.save();
-    this.ctx.font = police;
-    const mots = texte.split(/\s+/).filter(Boolean);
-    const lignes: string[] = [];
-    let courante = '';
-    for (const mot of mots) {
-      const essai = courante ? `${courante} ${mot}` : mot;
-      if (this.ctx.measureText(essai).width <= largeurMax || !courante) {
-        courante = essai;
-      } else {
-        lignes.push(courante);
-        courante = mot;
-      }
-    }
-    if (courante) lignes.push(courante);
+    this.ctx.font = `${gras ? '700 ' : ''}${taille}px ${SANS}`;
+    const largeur = this.ctx.measureText(texte).width;
     this.ctx.restore();
-    return lignes.length ? lignes : [''];
+    return largeur;
   }
 
   texte(
@@ -262,11 +339,10 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
   plume.bandeau(destination);
   plume.espace(14);
 
-  // Numéro : c'est la clé de tout — communication du virement, recherche dans
-  // l'application, rapprochement avec le feuillet accroché au bureau.
-  plume.etiquette('Commande n°');
-  plume.texte(commande.numero, { taille: 38, gras: true });
-  plume.espace(2);
+  // Numéro : toujours présent (communication du virement, recherche dans
+  // l'application), mais en petit depuis le 19/10/2026 — la place va au
+  // retrait et aux produits, qu'on lit de loin.
+  plume.texte(`Commande n° ${commande.numero}`, { taille: 18, gras: true, interligne: 23 });
   const prise = formaterDate(commande.priseLe);
   plume.texte(
     pourLeClient ? `Prise le ${prise}` : `Prise le ${prise}${commande.vendeur ? ` · ${commande.vendeur}` : ''}`,
@@ -283,11 +359,16 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
   const hautRetrait = plume.y;
   plume.espace(10);
   plume.texte('POUR LE', { taille: 16, gras: true, align: 'centre', interligne: 22 });
-  plume.texte(formaterDateCourte(commande.retraitLe), {
+  // « SAMEDI 24 OCTOBRE 2026 » si ça tient sur une ligne, sinon « MERCREDI 30/09 » :
+  // la date se lit d'un coup d'œil, jamais coupée en deux.
+  const date = dateRetraitTicket(commande.retraitLe);
+  const largeurCadre = UTILE - 20;
+  plume.texte(plume.mesurer(date.longue, 34, true) <= largeurCadre ? date.longue : date.courte, {
     taille: 34,
     gras: true,
     align: 'centre',
     interligne: 40,
+    largeurMax: largeurCadre,
   });
   const heure = mentionHeureRetrait(commande.retraitHeure);
   if (heure) plume.texte(heure, { taille: 34, gras: true, align: 'centre', interligne: 40 });
@@ -301,10 +382,15 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
   plume.espace(6);
   // Une quantité au kilo (« 0,750 kg ») est plus large que « 12 × » : la
   // colonne s'élargit pour tout le ticket, pour garder les libellés alignés.
+  // Les colonnes sont mesurées sur la plus large des quantités (« 0,750 kg »,
+  // « 120 × ») et des prix : les libellés restent alignés sur tout le ticket.
   const lignes = commande.lignes.map((l) => formaterLigneTicket(l, destination));
-  const colQuantite = commande.lignes.some((l) => l.unite === 'kg') ? 112 : 64;
+  const colQuantite = Math.ceil(
+    Math.max(48, ...lignes.map((l) => plume.mesurer(l.quantite, TAILLE_PRODUIT, true))) + 10
+  );
+  const colPrix = Math.ceil(Math.max(100, ...lignes.map((l) => plume.mesurer(l.prix, TAILLE_PRODUIT - 2))) + 8);
   for (const ligne of lignes) {
-    produit(plume, ligne, colQuantite);
+    produit(plume, ligne, colQuantite, colPrix);
   }
   plume.espace(8);
 
@@ -371,44 +457,49 @@ function champ(plume: Plume, etiquette: string, valeur: string) {
   plume.espace(8);
 }
 
-function produit(plume: Plume, ligne: LigneTicket, colQuantite: number) {
-  const colPrix = 124;
-  const colNom = UTILE - colQuantite - colPrix - 12;
+function produit(plume: Plume, ligne: LigneTicket, colQuantite: number, colPrix: number) {
+  const colNom = UTILE - colQuantite - colPrix - 8;
   const haut = plume.y;
+  // Un mot plus large que la colonne réduit d'abord le corps de la ligne
+  // (jusqu'à TAILLE_PRODUIT_MIN), avant toute coupure en milieu de mot.
+  let taille = TAILLE_PRODUIT;
+  const motLePlusLong = (texte: string, t: number) =>
+    Math.max(0, ...texte.split(/\s+/).map((mot) => plume.mesurer(mot, t)));
+  while (taille > TAILLE_PRODUIT_MIN && motLePlusLong(ligne.libelle, taille) > colNom) taille -= 1;
+  const interligne = Math.round(taille * 1.2);
 
-  plume.texte(ligne.quantite, { taille: 22, gras: true, interligne: 0 });
-  const apresQuantite = plume.y;
+  plume.texte(ligne.quantite, { taille: TAILLE_PRODUIT, gras: true, interligne: 0 });
   plume.y = haut;
   plume.texte(ligne.libelle, {
-    taille: 22,
+    taille,
     x: MARGE + colQuantite,
     largeurMax: colNom,
-    interligne: 27,
+    interligne,
   });
   if (ligne.precision) {
     plume.texte(ligne.precision, {
-      taille: 17,
+      taille: 20,
       x: MARGE + colQuantite,
       largeurMax: colNom,
-      interligne: 21,
+      interligne: 25,
     });
   }
   if (ligne.aConfirmer) {
     plume.texte(MENTION_LIGNE_LIBRE.toUpperCase(), {
-      taille: 17,
+      taille: 18,
       gras: true,
       x: MARGE + colQuantite,
       largeurMax: colNom,
-      interligne: 21,
+      interligne: 23,
     });
   }
   const bas = plume.y;
-  plume.y = haut;
-  plume.texte(ligne.prix, { taille: 22, align: 'droite', interligne: 0 });
-  plume.y = Math.max(bas, apresQuantite + 27);
-  plume.espace(3);
+  plume.y = haut + 2;
+  plume.texte(ligne.prix, { taille: TAILLE_PRODUIT - 2, align: 'droite', interligne: 0 });
+  plume.y = Math.max(bas, haut + Math.round(TAILLE_PRODUIT * 1.2));
+  plume.espace(4);
   plume.trait(1, true);
-  plume.espace(6);
+  plume.espace(7);
 }
 
 function mention(plume: Plume, etiquette: string, valeur: string, discret = false) {
@@ -455,6 +546,17 @@ function montant(plume: Plume, etiquette: string, valeur: string, inverse = fals
 
 /* ------------------------------------------------------------- Interface */
 
+/**
+ * Dessine un exemplaire sur un contexte fourni et renvoie la hauteur utilisée.
+ * Sert aux tests (contexte factice qui enregistre le texte tracé) : on vérifie
+ * ainsi le ticket réellement produit, pas une copie de sa logique.
+ */
+export function dessinerSurContexte(ctx: Contexte | null, destination: Destination, commande: Commande): number {
+  const plume = new Plume(ctx);
+  dessiner(plume, destination, commande);
+  return Math.ceil(plume.y);
+}
+
 function nouveauCanvas(largeur: number, hauteur: number): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   canvas.width = largeur;
@@ -492,10 +594,4 @@ export function ticketEnPng(destination: Destination, commande: Commande): strin
 function formaterDate(iso: string): string {
   const d = new Date(iso);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-}
-
-function formaterDateCourte(date: string): string {
-  const [a, m, j] = date.split('-');
-  const jour = new Date(`${date}T12:00:00Z`).toLocaleDateString('fr-BE', { weekday: 'short' });
-  return `${jour} ${j}/${m}/${a.slice(2)}`;
 }

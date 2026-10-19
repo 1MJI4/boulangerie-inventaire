@@ -3,8 +3,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import type { LigneCommande } from './commandes.ts';
-import { demandeAConfirmer, formaterLigneTicket, mentionHeureRetrait, MENTION_LIGNE_LIBRE } from './ticketCanvas.ts';
+import type { Commande, LigneCommande } from './commandes.ts';
+import {
+  TAILLE_PRODUIT,
+  couperTexte,
+  dateRetraitTicket,
+  demandeAConfirmer,
+  dessinerSurContexte,
+  DESTINATIONS,
+  LARGEUR,
+  formaterLigneTicket,
+  mentionHeureRetrait,
+  MENTION_LIGNE_LIBRE,
+} from './ticketCanvas.ts';
+import { nomJour } from '../domaine/reglement.ts';
 
 function ligne(partiel: Partial<LigneCommande>): LigneCommande {
   return { libelle: 'Produit test', quantite: 1, prixCentimes: 1000, poste: null, precision: null, ...partiel };
@@ -66,4 +78,171 @@ test('demande à confirmer : nouveau champ, ou ancien drapeau en repli', () => {
 test('demande à confirmer : jamais sur l’exemplaire CLIENT', () => {
   assert.equal(demandeAConfirmer({ demandeInhabituelle: true }, 'CLIENT'), false);
   assert.equal(demandeAConfirmer({ gateauComplexe: true }, 'CLIENT'), false);
+});
+
+/* ------------------------------------------------ Demande du 19/10/2026 */
+
+test('date de retrait : jour en toutes lettres et en capitales, tiré du domaine (nomJour)', () => {
+  const d = dateRetraitTicket('2026-10-24');
+  assert.equal(d.longue, `${nomJour('2026-10-24').toUpperCase()} 24 OCTOBRE 2026`);
+  assert.equal(d.courte, `${nomJour('2026-10-24').toUpperCase()} 24/10`);
+  assert.equal(d.longue, d.longue.toUpperCase());
+});
+
+test('date de retrait : chaque jour de la semaine suit le domaine, « 1ER » le premier du mois', () => {
+  for (let i = 0; i < 7; i += 1) {
+    const iso = `2026-10-${String(19 + i).padStart(2, '0')}`;
+    assert.ok(dateRetraitTicket(iso).longue.startsWith(`${nomJour(iso).toUpperCase()} `), iso);
+  }
+  assert.equal(dateRetraitTicket('2026-11-01').longue, `${nomJour('2026-11-01').toUpperCase()} 1ER NOVEMBRE 2026`);
+  // Une date venue de l'API avec l'heure (ISO complet) donne le même résultat.
+  assert.equal(dateRetraitTicket('2026-10-24T00:00:00.000Z').longue, d24());
+});
+
+test('heure de retrait : « 14:30 » stockée s’imprime « à 14h30 »', () => {
+  assert.equal(mentionHeureRetrait('14:30'), 'à 14h30');
+  assert.equal(mentionHeureRetrait('09:00'), 'à 9h00');
+  // Illisible : imprimée telle quelle plutôt que perdue.
+  assert.equal(mentionHeureRetrait('midi'), 'à midi');
+});
+
+test('découpe des libellés : toujours entre deux mots, jamais plus large que la colonne', () => {
+  const mesurer = (s: string) => s.length * 10;
+  const lignes = couperTexte('Bavarois fraise framboise 24 parts', 120, mesurer);
+  assert.deepEqual(lignes, ['Bavarois', 'fraise', 'framboise 24', 'parts']);
+  for (const l of lignes) assert.ok(mesurer(l) <= 120, l);
+  assert.equal(lignes.join(' '), 'Bavarois fraise framboise 24 parts');
+});
+
+test('découpe : un mot trop long pour la colonne se coupe après son trait d’union, sans déborder', () => {
+  const mesurer = (s: string) => s.length * 10;
+  const lignes = couperTexte('Mini-sandwichs-garnis', 100, mesurer);
+  assert.deepEqual(lignes, ['Mini-', 'sandwichs-', 'garnis']);
+  for (const l of couperTexte('Abcdefghijklmnop', 50, mesurer)) assert.ok(mesurer(l) <= 50, l);
+  assert.deepEqual(couperTexte('', 100, mesurer), ['']);
+});
+
+test('corps des produits agrandi d’au moins 20 % (ancien : 22 points)', () => {
+  assert.ok(TAILLE_PRODUIT >= 22 * 1.2 && TAILLE_PRODUIT <= 22 * 1.3, String(TAILLE_PRODUIT));
+});
+
+/* --------------------------- Le ticket réellement dessiné (contexte factice) */
+
+const d24 = () => `${nomJour('2026-10-24').toUpperCase()} 24 OCTOBRE 2026`;
+
+type Trace = { texte: string; x: number; largeur: number; taille: number };
+
+/** Contexte 2D minimal : enregistre chaque texte tracé, mesure ≈ 0,6 × corps par caractère. */
+function contexteFactice() {
+  const traces: Trace[] = [];
+  const taille = (font: string) => Number(/(\d+)px/.exec(font)?.[1] ?? 10);
+  const ctx = {
+    font: '10px sans-serif',
+    fillStyle: '#000',
+    strokeStyle: '#000',
+    lineWidth: 1,
+    textBaseline: 'top',
+    save() {},
+    restore() {},
+    fillRect() {},
+    strokeRect() {},
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    stroke() {},
+    setLineDash() {},
+    measureText(t: string) {
+      return { width: t.length * taille(ctx.font) * 0.6 };
+    },
+    fillText(t: string, x: number) {
+      traces.push({ texte: t, x, largeur: t.length * taille(ctx.font) * 0.6, taille: taille(ctx.font) });
+    },
+  };
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, traces };
+}
+
+function commande(partiel: Partial<Commande> = {}): Commande {
+  return {
+    id: 1,
+    numero: 'C-2026-0042',
+    client: 'Client test',
+    telephone: '0470 00 00 00',
+    vendeur: 'Vendeur test',
+    priseLe: '2026-10-19T10:00:00.000Z',
+    origine: 'comptoir',
+    retraitLe: '2026-10-24',
+    retraitHeure: '14:30',
+    modePaiement: 'virement',
+    acompteCentimes: 500,
+    acompteRecuLe: null,
+    totalCentimes: 1000,
+    texteGateau: null,
+    sansEcriture: false,
+    photoWhatsapp: true,
+    photoImprimee: false,
+    demandeInhabituelle: true,
+    remarques: 'Remarque interne',
+    statut: 'enregistree',
+    imprimeeLe: null,
+    remiseLe: null,
+    avertissements: [],
+    anonymiseeLe: null,
+    lignes: [
+      ligne({ libelle: 'Produit test au libellé très long qui doit passer à la ligne proprement', quantite: 12 }),
+      ligne({ libelle: 'Produit libre', ligneLibreAutoriseePar: 'Gérant' }),
+    ],
+    ...partiel,
+  } as Commande;
+}
+
+function textes(destination: (typeof DESTINATIONS)[number], c: Commande) {
+  const { ctx, traces } = contexteFactice();
+  dessinerSurContexte(ctx, destination, c);
+  return traces;
+}
+
+test('ticket : date de retrait en capitales avec le jour du domaine, et l’heure « à 14h30 »', () => {
+  for (const d of DESTINATIONS) {
+    const t = textes(d, commande()).map((x) => x.texte);
+    assert.ok(t.includes(d24()), d);
+    assert.ok(t.includes('à 14h30'), d);
+  }
+});
+
+test('ticket : sans heure de retrait, aucune mention d’heure (ni « à null »)', () => {
+  for (const heure of [null, '']) {
+    const t = textes('CLIENT', commande({ retraitHeure: heure })).map((x) => x.texte);
+    assert.ok(!t.some((x) => /^à /.test(x) || x.includes('null')), JSON.stringify(t));
+  }
+});
+
+test('ticket : numéro de commande présent sur les 4 exemplaires, en petit', () => {
+  for (const d of DESTINATIONS) {
+    const n = textes(d, commande()).find((x) => x.texte.includes('C-2026-0042') && x.texte.startsWith('Commande'));
+    assert.ok(n, d);
+    assert.ok(n.taille <= 20, `${d} : ${n.taille}`);
+  }
+});
+
+test('ticket : aucun texte ne sort des 576 points, libellés coupés entre deux mots', () => {
+  const c = commande();
+  for (const d of DESTINATIONS) {
+    for (const x of textes(d, c)) assert.ok(x.x >= 0 && x.x + x.largeur <= LARGEUR, `${d} : « ${x.texte} »`);
+  }
+  // Les morceaux du libellé long, remis bout à bout, redonnent le libellé à la lettre (LOI 5).
+  const libelle = c.lignes[0].libelle;
+  const mots = new Set(libelle.split(' '));
+  const morceaux = textes('ATELIER', c).filter((x) => x.texte.split(' ').every((m) => mots.has(m)) && x.taille >= 22);
+  assert.ok(morceaux.length >= 2);
+  assert.equal(morceaux.map((x) => x.texte).join(' '), libelle);
+});
+
+test('ticket : mentions internes jamais sur l’exemplaire CLIENT, présentes sur les autres', () => {
+  const internes = ['À CONFIRMER — PRIX ET FAISABILITÉ', MENTION_LIGNE_LIBRE.toUpperCase(), 'Remarque interne'];
+  const client = textes('CLIENT', commande()).map((x) => x.texte).join(' | ');
+  for (const m of internes) assert.ok(!client.includes(m), m);
+  for (const d of ['BUREAU', 'MAGASIN', 'ATELIER'] as const) {
+    const t = textes(d, commande()).map((x) => x.texte).join(' | ');
+    for (const m of internes) assert.ok(t.includes(m), `${d} : ${m}`);
+  }
 });
