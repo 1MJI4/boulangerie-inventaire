@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alerte, Bouton, Puce } from '@/components/ui';
 import { DESTINATIONS, dessinerTicket, type Destination } from '@/lib/ticketCanvas';
+import { enBase64, pngMonochrome, zlibNavigateur } from '@/lib/pngMonochrome';
 import type { Commande } from '@/lib/commandes';
 
 type Travail = {
@@ -92,10 +93,18 @@ export function ApercuReseau({ commande, onImprime }: { commande: Commande; onIm
     setErreur(null);
     try {
       const canvases = Array.from(hote.querySelectorAll('canvas'));
-      const tickets = canvases.map((canvas, index) => ({
-        destination: DESTINATIONS[index] as Destination,
-        png: canvas.toDataURL('image/png').split(',')[1] ?? '',
-      }));
+      // PNG noir et blanc 1 bit, pas toDataURL (couleur 32 bits) : décodé,
+      // un long ticket en couleur dépasse la mémoire de l'imprimante
+      // (« 511 Media Decoding Error », voir src/lib/pngMonochrome.ts).
+      const tickets = await Promise.all(
+        canvases.map(async (canvas, index) => {
+          const ctx = canvas.getContext('2d');
+          if (!ctx) throw new Error('Ticket illisible : rechargez la page.');
+          const points = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+          const png = await pngMonochrome(points, canvas.width, canvas.height, zlibNavigateur);
+          return { destination: DESTINATIONS[index] as Destination, png: enBase64(png) };
+        }),
+      );
       const reponse = await fetch('/api/impression', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
