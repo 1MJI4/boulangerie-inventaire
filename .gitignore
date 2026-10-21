@@ -142,3 +142,6 @@ build/
 # Netlify
 .netlify
 .tickets-recus/
+
+# Fichiers temporaires de Cloudflare (wrangler dev / deploy)
+.wrangler/

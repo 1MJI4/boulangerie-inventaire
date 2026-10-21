@@ -1,0 +1,22 @@
+// Worker de l'imprimante Star — voir src/index.ts.
+// Déploiement : npm run imprimante:deployer
+// Secrets (jamais dans ce fichier) : CLOUDPRNT_CLE, via `wrangler secret put`.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "pain-patisserie-imprimante",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      // Rempli après `wrangler hyperdrive create` (identifiant, pas un secret).
+      "id": "A_REMPLIR"
+      // Développement local : la base de recette Docker est passée par la
+      // variable CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE
+      // (script imprimante:local), jamais écrite ici.
+    }
+  ]
+}

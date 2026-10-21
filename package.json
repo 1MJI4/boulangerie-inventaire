@@ -19,7 +19,9 @@
     "recette:dev": "node scripts/recette.mjs dev",
     "recette:tablette": "node scripts/recette.mjs tablette",
     "recette:arreter": "node scripts/recette.mjs arreter",
-    "recette:effacer": "node scripts/recette.mjs effacer"
+    "recette:effacer": "node scripts/recette.mjs effacer",
+    "imprimante:local": "node scripts/imprimante-local.mjs",
+    "imprimante:deployer": "wrangler deploy --config cloudflare/imprimante/wrangler.jsonc"
   },
   "dependencies": {
     "@prisma/client": "^6.18.0",
@@ -40,6 +42,7 @@
     "prisma": "^6.18.0",
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "wrangler": "4.151.3"
   }
 }
