@@ -115,6 +115,9 @@ export function proxy(requete: NextRequest) {
 
 export const config = {
   // Tout passe par le proxy, sauf les fichiers compilés de Next (immuables,
-  // sans donnée). Les autres exceptions sont dans `estCheminPublic`, en clair.
-  matcher: ['/((?!_next/static|_next/image).*)'],
+  // sans donnée) et l'imprimante (/api/cloudprnt/, servie par sa fonction
+  // Netlify dédiée et authentifiée par sa clé : le proxy n'y ajouterait que du
+  // délai, et l'imprimante abandonne un téléchargement trop lent). Les autres
+  // exceptions sont dans `estCheminPublic`, en clair.
+  matcher: ['/((?!_next/static|_next/image|api/cloudprnt/).*)'],
 };

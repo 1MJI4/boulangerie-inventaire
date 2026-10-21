@@ -16,6 +16,14 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
+# Fonction dediee a l'imprimante Star (netlify/functions/imprimante.mts), servie
+# a /api/cloudprnt/<cle>. Prisma n'est pas embarque dans le paquet : son moteur
+# (fichier natif, genere au build pour Amazon Linux) est joint tel quel.
+[functions.imprimante]
+  node_bundler = "esbuild"
+  external_node_modules = ["@prisma/client", ".prisma"]
+  included_files = ["node_modules/.prisma/client/**"]
+
 # L'application lit et ecrit la saisie en cours : rien ne doit etre mis en cache.
 [[headers]]
   for = "/api/*"
