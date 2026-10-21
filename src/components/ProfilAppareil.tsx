@@ -115,6 +115,10 @@ function SelecteurProfil({
 
             <input
               type="password"
+              // Code gérant en chiffres (21/10/2026) : pavé numérique de la tablette.
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="off"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && void verifier()}

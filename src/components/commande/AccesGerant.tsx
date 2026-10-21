@@ -82,6 +82,9 @@ export function AccesGerant({
           <span className="mb-1 block text-sm text-ink-2">Code gérant</span>
           <input
             type="password"
+            // Code gérant en chiffres (21/10/2026) : pavé numérique de la tablette.
+            inputMode="numeric"
+            pattern="[0-9]*"
             value={code}
             onChange={(e) => setCode(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void valider()}
