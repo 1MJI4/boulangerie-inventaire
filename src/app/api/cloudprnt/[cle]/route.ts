@@ -13,6 +13,9 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { cleValide as cleConforme, repondreImprimante } from '@/lib/serveur/cloudprnt';
+import { depotPrisma } from '@/lib/serveur/depotImprimante';
+
+const depot = depotPrisma(prisma);
 
 type Contexte = { params: Promise<{ cle: string }> };
 
@@ -26,17 +29,17 @@ const refus = () => new Response(null, { status: 403, headers: { 'Cache-Control'
 export async function POST(requete: NextRequest, { params }: Contexte) {
   const { cle } = await params;
   if (!cleValide(cle)) return Response.json({ jobReady: false }, { status: 403 });
-  return repondreImprimante(requete, cle, prisma, process.env.CLOUDPRNT_CLE);
+  return repondreImprimante(requete, cle, depot, process.env.CLOUDPRNT_CLE);
 }
 
 export async function GET(requete: NextRequest, { params }: Contexte) {
   const { cle } = await params;
   if (!cleValide(cle)) return refus();
-  return repondreImprimante(requete, cle, prisma, process.env.CLOUDPRNT_CLE);
+  return repondreImprimante(requete, cle, depot, process.env.CLOUDPRNT_CLE);
 }
 
 export async function DELETE(requete: NextRequest, { params }: Contexte) {
   const { cle } = await params;
   if (!cleValide(cle)) return refus();
-  return repondreImprimante(requete, cle, prisma, process.env.CLOUDPRNT_CLE);
+  return repondreImprimante(requete, cle, depot, process.env.CLOUDPRNT_CLE);
 }

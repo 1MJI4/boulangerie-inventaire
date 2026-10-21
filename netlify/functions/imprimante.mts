@@ -4,31 +4,65 @@
 // adresse que la route Next : /api/cloudprnt/<clé>. L'imprimante n'a rien à
 // changer dans ses réglages.
 //
-// Pourquoi (21/10/2026) : servie par l'application Next, une requête de
-// l'imprimante qui tombe sur un serveur « froid » (la tablette occupe déjà le
-// serveur chaud pendant qu'elle suit l'impression) met ~5 s à répondre. La
-// TSP100IV abandonne le téléchargement du ticket avant (« 520 Download
-// failed »), se met en retrait plusieurs minutes, et seul le ticket CLIENT
-// sort. Cette fonction ne charge que Prisma : elle démarre en moins d'une
-// seconde et n'est jamais en concurrence avec la tablette.
+// Pourquoi (21/10/2026) : la TSP100IV abandonne une réponse qui dépasse ~5 s
+// (« 520 Download failed ») et se met alors en retrait plusieurs minutes : le
+// client attend son ticket. Servie par l'application Next, ou même par une
+// fonction qui charge Prisma, une requête qui réveille un serveur endormi
+// prenait ~5 s. Cette fonction n'utilise que le client PostgreSQL `postgres`
+// (JavaScript pur) : réveil en une fraction de seconde. Une tâche planifiée
+// (imprimante-reveil.mts) l'appelle chaque minute pendant les heures
+// d'ouverture pour qu'elle ne s'endorme pas.
 //
 // Aucune logique ici : tout est dans src/lib/serveur/cloudprnt.ts, partagé avec
 // la route de secours src/app/api/cloudprnt/[cle]/route.ts.
 
-import { PrismaClient } from '@prisma/client';
+import postgres from 'postgres';
 import { repondreImprimante } from '../../src/lib/serveur/cloudprnt.ts';
+import { depotPostgres } from '../../src/lib/serveur/depotImprimante.ts';
 
 // Types minimaux du runtime Netlify (fonctions « v2 ») : pas de dépendance
 // @netlify/functions pour deux champs.
 type Context = { params: Record<string, string | undefined> };
 type Config = { path: string; method?: string[] };
 
-// Un seul client par instance, réutilisé d'un appel à l'autre tant que la
-// fonction reste chaude.
-const prisma = new PrismaClient();
+/** Segment d'adresse réservé au réveil planifié : aucune donnée, aucun travail. */
+export const SEGMENT_REVEIL = 'reveil';
+
+/**
+ * DATABASE_URL vise le pooler transactionnel Supabase (port 6543). Ses
+ * paramètres propres à Prisma (?pgbouncer=true&connection_limit=1) ne sont pas
+ * des paramètres PostgreSQL : on les retire.
+ */
+function adresseBase(): string {
+  const brute = process.env.DATABASE_URL ?? '';
+  const i = brute.indexOf('?');
+  return i >= 0 ? brute.slice(0, i) : brute;
+}
+
+// Une seule connexion par instance, ouverte au premier besoin et réutilisée
+// tant que la fonction reste éveillée. `prepare: false` : obligatoire derrière
+// un pooler transactionnel.
+const adresse = adresseBase();
+const sql = postgres(adresse, {
+  max: 1,
+  prepare: false,
+  // Chiffrement exigé, sauf la base de recette locale (Docker, sans TLS).
+  ssl: /@(localhost|127\.0\.0\.1)[:/]/.test(adresse) ? false : 'require',
+  idle_timeout: 60,
+  connect_timeout: 4,
+});
+const depot = depotPostgres(sql);
+
+const SANS_CACHE = { 'Cache-Control': 'no-store', 'X-Imprimante': 'fonction-dediee' };
 
 export default async function imprimante(requete: Request, contexte: Context): Promise<Response> {
-  const reponse = await repondreImprimante(requete, contexte.params.cle ?? '', prisma, process.env.CLOUDPRNT_CLE);
+  const cle = contexte.params.cle ?? '';
+  if (cle === SEGMENT_REVEIL) {
+    // Garde la connexion à la base ouverte et la fonction éveillée.
+    await sql`SELECT 1`;
+    return new Response(null, { status: 204, headers: SANS_CACHE });
+  }
+  const reponse = await repondreImprimante(requete, cle, depot, process.env.CLOUDPRNT_CLE);
   // Repère visible dans les en-têtes : c'est bien la fonction dédiée qui a répondu.
   reponse.headers.set('X-Imprimante', 'fonction-dediee');
   return reponse;

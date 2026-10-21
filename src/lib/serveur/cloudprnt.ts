@@ -18,21 +18,41 @@
 // La confirmation est ce qui compte vraiment : c'est seulement quand le
 // dernier exemplaire est sorti qu'on marque la commande imprimée.
 //
-// Ce module ne dépend ni de Next ni de Netlify (Request / Response standard) :
-// il est servi par la fonction Netlify dédiée (netlify/functions/imprimante.mts),
-// qui démarre vite même « à froid », et par la route Next de secours
-// (src/app/api/cloudprnt/[cle]/route.ts).
+// Ce module ne dépend ni de Next, ni de Netlify, ni d'un client de base : il
+// parle à un `DepotImprimante` (deux implémentations : Prisma pour la route
+// Next de secours, PostgreSQL léger pour la fonction Netlify dédiée, qui doit
+// se réveiller en moins d'une seconde — voir depotImprimante.ts).
 //
 // Accès : l'imprimante ne sait pas ouvrir de session ; elle est authentifiée
 // par la clé de son URL, et uniquement pour lire et acquitter des travaux
 // d'impression. La clé n'est JAMAIS journalisée ni renvoyée dans une réponse.
 
 import { createHash, timingSafeEqual } from 'node:crypto';
-import type { PrismaClient } from '@prisma/client';
 import { confirmationReussie } from '../cloudprnt.ts';
 
-/** Ce dont le dialogue a besoin dans la base (sous-ensemble de PrismaClient). */
-export type BaseImprimante = Pick<PrismaClient, 'reglage' | 'travailImpression' | 'commande' | 'evenementCommande'>;
+export type TravailEnFile = { id: number; media: string; contenu: Uint8Array };
+export type TravailRemis = { id: number; commandeId: number | null };
+
+/** Tout ce dont le dialogue a besoin dans la base, et rien de plus. */
+export interface DepotImprimante {
+  /** Enregistre l'état annoncé par l'imprimante (réglage « imprimante:etat »). */
+  noterEtat(valeur: string): Promise<void>;
+  /** Média du premier travail en attente, sans son contenu (sondage léger). */
+  mediaEnAttente(): Promise<string | null>;
+  /** Premier travail en attente, contenu compris. */
+  travailEnAttente(): Promise<TravailEnFile | null>;
+  marquerRemis(id: number): Promise<void>;
+  premierRemis(): Promise<TravailRemis | null>;
+  marquerImprime(id: number): Promise<void>;
+  remettreEnFile(id: number, erreur: string): Promise<void>;
+  /** Exemplaires de la commande pas encore imprimés. */
+  resteAImprimer(commandeId: number): Promise<number>;
+  /**
+   * Passe la commande « imprimée » si elle était « à imprimer », et trace
+   * l'événement. Rien sinon.
+   */
+  conclureCommande(commandeId: number): Promise<void>;
+}
 
 /**
  * Longueur minimale de CLOUDPRNT_CLE. Une clé courte se devine ; en dessous,
@@ -70,17 +90,9 @@ function vide(status: number): Response {
   return new Response(null, { status, headers: { ...SANS_CACHE, 'Content-Length': '0' } });
 }
 
-/** Mémorise l'état de l'imprimante pour que l'écran puisse le montrer. */
-async function noterEtat(db: BaseImprimante, statusCode: string, mac: string | null) {
-  const valeur = JSON.stringify({ statusCode, mac, vueLe: new Date().toISOString() });
-  await db.reglage
-    .upsert({ where: { cle: 'imprimante:etat' }, create: { cle: 'imprimante:etat', valeur }, update: { valeur } })
-    .catch(() => {});
-}
-
 /* ------------------------------------------------ POST : le sondage */
 
-async function sondage(requete: Request, db: BaseImprimante): Promise<Response> {
+async function sondage(requete: Request, depot: DepotImprimante): Promise<Response> {
   let corps: Record<string, unknown> = {};
   try {
     corps = await requete.json();
@@ -90,20 +102,15 @@ async function sondage(requete: Request, db: BaseImprimante): Promise<Response> 
   }
   const statusCode = typeof corps.statusCode === 'string' ? corps.statusCode : '';
   const mac = typeof corps.printerMAC === 'string' ? corps.printerMAC : null;
+  const etat = JSON.stringify({ statusCode, mac, vueLe: new Date().toISOString() });
 
-  // Les deux accès en parallèle : la réponse part plus vite.
-  const [, travail] = await Promise.all([
-    noterEtat(db, statusCode, mac),
-    db.travailImpression.findFirst({
-      where: { statut: 'en_attente' },
-      orderBy: { id: 'asc' },
-      select: { id: true, media: true },
-    }),
-  ]);
+  // Les deux accès en parallèle : la réponse part plus vite. L'état n'est
+  // qu'informatif : son échec ne doit jamais empêcher d'imprimer.
+  const [, media] = await Promise.all([depot.noterEtat(etat).catch(() => {}), depot.mediaEnAttente()]);
 
   return json({
-    jobReady: Boolean(travail),
-    mediaTypes: travail ? [travail.media] : [],
+    jobReady: media !== null,
+    mediaTypes: media !== null ? [media] : [],
     // L'imprimante confirmera par DELETE ; c'est le comportement par défaut,
     // on l'énonce quand même pour ne dépendre d'aucune valeur implicite.
     deleteMethod: 'DELETE',
@@ -112,20 +119,14 @@ async function sondage(requete: Request, db: BaseImprimante): Promise<Response> 
 
 /* --------------------------------------- GET : elle vient chercher */
 
-async function remise(db: BaseImprimante): Promise<Response> {
-  const travail = await db.travailImpression.findFirst({
-    where: { statut: 'en_attente' },
-    orderBy: { id: 'asc' },
-  });
+async function remise(depot: DepotImprimante): Promise<Response> {
+  const travail = await depot.travailEnAttente();
   if (!travail) return vide(404);
 
   // « remis » et pas « imprimé » : le papier n'est pas encore sorti. Si
   // l'imprimante tombe entre les deux, le travail reste visible comme non
   // terminé au lieu de disparaître en silence.
-  await db.travailImpression.update({
-    where: { id: travail.id },
-    data: { statut: 'remis', remisLe: new Date() },
-  });
+  await depot.marquerRemis(travail.id);
 
   const octets = Buffer.from(travail.contenu);
   return new Response(octets, {
@@ -136,53 +137,26 @@ async function remise(db: BaseImprimante): Promise<Response> {
 
 /* --------------------------------- DELETE : elle confirme avoir imprimé */
 
-async function confirmation(url: URL, db: BaseImprimante): Promise<Response> {
+async function confirmation(url: URL, depot: DepotImprimante): Promise<Response> {
   const code = url.searchParams.get('code') ?? 'OK';
   const reussi = confirmationReussie(code);
 
-  const travail = await db.travailImpression.findFirst({
-    where: { statut: 'remis' },
-    orderBy: { id: 'asc' },
-  });
+  const travail = await depot.premierRemis();
   if (!travail) return vide(200);
 
-  await db.travailImpression.update({
-    where: { id: travail.id },
-    data: reussi
-      ? { statut: 'imprime', imprimeLe: new Date(), erreur: null }
-      : // Un échec repart en file : le vendeur remet du papier, l'imprimante
-        // reprend toute seule là où elle s'était arrêtée.
-        { statut: 'en_attente', remisLe: null, erreur: code },
-  });
-
-  if (reussi && travail.commandeId) {
-    const reste = await db.travailImpression.count({
-      where: { commandeId: travail.commandeId, statut: { not: 'imprime' } },
-    });
-    if (reste === 0) {
-      // Tous les exemplaires sont sortis : c'est maintenant, et seulement
-      // maintenant, que la commande est vraiment imprimée.
-      const commande = await db.commande.findUnique({
-        where: { id: travail.commandeId },
-        select: { statut: true },
-      });
-      if (commande && commande.statut === 'a_imprimer') {
-        await db.commande.update({
-          where: { id: travail.commandeId },
-          data: { statut: 'imprimee', imprimeeLe: new Date() },
-        });
-        await db.evenementCommande.create({
-          data: {
-            commandeId: travail.commandeId,
-            auteur: 'imprimante',
-            action: 'impression',
-            detail: 'quatre exemplaires sortis sur le rouleau',
-          },
-        });
-      }
-    }
+  if (!reussi) {
+    // Un échec repart en file : le vendeur remet du papier, l'imprimante
+    // reprend toute seule là où elle s'était arrêtée.
+    await depot.remettreEnFile(travail.id, code);
+    return vide(200);
   }
 
+  await depot.marquerImprime(travail.id);
+  // Tous les exemplaires sortis : c'est maintenant, et seulement maintenant,
+  // que la commande est vraiment imprimée.
+  if (travail.commandeId && (await depot.resteAImprimer(travail.commandeId)) === 0) {
+    await depot.conclureCommande(travail.commandeId);
+  }
   return vide(200);
 }
 
@@ -193,7 +167,7 @@ async function confirmation(url: URL, db: BaseImprimante): Promise<Response> {
 export async function repondreImprimante(
   requete: Request,
   cle: string,
-  db: BaseImprimante,
+  depot: DepotImprimante,
   cleAttendue: string | undefined,
 ): Promise<Response> {
   if (!cleValide(cle, cleAttendue)) {
@@ -201,11 +175,11 @@ export async function repondreImprimante(
   }
   switch (requete.method) {
     case 'POST':
-      return sondage(requete, db);
+      return sondage(requete, depot);
     case 'GET':
-      return remise(db);
+      return remise(depot);
     case 'DELETE':
-      return confirmation(new URL(requete.url), db);
+      return confirmation(new URL(requete.url), depot);
     default:
       return vide(405);
   }
