@@ -12,8 +12,8 @@
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
-      // Rempli après `wrangler hyperdrive create` (identifiant, pas un secret).
-      "id": "A_REMPLIR"
+      // Config Hyperdrive « pain-patisserie-base » (identifiant, pas un secret).
+      "id": "93298fa670864e7c95db61fbb11653d2"
       // Développement local : la base de recette Docker est passée par la
       // variable CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE
       // (script imprimante:local), jamais écrite ici.
