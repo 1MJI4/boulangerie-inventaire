@@ -15,6 +15,7 @@ import {
   formaterLigneTicket,
   mentionHeureRetrait,
   MENTION_LIGNE_LIBRE,
+  zoneDessinImprimee,
 } from './ticketCanvas.ts';
 import { nomJour } from '../domaine/reglement.ts';
 
@@ -244,5 +245,45 @@ test('ticket : mentions internes jamais sur l’exemplaire CLIENT, présentes su
   for (const d of ['BUREAU', 'MAGASIN', 'ATELIER'] as const) {
     const t = textes(d, commande()).map((x) => x.texte).join(' | ');
     for (const m of internes) assert.ok(t.includes(m), `${d} : ${m}`);
+  }
+});
+
+/* ------------------------- Zone de dessin optionnelle (21/10/2026) */
+
+const ZONE = 'ZONE LIBRE — DESSIN, PRÉCISIONS';
+
+function hauteur(destination: (typeof DESTINATIONS)[number], c: Commande): number {
+  return dessinerSurContexte(contexteFactice().ctx, destination, c);
+}
+
+test('zone de dessin : seulement si demandée, sur les exemplaires internes, jamais sur CLIENT', () => {
+  for (const d of ['BUREAU', 'MAGASIN', 'ATELIER'] as const) {
+    assert.equal(zoneDessinImprimee({ zoneDessin: true }, d), true, d);
+    assert.equal(zoneDessinImprimee({ zoneDessin: false }, d), false, d);
+    // Ancienne commande, sans le champ : pas de zone.
+    assert.equal(zoneDessinImprimee({}, d), false, d);
+  }
+  assert.equal(zoneDessinImprimee({ zoneDessin: true }, 'CLIENT'), false);
+});
+
+test('ticket : zone de dessin imprimée sur BUREAU / MAGASIN / ATELIER seulement si demandée', () => {
+  for (const d of ['BUREAU', 'MAGASIN', 'ATELIER'] as const) {
+    assert.ok(textes(d, commande({ zoneDessin: true })).some((x) => x.texte === ZONE), d);
+    assert.ok(!textes(d, commande({ zoneDessin: false })).some((x) => x.texte === ZONE), d);
+    assert.ok(!textes(d, commande()).some((x) => x.texte === ZONE), `${d} (champ absent)`);
+  }
+});
+
+test('ticket : jamais de zone de dessin sur l’exemplaire CLIENT, même demandée', () => {
+  assert.ok(!textes('CLIENT', commande({ zoneDessin: true })).some((x) => x.texte === ZONE));
+  assert.equal(hauteur('CLIENT', commande({ zoneDessin: true })), hauteur('CLIENT', commande({ zoneDessin: false })));
+});
+
+test('ticket : sans zone demandée, le ticket interne est plus court (pas d’espace vide)', () => {
+  for (const d of ['BUREAU', 'MAGASIN', 'ATELIER'] as const) {
+    const avec = hauteur(d, commande({ zoneDessin: true }));
+    const sans = hauteur(d, commande({ zoneDessin: false }));
+    // ≈ 60 mm de cadre (480 points) en moins.
+    assert.ok(avec - sans >= 480, `${d} : ${avec} / ${sans}`);
   }
 });

@@ -177,6 +177,16 @@ export function demandeAConfirmer(
   return Boolean(commande.demandeInhabituelle || commande.gateauComplexe) && estExemplaireInterne(destination);
 }
 
+/**
+ * Zone « dessin, précisions » : seulement si le vendeur l'a demandée sur la
+ * commande (décision du propriétaire, 21/10/2026), et jamais sur l'exemplaire
+ * CLIENT. Règle unique pour les trois rendus (canvas, ticket navigateur, A6).
+ * Ancienne commande sans le champ : pas de zone.
+ */
+export function zoneDessinImprimee(commande: Pick<Commande, 'zoneDessin'>, destination: Destination): boolean {
+  return commande.zoneDessin === true && estExemplaireInterne(destination);
+}
+
 /* --------------------------------------------------------------- Outils */
 
 /**
@@ -431,9 +441,9 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
         interligne: 22,
       });
     }
-  } else {
-    // Le rouleau ne coûte presque rien : autant laisser de quoi dessiner le
-    // gâteau, c'est ce que les vendeurs font depuis toujours.
+  } else if (zoneDessinImprimee(commande, destination)) {
+    // Demandée sur la commande (client qui veut un dessin, un croquis) :
+    // de quoi dessiner le gâteau. Sans demande, le ticket s'arrête ici.
     const haut = plume.y;
     plume.espace(8);
     plume.texte('ZONE LIBRE — DESSIN, PRÉCISIONS', { taille: 14, x: MARGE + 10, interligne: 18 });

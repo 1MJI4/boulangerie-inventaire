@@ -207,6 +207,9 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       !commande.lignes.some((l) => l.produitCatalogue?.cleCatalogue === SUPPLEMENT_PHOTO),
   );
   const [demandeInhabituelle, setDemandeInhabituelle] = useState(commande?.demandeInhabituelle ?? false);
+  // Zone « dessin, précisions » sur les bons internes : seulement si demandée
+  // (21/10/2026). Ancienne commande sans le champ : non.
+  const [zoneDessin, setZoneDessin] = useState(commande?.zoneDessin === true);
   const [remarques, setRemarques] = useState(commande?.remarques ?? '');
 
   // --- Interface -----------------------------------------------------------
@@ -648,6 +651,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         photoWhatsapp: precisionsGateau.photoWhatsapp,
         photoImprimee: precisionsGateau.photoImprimee,
         demandeInhabituelle,
+        zoneDessin,
         remarques: remarques || null,
         lignes: lignes.map((l, i) => ({ ...saisie.lignes[i], precision: l.precision || null })),
       };
@@ -972,7 +976,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     </div>
   );
 
-  /* ------------------------------------- Remarques et demande inhabituelle */
+  /* ------------------- Remarques, demande inhabituelle, zone pour dessiner */
   // Valent pour toute la commande (salé compris) : en bas du bon, discrètes.
   const precisions = (
     <>
@@ -984,6 +988,9 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         <span className="text-sm text-ink-2">Demande inhabituelle (ingrédient particulier, moule spécial…)</span>
       </Case>
       {rendre(signauxInhabituelle)}
+      <Case compact coche={zoneDessin} onChange={setZoneDessin}>
+        <span className="text-sm text-ink-2">Zone pour dessiner sur le bon (dessin, croquis du client)</span>
+      </Case>
     </>
   );
 

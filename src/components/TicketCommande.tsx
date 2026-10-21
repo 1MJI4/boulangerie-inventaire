@@ -10,7 +10,8 @@
 //   • l'imprimante coupe elle-même entre deux exemplaires, il n'y a plus de
 //     massicot ;
 //   • la largeur utile tombe à ~72 mm : tout passe en colonne unique, et la
-//     zone de dessin devient une bande haute plutôt qu'un carré.
+//     zone de dessin (si demandée sur la commande) devient une bande haute
+//     plutôt qu'un carré.
 //
 // Une contrainte propre au thermique : les grands aplats noirs chauffent la
 // tête, ralentissent l'impression et l'usent. On n'en garde qu'un, la bande de
@@ -23,6 +24,7 @@ import {
   demandeAConfirmer,
   formaterLigneTicket,
   mentionHeureRetrait,
+  zoneDessinImprimee,
 } from '@/lib/ticketCanvas';
 
 export const DESTINATIONS = ['CLIENT', 'BUREAU', 'MAGASIN', 'ATELIER'] as const;
@@ -150,8 +152,9 @@ export function Ticket({
         </div>
       </div>
 
-      {/* La zone libre : le rouleau ne coûte presque rien, autant laisser de
-          quoi dessiner. Elle n'a pas de sens sur l'exemplaire du client. */}
+      {/* La zone libre : seulement si le vendeur l'a demandée sur la commande
+          (21/10/2026), jamais sur l'exemplaire du client. Sans elle, le
+          ticket s'arrête aux montants. */}
       {pourLeClient ? (
         <div className="tk-pied">
           À présenter au retrait
@@ -164,11 +167,11 @@ export function Ticket({
             </>
           ) : null}
         </div>
-      ) : (
+      ) : zoneDessinImprimee(commande, destination) ? (
         <div className="tk-libre">
           <span>Zone libre — dessin, précisions</span>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

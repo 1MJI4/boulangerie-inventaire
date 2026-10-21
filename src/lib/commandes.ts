@@ -78,6 +78,11 @@ export type Commande = {
   demandeInhabituelle?: boolean;
   /** OBSOLÈTE (lot 2) : remplacé par `demandeInhabituelle`, encore lu par les gabarits imprimés. */
   gateauComplexe?: boolean;
+  /**
+   * Zone « dessin, précisions » imprimée sur les exemplaires internes, seulement
+   * si le vendeur l'a demandée (21/10/2026). Absente (anciennes données) = non.
+   */
+  zoneDessin?: boolean;
   remarques: string | null;
   statut: StatutCommande;
   imprimeeLe: string | null;

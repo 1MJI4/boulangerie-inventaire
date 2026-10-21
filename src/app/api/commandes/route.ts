@@ -441,6 +441,8 @@ export async function POST(request: Request) {
           photoWhatsapp: corps.photoWhatsapp === true,
           photoImprimee: corps.photoImprimee === true,
           demandeInhabituelle: prep.saisie.demandeInhabituelle === true,
+          // Zone « dessin, précisions » sur les exemplaires internes : seulement si demandée (21/10/2026).
+          zoneDessin: corps.zoneDessin === true,
           remarques: texte(corps.remarques, 500) || null,
           ...champsCommande(resultat, prep),
           lignes: { create: lignesAEnregistrer(resultat, fiches, prep) },
@@ -470,6 +472,7 @@ type Apres = {
   dateRetrait: string;
   heureRetrait: string | null;
   texteGateau: string | null;
+  zoneDessin: boolean;
   totalCentimes: number;
   acompteCentimes: number;
 };
@@ -482,6 +485,7 @@ function changementsLisibles(
     retraitLe: Date;
     retraitHeure: string | null;
     texteGateau: string | null;
+    zoneDessin: boolean;
     totalCentimes: number;
     acompteCentimes: number;
     lignes: LigneTexte[];
@@ -499,6 +503,10 @@ function changementsLisibles(
   }
   if (apres.texteGateau !== existante.texteGateau) {
     changements.push(`écriture : ${existante.texteGateau ?? 'aucune'} → ${apres.texteGateau ?? 'aucune'}`);
+  }
+  // Le bon imprimé change (zone ajoutée ou retirée) : tracé, donc réimprimé.
+  if (apres.zoneDessin !== existante.zoneDessin) {
+    changements.push(`zone dessin : ${existante.zoneDessin ? 'oui' : 'non'} → ${apres.zoneDessin ? 'oui' : 'non'}`);
   }
   const versTexte = (ls: LigneTexte[]) =>
     ls.map((l) => `${formaterQuantite(l.unite === 'kg' ? 'kg' : 'piece', l.quantite)} × ${l.libelle} à ${formaterEuros(l.prixCentimes)}`).join(' ; ');
@@ -639,6 +647,7 @@ export async function PATCH(request: Request) {
             demandeInhabituelle: corps.demandeInhabituelle === true,
             photoWhatsapp: corps.photoWhatsapp === true,
             photoImprimee: corps.photoImprimee === true,
+            zoneDessin: corps.zoneDessin === true,
             remarques: texte(corps.remarques, 500) || null,
             modePaiement: corps.modePaiement === 'virement' ? 'virement' : 'especes',
           });
@@ -648,6 +657,7 @@ export async function PATCH(request: Request) {
             dateRetrait: etatExistant.retraitLe,
             heureRetrait: heure.donnees,
             texteGateau,
+            zoneDessin: corps.zoneDessin === true,
             totalCentimes: existante.totalCentimes,
             acompteCentimes: existante.acompteCentimes,
           };
@@ -709,6 +719,7 @@ export async function PATCH(request: Request) {
             demandeInhabituelle: prep.saisie.demandeInhabituelle === true,
             photoWhatsapp: corps.photoWhatsapp === true,
             photoImprimee: corps.photoImprimee === true,
+            zoneDessin: corps.zoneDessin === true,
             remarques: texte(corps.remarques, 500) || null,
             modePaiement: corps.modePaiement === 'virement' ? 'virement' : 'especes',
           });
@@ -718,6 +729,7 @@ export async function PATCH(request: Request) {
             dateRetrait: resultat.donnees.dateRetrait,
             heureRetrait: resultat.donnees.heureRetrait,
             texteGateau: prep.saisie.texteGateau ?? null,
+            zoneDessin: corps.zoneDessin === true,
             totalCentimes: resultat.donnees.totalCentimes,
             acompteCentimes: resultat.donnees.acompteCentimes,
           };

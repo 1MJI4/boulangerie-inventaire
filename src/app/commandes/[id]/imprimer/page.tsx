@@ -16,7 +16,13 @@ import { useEquipe } from '@/lib/vendeurs';
 import { useMemoireLocale } from '@/lib/memoireLocale';
 import { CSS_TICKET, Ticket, reglesPagesTicket } from '@/components/TicketCommande';
 import { ApercuReseau } from '@/components/ApercuReseau';
-import { dateRetraitTicket, demandeAConfirmer, estExemplaireInterne, mentionHeureRetrait } from '@/lib/ticketCanvas';
+import {
+  dateRetraitTicket,
+  demandeAConfirmer,
+  estExemplaireInterne,
+  mentionHeureRetrait,
+  zoneDessinImprimee,
+} from '@/lib/ticketCanvas';
 import { depuisApi, messageConfirmation, type Commande, type CommandeApi, type ModePaiement } from '@/lib/commandes';
 import { formaterEuros, resteDu } from '@/domaine/argent';
 import { formaterQuantite, totalLigne } from '@/domaine/unites';
@@ -97,8 +103,8 @@ export default function ImprimerCommande() {
   }, [commande, format]);
 
   // Sur rouleau, chaque exemplaire doit sortir à sa propre longueur : celui du
-  // client n'a pas de zone de dessin et fait 90 mm de moins que celui de
-  // l'atelier. On mesure, puis on donne à chaque ticket sa page nommée.
+  // client n'a jamais de zone de dessin, les exemplaires internes seulement
+  // si elle a été demandée sur la commande (70 mm de plus). On mesure, puis on donne à chaque ticket sa page nommée.
   useEffect(() => {
     if (!commande || format !== 'ticket') return;
     const mesurer = () => {
@@ -368,7 +374,9 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
             <span>{montantLigne(ligne)}</span>
           </div>
         ))}
-        <div className="bon-libre">{pourLeClient ? null : 'Zone libre — dessin, précisions'}</div>
+        {/* A6 de taille fixe : le bloc reste comme espaceur ; l'intitulé n'apparaît
+            que si la zone a été demandée sur la commande (21/10/2026), jamais côté client. */}
+        <div className="bon-libre">{zoneDessinImprimee(commande, destination) ? 'Zone libre — dessin, précisions' : null}</div>
       </div>
 
       {commande.texteGateau ? (

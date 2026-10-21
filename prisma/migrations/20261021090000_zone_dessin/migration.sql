@@ -1,0 +1,31 @@
+-- =====================================================================
+-- Demande du proprietaire du 21/10/2026 : la « ZONE LIBRE — DESSIN,
+-- PRECISIONS » des exemplaires internes (BUREAU, MAGASIN, ATELIER) n'est
+-- plus imprimee d'office. Elle ne l'est que si le vendeur l'a demandee sur
+-- la commande (client qui veut un dessin / croquis).
+--
+-- Ajout simple, NON DESTRUCTIF : une colonne booleenne, NOT NULL DEFAULT
+-- false. Les commandes existantes valent false (plus de zone a la
+-- reimpression ; le vendeur peut cocher la case en modifiant la commande).
+--
+-- Declencheurs existants sur "Commande" : aucun ne s'y oppose.
+--   * "Commande_refuser_jour_ferme" : UPDATE OF "retraitLe" seulement.
+--   * "Commande_reglement" : UPDATE OF acompte / totaux / remise / retraitLe.
+--   * "Commande_total_lignes" : UPDATE OF "totalTarifCentimes".
+--   A l'INSERT, ils controlent les memes colonnes qu'avant, la nouvelle
+--   colonne n'y intervient pas. Aucun CHECK a ajouter.
+--
+-- Migration NOUVELLE : les precedentes sont deja appliquees et ne sont
+-- JAMAIS modifiees apres coup.
+-- =====================================================================
+
+ALTER TABLE "Commande" ADD COLUMN "zoneDessin" BOOLEAN NOT NULL DEFAULT false;
+
+-- Verification apres deploiement (doit renvoyer 0) :
+--   SELECT count(*) FROM "Commande" WHERE "zoneDessin" IS NULL;
+--
+-- Retour arriere (manuel, a ne lancer qu'apres retour du code precedent,
+-- qui ne lit ni n'ecrit la colonne) :
+--   ALTER TABLE "Commande" DROP COLUMN "zoneDessin";
+--   DELETE FROM "_prisma_migrations" WHERE "migration_name" = '20261021090000_zone_dessin';
+-- Perte : le choix « zone pour dessiner » des commandes saisies entre-temps.

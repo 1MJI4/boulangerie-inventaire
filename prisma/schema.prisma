@@ -329,6 +329,9 @@ model Commande {
   // R55 — demande inhabituelle (ingredients, moules speciaux...) : avertissement.
   demandeInhabituelle Boolean @default(false)
   remarques           String?
+  // Demande du proprietaire du 21/10/2026 : zone « dessin, precisions » imprimee
+  // sur les exemplaires internes SEULEMENT si le vendeur l'a demandee.
+  zoneDessin          Boolean @default(false)
 
   statut     String    @default("a_imprimer") // a_imprimer | imprimee | remise | annulee
   imprimeeLe DateTime?
