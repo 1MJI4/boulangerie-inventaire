@@ -401,10 +401,11 @@ function produitsAEtages() {
   return attenduDepuisCatalogue(CAT).produits.filter((p) => p.etages !== null);
 }
 
-test("étages : l'affiche porte ceux du gâteau de mariage et de la pièce montée", () => {
+test("étages : l'affiche porte ceux des pièces montées 2 et 3 étages", () => {
   const aEtages = produitsAEtages();
-  assert.ok(aEtages.some((p) => /mariage/i.test(p.nom)), "gâteau de mariage sans étages dans les fichiers");
-  assert.ok(aEtages.some((p) => /pi[eè]ce mont[ée]e/i.test(p.nom)), "pièce montée sans étages dans les fichiers");
+  // Renommées par le propriétaire le 22/10/2026 (ex-« Gâteau de mariage » = 2 étages).
+  assert.ok(aEtages.some((p) => p.cle === "gateaux-sur-commande/gateau-de-mariage" && p.etages === 2), "pièce montée 2 étages sans étages");
+  assert.ok(aEtages.some((p) => p.cle === "gateaux-sur-commande/piece-montee" && p.etages === 3), "pièce montée 3 étages sans étages");
   for (const p of aEtages) {
     assert.ok(Number.isInteger(p.etages) && p.etages! >= 2, `${p.nom} : ${p.etages}`);
     assert.equal(p.regimePrix, "C");

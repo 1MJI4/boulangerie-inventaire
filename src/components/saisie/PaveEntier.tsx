@@ -46,7 +46,7 @@ export function PaveEntier({
 }: PropsPaveEntier) {
   const lire = lecteurPieces(contexte, champ);
   const lisible = (t: string) => lecteurPieces('inventaire', champ)(t).ok;
-  const { texte, valeurLue, changer } = useSaisiePave({
+  const { texte, texteDeFrappe, aRemplacer, valeurLue, changer } = useSaisiePave({
     valeur: quantite,
     versTexte: texteDepuisPieces,
     lire,
@@ -59,10 +59,11 @@ export function PaveEntier({
       {...communes}
       libelleAccessible={`${communes.libelle}, en ${libelleUnite}`}
       texte={texte}
+      aRemplacer={aRemplacer}
       suffixe={<span className="text-xl font-medium text-ink-2">{libelleUnite}</span>}
       jeu="entier"
       onTexte={changer}
-      onTouche={(t) => changer(appliquerTouche(texte, t, { virgule: false, chiffresEntiersMax: chiffresMax, lisible }))}
+      onTouche={(t) => changer(appliquerTouche(texteDeFrappe, t, { virgule: false, chiffresEntiersMax: chiffresMax, lisible }))}
       onValider={onValider ? () => valeurLue !== null && onValider(valeurLue) : undefined}
       valeurValide={valeurLue !== null}
     />

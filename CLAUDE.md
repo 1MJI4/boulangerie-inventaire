@@ -156,9 +156,15 @@ Les seuils restent distincts selon le produit — **ne pas les unifier « pour s
 | 15 pièces | mini tartelette · mini bavarois · mini éclair/mille-feuille |
 | 15 parts **par symbole** | Number Cake (« 25 » = 2 symboles = 30 parts) |
 | 20 parts | Layer Cake |
-| 40 parts | Gâteau de mariage (2 étages) |
-| 60 parts | Pièce montée (3 étages) |
+| 40 parts | Pièce montée 2 étages (ex-« Gâteau de mariage », renommée le 22/10/2026) |
+| 60 parts | Pièce montée 3 étages |
 | max 20 sandwichs | Grand pain surprise → au-delà, **proposer un 2e pain** |
+
+Saisie (R61, décision du propriétaire 22/10/2026) : un gâteau par personne à minimum
+(Layer Cake, Number Cake, pièces montées) se choisit aux **boutons de taille**, comme le
+Bavarois, en partant de **son minimum, de 5 en 5** (Layer 20, 25, 30…). Raccourcis, pas une
+limite : « Autre » au pavé reste libre au-dessus du minimum. Partout, un nombre déjà affiché
+dans un pavé est **remplacé** par le premier chiffre tapé (jamais « 1 » + « 12 » = 112).
 
 > 📌 À signaler au gérant : l'affiche « Gâteaux SIMPLES » annonce encore « Supplément pour
 > les gâteaux dont le minimum n'est pas respecté ». L'application, elle, refuse. L'affiche

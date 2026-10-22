@@ -155,6 +155,30 @@ export function estGateauSimpleSurCommande(fiche: FicheTarifee): boolean {
   );
 }
 
+/** Écart entre deux tailles proposées à partir du minimum (propriétaire, 22/10/2026 : « toujours par 5 »). */
+export const PAS_TAILLES_A_MINIMUM = 5;
+/** Nombre de tailles proposées : 9 boutons + « Autre » tiennent sur deux rangées de 5. */
+export const NB_TAILLES_A_MINIMUM = 9;
+
+/**
+ * Règle R61 (propriétaire, 22/10/2026) : un gâteau par personne À MINIMUM
+ * (Layer Cake, Number Cake, pièces montées) se choisit aux boutons de taille,
+ * comme le Bavarois, en partant de SON minimum, de 5 en 5 :
+ * Layer Cake 20, 25, 30… · Number Cake « 25 » (2 symboles) 30, 35… ·
+ * pièce montée 2 étages 40, 45… · 3 étages 60, 65…
+ * Ce sont des RACCOURCIS, pas une limite : toute quantité ≥ minimum reste
+ * acceptée au pavé (« Autre ») ; sous le minimum, `validerQuantiteMin` refuse.
+ * Vide si le produit n'est pas concerné, ou si le minimum n'est pas encore
+ * connu (Number Cake sans nombre de symboles).
+ */
+export function taillesAPartirDuMinimum(fiche: FicheTarifee, nbSymboles?: number | null): number[] {
+  if (fiche.produit.regimePrix !== 'C' || fiche.prix.basePrix !== 'personne') return [];
+  if (fiche.prix.minParSymbole !== null && !(typeof nbSymboles === 'number' && nbSymboles > 0)) return [];
+  const minimum = minimumApplicable(fiche, nbSymboles ?? undefined);
+  if (minimum === null || minimum <= 0) return [];
+  return Array.from({ length: NB_TAILLES_A_MINIMUM }, (_, i) => minimum + i * PAS_TAILLES_A_MINIMUM);
+}
+
 /**
  * Règle R59 (règlement intérieur, décision du 15/10/2026) : un gâteau simple
  * sur commande se fait dans une des tailles standard (`tailles`, donnée

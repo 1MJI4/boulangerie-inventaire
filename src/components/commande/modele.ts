@@ -98,12 +98,22 @@ export function toucherProduit(
   lignes: readonly LigneEcran[],
   fiche: FicheCatalogue,
 ): { lignes: LigneEcran[]; cle: string; champ: 'quantite' | 'symboles' | 'taille' } {
-  if (estGateauSimpleSurCommande(fiche)) {
+  // Gâteau par personne à minimum (R61) : tailles proposées à partir du
+  // minimum, pas de « +1 » (1 part de Layer Cake n'a pas de sens). Number
+  // Cake : le nombre de symboles d'abord, il fixe le minimum.
+  const aMinimumParPersonne =
+    fiche.produit.regimePrix === 'C' &&
+    fiche.prix.basePrix === 'personne' &&
+    (fiche.prix.minQuantite !== null || fiche.prix.minParSymbole !== null);
+  if (estGateauSimpleSurCommande(fiche) || aMinimumParPersonne) {
+    const symboles = fiche.prix.minParSymbole !== null;
     let deja: LigneEcran | undefined;
     for (const l of lignes) if (l.produitId === fiche.produit.id || l.origineSurCommande === fiche.produit.id) deja = l;
-    if (deja) return { lignes: [...lignes], cle: deja.cle, champ: 'taille' };
+    if (deja) {
+      return { lignes: [...lignes], cle: deja.cle, champ: symboles && deja.nbSymboles === null ? 'symboles' : 'taille' };
+    }
     const ligne = ligneVide(fiche.produit.id);
-    return { lignes: [...lignes, ligne], cle: ligne.cle, champ: 'taille' };
+    return { lignes: [...lignes, ligne], cle: ligne.cle, champ: symboles ? 'symboles' : 'taille' };
   }
   const auKilo = fiche.produit.unite === 'kg';
   const symboles = fiche.prix.minParSymbole !== null;

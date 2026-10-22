@@ -48,7 +48,7 @@ export function PaveDecimalPoids({
 }: PropsPaveDecimalPoids) {
   const lire = lecteurPoids(contexte, champ);
   const lisible = (t: string) => lecteurPoids('inventaire', champ)(t).ok;
-  const { texte, valeurLue, changer } = useSaisiePave({
+  const { texte, texteDeFrappe, aRemplacer, valeurLue, changer } = useSaisiePave({
     valeur: grammes,
     versTexte: texteDepuisGrammes,
     lire,
@@ -62,12 +62,13 @@ export function PaveDecimalPoids({
       sousTitre="Poids lu sur la balance, en kilos"
       libelleAccessible={`Poids de ${communes.libelle}, en kilos`}
       texte={texte}
+      aRemplacer={aRemplacer}
       // « kg » toujours visible, en gros : on ne doit jamais le confondre avec des pièces.
       suffixe={<span className="text-3xl font-bold text-ink">kg</span>}
       aide={valeurLue !== null ? `= ${formaterQuantite('kg', valeurLue)}` : ''}
       jeu="decimal"
       onTexte={changer}
-      onTouche={(t) => changer(appliquerTouche(texte, t, { virgule: true, chiffresEntiersMax: CHIFFRES_ENTIERS_MAX, lisible }))}
+      onTouche={(t) => changer(appliquerTouche(texteDeFrappe, t, { virgule: true, chiffresEntiersMax: CHIFFRES_ENTIERS_MAX, lisible }))}
       onValider={onValider ? () => valeurLue !== null && onValider(valeurLue) : undefined}
       valeurValide={valeurLue !== null}
     />

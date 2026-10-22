@@ -31,6 +31,8 @@ type PropsCadre = PropsCommunesPave & {
   sousTitre?: string;
   libelleAccessible: string;
   texte: string;
+  /** Le nombre affiché sera remplacé par le premier chiffre tapé : on le montre surligné. */
+  aRemplacer?: boolean;
   /** Unité affichée en gros à droite (« kg », « € », « parts »). */
   suffixe?: ReactNode;
   /** Ligne d'aide sous l'afficheur (« = 1,250 kg »). Absente → pas de ligne. */
@@ -51,6 +53,7 @@ export function CadrePave({
   sousTitre,
   libelleAccessible,
   texte,
+  aRemplacer = false,
   suffixe,
   aide,
   jeu,
@@ -95,7 +98,7 @@ export function CadrePave({
     >
       <span className={`chiffres min-w-0 truncate font-semibold text-ink ${
         compact ? (texte.length > 8 ? 'text-xl' : 'text-3xl') : 'text-5xl'
-      }`}>
+      } ${aRemplacer && texte !== '' ? 'rounded-md bg-accent-doux px-1.5 text-accent' : ''}`}>
         {texte === '' ? '—' : texte}
       </span>
       {suffixe}

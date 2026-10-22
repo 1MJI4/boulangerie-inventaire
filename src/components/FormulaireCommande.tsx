@@ -69,7 +69,7 @@ import { formaterEuros, resteDu, somme } from '@/domaine/argent';
 import { formaterQuantite } from '@/domaine/unites';
 import { libelleCorrection } from '@/domaine/messages';
 import { horairesOuvertureDuJour, validerJourMeme, validerLendemain } from '@/domaine/reglement';
-import { estGateauSimpleSurCommande, taillesProches } from '@/domaine/minimums';
+import { estGateauSimpleSurCommande, taillesAPartirDuMinimum, taillesProches } from '@/domaine/minimums';
 import { FAMILLES_GATEAU, JOURS_AVANT_ARCHIVAGE } from '@/domaine/constantes';
 import { CORRESPONDANCES_COMPTOIR } from '@/catalogue/correspondancesComptoir';
 import { gateauSurCommandeDe } from '@/domaine/prixComptoir';
@@ -1493,8 +1493,12 @@ function LigneDuBon({
   const suggestions = regime === 'B' ? options?.garnitures : regime === 'C' ? options?.parfums : undefined;
   // LOI 11 : gâteau simple sur commande (données de la fiche, jugées par le
   // domaine) → la taille se choisit d'abord aux boutons des tailles standard.
-  const parTailles = ficheGateau !== null && estGateauSimpleSurCommande(ficheGateau) && tailles.length > 0;
-  const taillesTriees = [...tailles].sort((a, b) => a - b);
+  // R61 : gâteau à minimum (Layer, Number Cake, pièces montées) → tailles de 5
+  // en 5 à partir de SON minimum (domaine) ; raccourcis, « Autre » reste libre.
+  const simple = ficheGateau !== null && estGateauSimpleSurCommande(ficheGateau);
+  const taillesLigne = simple ? tailles : ficheGateau ? taillesAPartirDuMinimum(ficheGateau, ligne.nbSymboles) : [];
+  const parTailles = taillesLigne.length > 0;
+  const taillesTriees = [...taillesLigne].sort((a, b) => a - b);
 
   const [signalementTarif, setSignalementTarif] = useState<Echec | 'ok' | null>(null);
   const signalerAuGerant = async () => {

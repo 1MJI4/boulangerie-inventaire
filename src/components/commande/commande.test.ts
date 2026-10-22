@@ -113,21 +113,36 @@ const number: FicheCatalogue = {
 };
 
 test('1 toucher = 1 ; 5 touchers = 5 sur la même ligne, sans pré-remplir au minimum', () => {
+  // Produit à la pièce avec minimum (mini burger, régime B) : N touchers = N.
+  const mini: FicheCatalogue = {
+    produit: { id: 'b/mini', produit: 'Mini burger', sousCategorie: '', unite: 'piece', regimePrix: 'B', famille: 'sale', categorie: 'Traiteur', estFavori: false },
+    prix: { prixCentimes: PRIX, basePrix: 'piece', prixEstPlancher: false, minQuantite: 10, minParSymbole: null, maxParUnite: null },
+  };
+  const ctxMini = { ...ctx, resoudre: resoudreLocal({ date: DATE, fiches: [mini] }) };
   let lignes: LigneEcran[] = [];
-  const premier = toucherProduit(lignes, layer);
+  const premier = toucherProduit(lignes, mini);
   lignes = premier.lignes;
   assert.equal(lignes.length, 1);
   assert.equal(lignes[0].quantite, 1);
-  for (let k = 0; k < 4; k += 1) lignes = toucherProduit(lignes, layer).lignes;
+  for (let k = 0; k < 4; k += 1) lignes = toucherProduit(lignes, mini).lignes;
   assert.equal(lignes.length, 1);
   assert.equal(lignes[0].quantite, 5);
-  assert.equal(quantiteAuBon(lignes, 'c/layer'), 5);
-  // 5 parts de Layer Cake : refus à la saisie de la ligne, avec la sortie en un geste.
-  const r = controlerLigne(versLigneSaisie(lignes[0], layer), 0, DATE, ctx);
+  assert.equal(quantiteAuBon(lignes, 'b/mini'), 5);
+  // 5 mini burgers : refus à la saisie de la ligne, avec la sortie en un geste.
+  const r = controlerLigne(versLigneSaisie(lignes[0], mini), 0, DATE, ctxMini);
   assert.equal(r.ok, false);
   if (r.ok) return;
   assert.equal(r.code, 'ERR_QUANTITE_MIN');
-  assert.equal(sortieDe(r, 'parts').libelle, 'Passer à 20 parts');
+  assert.match(sortieDe(r, 'pièces').libelle ?? '', /Passer à 10/);
+});
+
+test('R61 : un Layer Cake se choisit aux tailles (à partir de 20), pas de « +1 »', () => {
+  const t = toucherProduit([], layer);
+  assert.equal(t.champ, 'taille');
+  assert.equal(t.lignes[0].quantite, null);
+  const encore = toucherProduit(t.lignes, layer);
+  assert.equal(encore.lignes.length, 1, 'pas de seconde ligne');
+  assert.equal(encore.lignes[0].quantite, null);
 });
 
 test('produit au kilo : un toucher n’ajoute jamais « +1 », il ouvre le pavé du poids (LOI 2)', () => {

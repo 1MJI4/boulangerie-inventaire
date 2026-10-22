@@ -23,7 +23,7 @@ import {
   type ContexteCommande,
   type LigneSaisie,
 } from './commande.ts';
-import { compterSymboles, taillesProches, validerMaximum, validerQuantiteMin, validerTailleGateau } from './minimums.ts';
+import { compterSymboles, taillesAPartirDuMinimum, taillesProches, validerMaximum, validerQuantiteMin, validerTailleGateau } from './minimums.ts';
 import { prixLigne, validerPrixParPersonne } from './regimes.ts';
 import type { FicheTarifee } from './types.ts';
 
@@ -845,4 +845,18 @@ test('controlerLigne : la taille est contrôlée APRÈS le minimum ; la liste es
   const cmd = controlerCommande(commande([{ produitId: ID.bavaroisC, quantite: 7 }], { sansEcriture: true }), ctx);
   assert.equal(cmd.ok, false);
   if (!cmd.ok) assert.equal(cmd.code, 'ERR_TAILLE_NON_STANDARD');
+});
+
+// --- R61 : tailles proposées à partir du minimum, de 5 en 5 (propriétaire, 22/10/2026) ---
+
+test('R61 tailles à partir du minimum : Layer 20…60, pièces montées 40… et 60…, Number Cake selon les symboles', () => {
+  assert.deepEqual(taillesAPartirDuMinimum(fiche(ID.layer)), [20, 25, 30, 35, 40, 45, 50, 55, 60]);
+  assert.equal(taillesAPartirDuMinimum(fiche(ID.mariage))[0], 40);
+  assert.equal(taillesAPartirDuMinimum(fiche(ID.pieceMontee))[0], 60);
+  assert.deepEqual(taillesAPartirDuMinimum(fiche(ID.number)), [], 'sans symboles, minimum inconnu : rien');
+  assert.deepEqual(taillesAPartirDuMinimum(fiche(ID.number), 2).slice(0, 3), [30, 35, 40]);
+  // Gâteau simple (tailles standard du gérant) : non concerné.
+  assert.deepEqual(taillesAPartirDuMinimum(fiche(ID.bavaroisC)), []);
+  // Raccourcis seulement : une taille hors liste au-dessus du minimum reste acceptée.
+  assert.equal(validerQuantiteMin(fiche(ID.layer), 22).ok, true);
 });

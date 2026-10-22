@@ -45,7 +45,7 @@ export function PaveMontant({
 }: PropsPaveMontant) {
   const lire = lecteurMontant(champ);
   const lisible = (t: string) => lire(t).ok;
-  const { texte, valeurLue, changer } = useSaisiePave({
+  const { texte, texteDeFrappe, aRemplacer, valeurLue, changer } = useSaisiePave({
     valeur: centimes,
     versTexte: texteDepuisCentimes,
     lire,
@@ -59,11 +59,12 @@ export function PaveMontant({
       sousTitre={sousTitre}
       libelleAccessible={`${communes.libelle}, en euros`}
       texte={texte}
+      aRemplacer={aRemplacer}
       suffixe={<span className="text-3xl font-bold text-ink">€</span>}
       aide={valeurLue !== null ? `= ${formaterEuros(valeurLue)}` : ''}
       jeu="decimal"
       onTexte={changer}
-      onTouche={(t) => changer(appliquerTouche(texte, t, { virgule: true, chiffresEntiersMax: chiffresMax, lisible }))}
+      onTouche={(t) => changer(appliquerTouche(texteDeFrappe, t, { virgule: true, chiffresEntiersMax: chiffresMax, lisible }))}
       onValider={onValider ? () => valeurLue !== null && onValider(valeurLue) : undefined}
       valeurValide={valeurLue !== null}
     />
