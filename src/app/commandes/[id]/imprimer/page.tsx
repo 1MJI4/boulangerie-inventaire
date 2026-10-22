@@ -202,14 +202,12 @@ export default function ImprimerCommande() {
           }
           actions={
             <>
-              {/* Revient à l'écran d'où l'on vient (la commande qu'on vient de saisir,
-                  la liste, l'accueil) ; ouverte directement, la page renvoie à la liste. */}
-              <Bouton onClick={() => (window.history.length > 1 ? router.back() : router.push('/commandes'))}>
-                ← Retour
-              </Bouton>
+              {/* « Retour » = revenir à la commande, pour la relire ou la corriger
+                  (propriétaire, 22/10/2026). La liste reste accessible à côté. */}
               <Bouton onClick={() => router.push(`/commandes/${params.id}/modifier`)}>
-                Modifier
+                ← Revenir à la commande
               </Bouton>
+              <Bouton onClick={() => router.push('/commandes')}>Liste</Bouton>
               {format === 'reseau' ? null : (
                 <Bouton variante="principal" onClick={() => void imprimer()}>
                   Imprimer

@@ -716,6 +716,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         // replace : « ← Retour » de l'impression ne ramène pas sur un formulaire vidé.
         onImprimer={() => router.replace(`/commandes/${validee.id}/imprimer`)}
         onNouvelle={() => router.push('/commandes')}
+        // La commande est enregistrée : y revenir l'ouvre en modification (jamais un doublon).
+        onRevoir={() => router.replace(`/commandes/${validee.id}/modifier`)}
       />
     );
   }
@@ -2260,6 +2262,7 @@ function Confirmation({
   heureRetrait,
   onImprimer,
   onNouvelle,
+  onRevoir,
 }: {
   validee: Validee;
   modification: boolean;
@@ -2268,6 +2271,8 @@ function Confirmation({
   heureRetrait: string;
   onImprimer: () => void;
   onNouvelle: () => void;
+  /** Revenir à la commande pour la relire ou la corriger (déjà enregistrée : en modification). */
+  onRevoir: () => void;
 }) {
   const c = validee.controlee;
   return (
@@ -2297,8 +2302,11 @@ function Confirmation({
           <Bouton variante="principal" className="min-h-14 text-lg" onClick={onImprimer}>
             Imprimer le bon
           </Bouton>
+          <Bouton className="min-h-14" onClick={onRevoir}>
+            ← Revenir à la commande
+          </Bouton>
           <Bouton className="min-h-14" onClick={onNouvelle}>
-            Retour aux commandes
+            Liste des commandes
           </Bouton>
         </div>
       </Carte>
