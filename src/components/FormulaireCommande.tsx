@@ -713,7 +713,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         client={client}
         dateRetrait={dateRetrait}
         heureRetrait={heureRetrait}
-        onImprimer={() => router.push(`/commandes/${validee.id}/imprimer`)}
+        // replace : « ← Retour » de l'impression ne ramène pas sur un formulaire vidé.
+        onImprimer={() => router.replace(`/commandes/${validee.id}/imprimer`)}
         onNouvelle={() => router.push('/commandes')}
       />
     );

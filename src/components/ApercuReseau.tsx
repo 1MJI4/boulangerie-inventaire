@@ -209,8 +209,9 @@ export function ApercuReseau({
   const verrouille = envoi || (enCours && !bloque);
 
   return (
-    <div className="ecran-seulement">
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+    // Centré (22/10/2026) : bouton, état d'impression et tickets dans une colonne au milieu.
+    <div className="ecran-seulement mx-auto flex max-w-xl flex-col items-center">
+      <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
         <Bouton
           variante={tousSortis && !envoi ? 'secondaire' : 'principal'}
           disabled={verrouille}
@@ -249,7 +250,7 @@ export function ApercuReseau({
         <div
           role="status"
           aria-live="polite"
-          className={`mb-4 max-w-md rounded-xl border p-4 ${tousSortis ? 'border-ok/40 bg-ok-doux' : 'border-accent/40 bg-accent-doux'}`}
+          className={`mb-4 w-full max-w-md rounded-xl border p-4 ${tousSortis ? 'border-ok/40 bg-ok-doux' : 'border-accent/40 bg-accent-doux'}`}
         >
           <div className="flex items-center gap-3">
             <span className={tousSortis ? 'text-ok' : 'text-accent'}>
@@ -310,7 +311,7 @@ export function ApercuReseau({
         </div>
       ) : null}
 
-      <p className="mb-4 max-w-prose text-sm text-ink-2">
+      <p className="mb-4 max-w-prose text-center text-sm text-ink-2">
         Ce que vous voyez ci-dessous est l’image exacte envoyée à l’imprimante — même largeur, mêmes
         points. Le premier ticket sort en quelques secondes, les suivants s’enchaînent.
       </p>
@@ -318,7 +319,7 @@ export function ApercuReseau({
       <div ref={conteneur} className="rouleau-apercu" />
 
       <style>{`
-        .rouleau-apercu { display: flex; flex-direction: column; align-items: flex-start; gap: 18px; }
+        .rouleau-apercu { display: flex; flex-direction: column; align-items: center; gap: 18px; }
         .ticket-apercu { background: #fff; box-shadow: 0 2px 18px rgba(0,0,0,.25); image-rendering: auto; }
         .imprimante-animee .papier { transform: translateY(-8px); }
         .imprimante-animee .voyant { opacity: .4; }

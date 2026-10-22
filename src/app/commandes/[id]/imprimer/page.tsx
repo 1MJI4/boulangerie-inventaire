@@ -190,7 +190,7 @@ export default function ImprimerCommande() {
       <style>{format === 'a6' ? CSS_IMPRESSION : CSS_TICKET}</style>
       {format === 'ticket' && pagesTicket ? <style>{pagesTicket}</style> : null}
 
-      <div className="ecran-seulement">
+      <div className="ecran-seulement mx-auto max-w-xl">
         <Entete
           titre={`Bon n° ${commande.numero}`}
           sousTitre={
@@ -202,7 +202,11 @@ export default function ImprimerCommande() {
           }
           actions={
             <>
-              <Bouton onClick={() => router.push('/commandes')}>← Commandes</Bouton>
+              {/* Revient à l'écran d'où l'on vient (la commande qu'on vient de saisir,
+                  la liste, l'accueil) ; ouverte directement, la page renvoie à la liste. */}
+              <Bouton onClick={() => (window.history.length > 1 ? router.back() : router.push('/commandes'))}>
+                ← Retour
+              </Bouton>
               <Bouton onClick={() => router.push(`/commandes/${params.id}/modifier`)}>
                 Modifier
               </Bouton>
