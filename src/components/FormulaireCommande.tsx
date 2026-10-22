@@ -1509,7 +1509,10 @@ function PaveDeLigne({
         libelleUnite={unite}
         quantite={ligne.quantite}
         onChange={(q) => onChange({ quantite: q })}
-        onValider={() => ouvrir(plancher || libre ? 'prix' : fiche?.prix.maxParUnite ? 'objets' : null)}
+        // Le prix d'un produit du tarif est automatique (plancher pré-rempli, modifiable en
+        // touchant le champ) : on n'y saute pas (22/10/2026). Seule une demande libre, sans
+        // prix au tarif, enchaîne sur le prix.
+        onValider={() => ouvrir(libre ? 'prix' : fiche?.prix.maxParUnite ? 'objets' : null)}
       />
     );
   }
