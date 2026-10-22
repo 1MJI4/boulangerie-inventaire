@@ -28,12 +28,15 @@ function refusApi(echec: Echec, statut: number): NextResponse {
   });
 }
 
+/**
+ * Redirection RELATIVE (« /connexion… », sans hôte) : le navigateur reste sur
+ * l'adresse qu'il a tapée. Derrière le serveur web du VPS, Next se croit sur
+ * « localhost:3000 » et une adresse absolue y enverrait la tablette.
+ */
 function versConnexion(requete: NextRequest): NextResponse {
-  const url = requete.nextUrl.clone();
   const suite = `${requete.nextUrl.pathname}${requete.nextUrl.search}`;
-  url.pathname = CHEMIN_CONNEXION;
-  url.search = suite === '/' ? '' : `?suite=${encodeURIComponent(suite)}`;
-  return NextResponse.redirect(url);
+  const cible = suite === '/' ? CHEMIN_CONNEXION : `${CHEMIN_CONNEXION}?suite=${encodeURIComponent(suite)}`;
+  return new NextResponse(null, { status: 307, headers: { Location: cible } });
 }
 
 /**
