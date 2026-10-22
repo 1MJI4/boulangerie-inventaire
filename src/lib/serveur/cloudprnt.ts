@@ -93,6 +93,15 @@ function vide(status: number): Response {
 
 /* ------------------------------------------------ POST : le sondage */
 
+/**
+ * L'état n'est réécrit en base que s'il CHANGE (papier, capot : affiché tout de
+ * suite) ou au plus toutes les 30 s (« toujours là ») — l'écran tient
+ * l'imprimante pour présente 45 s. À un sondage toutes les 2 s, cela évite
+ * ~40 000 réécritures inutiles par jour (22/10/2026).
+ */
+export const ECRITURE_ETAT_MAX_MS = 30_000;
+const dernierEtatEcrit = new WeakMap<DepotImprimante, { cle: string; le: number }>();
+
 async function sondage(requete: Request, depot: DepotImprimante): Promise<Response> {
   let corps: Record<string, unknown> = {};
   try {
@@ -103,11 +112,24 @@ async function sondage(requete: Request, depot: DepotImprimante): Promise<Respon
   }
   const statusCode = typeof corps.statusCode === 'string' ? corps.statusCode : '';
   const mac = typeof corps.printerMAC === 'string' ? corps.printerMAC : null;
-  const etat = JSON.stringify({ statusCode, mac, vueLe: new Date().toISOString() });
+  const maintenant = Date.now();
+  const etat = JSON.stringify({ statusCode, mac, vueLe: new Date(maintenant).toISOString() });
+  const cleEtat = `${statusCode}|${mac ?? ''}`;
+  const precedent = dernierEtatEcrit.get(depot);
+  const aEcrire = !precedent || precedent.cle !== cleEtat || maintenant - precedent.le >= ECRITURE_ETAT_MAX_MS;
+  if (aEcrire) dernierEtatEcrit.set(depot, { cle: cleEtat, le: maintenant });
 
   // Les deux accès en parallèle : la réponse part plus vite. L'état n'est
-  // qu'informatif : son échec ne doit jamais empêcher d'imprimer.
-  const [, media] = await Promise.all([depot.noterEtat(etat).catch(() => {}), depot.mediaEnAttente()]);
+  // qu'informatif : son échec ne doit jamais empêcher d'imprimer (et on
+  // retentera au sondage suivant).
+  const [, media] = await Promise.all([
+    aEcrire
+      ? depot.noterEtat(etat).catch(() => {
+          dernierEtatEcrit.delete(depot);
+        })
+      : null,
+    depot.mediaEnAttente(),
+  ]);
 
   return json({
     jobReady: media !== null,

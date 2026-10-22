@@ -128,3 +128,21 @@ test('sondage sans corps (certains firmwares) et file vide : réponse propre', a
   assert.equal((await repondreImprimante(appel('DELETE', '?code=200+OK'), CLE, d, CLE)).status, 200);
   assert.equal((await repondreImprimante(appel('PUT'), CLE, d, CLE)).status, 405);
 });
+
+test('état de l’imprimante : réécrit s’il change, pas à chaque sondage', async () => {
+  const { d } = depot([]);
+  let ecritures = 0;
+  const noter = d.noterEtat.bind(d);
+  d.noterEtat = async (v) => {
+    ecritures++;
+    return noter(v);
+  };
+  const sonder = (statut: string) =>
+    repondreImprimante(appel('POST', '', JSON.stringify({ statusCode: statut, printerMAC: '00:11' })), CLE, d, CLE);
+  await sonder('200 OK');
+  await sonder('200 OK');
+  await sonder('200 OK');
+  assert.equal(ecritures, 1, 'même état, moins de 30 s : une seule écriture');
+  await sonder('410 Paper Empty');
+  assert.equal(ecritures, 2, 'changement d’état : écrit tout de suite');
+});
