@@ -83,6 +83,12 @@ export type LigneSaisie = {
   nbObjets?: number | null;
   /** R62 : goût (ou recette d'entremet) du gâteau, un par étage. */
   gouts?: readonly string[] | null;
+  /**
+   * R60 + R62 : gâteau sur commande d'origine quand la ligne est devenue le
+   * gâteau du comptoir (Bavarois 6 parts → Bavarois 6P). Retenu seulement s'il
+   * correspond au produit du comptoir dans la table R60 : son goût reste exigé.
+   */
+  origineSurCommande?: string | null;
   /** Accord du gérant : prix sous plancher (C) ou prix d'une ligne libre. */
   deverrouillage?: Deverrouillage | null;
   /**
@@ -281,8 +287,11 @@ function controlerLigneSansPrefixe(
   const comptoir = validerPrixComptoir(fiche, saisie.quantite, ctx.correspondancesComptoir);
   if (!comptoir.ok) return comptoir;
 
-  // R62 : goût du gâteau sur commande (un par étage), après la taille.
-  const gouts = validerGouts(ctx.goutsSurCommande?.[fiche.produit.id], fiche, saisie.gouts);
+  // R62 : goût du gâteau sur commande (un par étage), après la taille. Une
+  // ligne devenue gâteau du comptoir (R60) garde le goût du gâteau commandé.
+  const origine = gateauSurCommandeDe(fiche.produit.id, ctx.correspondancesComptoir)?.surCommande ?? null;
+  const cleGout = saisie.origineSurCommande && saisie.origineSurCommande === origine ? origine : fiche.produit.id;
+  const gouts = validerGouts(ctx.goutsSurCommande?.[cleGout], fiche, saisie.gouts);
   if (!gouts.ok) return gouts;
 
   const prixFixe = !(fiche.produit.regimePrix === 'C' && fiche.prix.prixEstPlancher);

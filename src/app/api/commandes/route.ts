@@ -260,6 +260,7 @@ function preparer(
       nbSymboles: entierOuNull(l.nbSymboles),
       nbObjets: entierOuNull(l.nbObjets),
       gouts: listeDeMots(l.gouts),
+      origineSurCommande: texte(l.origineSurCommande, 200) || null,
       deverrouillage: accord,
       deverrouillageTaille,
     });

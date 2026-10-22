@@ -895,3 +895,20 @@ test('R62 : entremet → une recette ; comptoir, minis et salé ne sont pas conc
   assert.equal(ligneGout(ID.bavarois6pComptoir, 1).ok, true, 'gâteau du comptoir : goût déjà connu');
   assert.equal(ligneGout('gateaux-sur-commande/mini-bavarois', 15).ok, true, 'minis : assortiment');
 });
+
+test('R62 + R60 : Bavarois commandé en 6 parts devenu le 6P du comptoir → son goût reste exigé', () => {
+  const sansGout = controlerLigne(
+    { produitId: ID.bavarois6pComptoir, quantite: 1, origineSurCommande: ID.bavaroisC },
+    0, PRISE, ctxGouts,
+  );
+  assert.equal(sansGout.ok, false);
+  if (!sansGout.ok) assert.equal(sansGout.code, 'ERR_GOUT_MANQUANT');
+  const avecGout = controlerLigne(
+    { produitId: ID.bavarois6pComptoir, quantite: 1, origineSurCommande: ID.bavaroisC, gouts: ['Framboise'] },
+    0, PRISE, ctxGouts,
+  );
+  assert.equal(avecGout.ok, true);
+  // Origine qui ne correspond pas au produit du comptoir : ignorée (achat au rayon).
+  const fausse = controlerLigne({ produitId: ID.bavarois6pComptoir, quantite: 1, origineSurCommande: ID.layer }, 0, PRISE, ctxGouts);
+  assert.equal(fausse.ok, true);
+});

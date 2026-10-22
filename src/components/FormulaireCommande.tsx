@@ -576,7 +576,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
           // R62 : goût manquant → « Au choix du pâtissier » sur chaque goût encore vide.
           if (s.code === 'ERR_GOUT_MANQUANT' && iLigne !== null) {
             const l = lignes[iLigne];
-            const f = l ? ficheDe(catalogue, l.produitId) : null;
+            const f = l ? ficheDe(catalogue, gateauDeLaLigne(l)) : null;
             const n = l && f ? goutsAttendus(GOUTS_SUR_COMMANDE[f.produit.id], f) : 0;
             boutons.push(
               <BoutonSortie
@@ -1760,7 +1760,7 @@ function LigneDuBon({
   const auKilo = fiche?.produit.unite === 'kg';
   const controlee = resultat?.ok ? resultat.donnees : null;
   // R62 : le goût d'un gâteau sur commande a son propre bloc ; la précision reste libre.
-  const goutAPart = fiche !== null && GOUTS_SUR_COMMANDE[fiche.produit.id] !== undefined;
+  const goutAPart = ficheGateau !== null && GOUTS_SUR_COMMANDE[ficheGateau.produit.id] !== undefined;
   const suggestions = regime === 'B' ? options?.garnitures : regime === 'C' && !goutAPart ? options?.parfums : undefined;
   // LOI 11 : gâteau simple sur commande (données de la fiche, jugées par le
   // domaine) → la taille se choisit d'abord aux boutons des tailles standard.
@@ -1772,8 +1772,9 @@ function LigneDuBon({
   const taillesTriees = [...taillesLigne].sort((a, b) => a - b);
   // Number Cake (donnée : minimum PAR forme), jamais déduit du nom.
   const aFormes = fiche?.prix.minParSymbole != null;
-  // R62 : goût demandé par ce gâteau sur commande (donnée). Gâteau du comptoir : absent.
-  const choixGout = fiche ? (GOUTS_SUR_COMMANDE[fiche.produit.id] ?? null) : null;
+  // R62 : goût demandé par le gâteau COMMANDÉ (donnée) — y compris quand la
+  // ligne est devenue le gâteau du comptoir à cette taille (R60, ficheGateau).
+  const choixGout = ficheGateau ? (GOUTS_SUR_COMMANDE[ficheGateau.produit.id] ?? null) : null;
 
   const [signalementTarif, setSignalementTarif] = useState<Echec | 'ok' | null>(null);
   const signalerAuGerant = async () => {
@@ -1913,10 +1914,10 @@ function LigneDuBon({
         ) : null}
       </div>
 
-      {choixGout && fiche && !(aFormes && ligne.nbSymboles === null) ? (
+      {choixGout && ficheGateau && !(aFormes && ligne.nbSymboles === null) ? (
         <BlocGouts
           choix={choixGout}
-          attendus={goutsAttendus(choixGout, fiche)}
+          attendus={goutsAttendus(choixGout, ficheGateau)}
           gouts={ligne.gouts}
           decorations={ligne.decorations}
           options={options}

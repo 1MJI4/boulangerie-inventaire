@@ -258,6 +258,7 @@ export function versLigneSaisie(l: LigneEcran, fiche: FicheTarifee | null): Lign
     nbSymboles: l.nbSymboles,
     nbObjets: l.nbObjets,
     gouts: l.gouts,
+    origineSurCommande: l.origineSurCommande ?? null,
     deverrouillage: l.deverrouillage,
     deverrouillageTaille: l.deverrouillageTaille,
   };
