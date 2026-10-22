@@ -37,7 +37,9 @@ UTIL="${SUDO_USER:-ubuntu}"
 if [ -s "/home/${UTIL}/.ssh/authorized_keys" ]; then
   sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
   rm -f /etc/ssh/sshd_config.d/50-cloud-init.conf
-  systemctl reload ssh || systemctl reload sshd
+  # Ubuntu 24.04 : ssh est activé par socket, « reload » peut échouer ; un
+  # échec ici ne doit pas interrompre l'installation (la session en cours reste ouverte).
+  systemctl reload ssh 2>/dev/null || systemctl restart ssh 2>/dev/null || true
 else
   echo "   Aucune clé pour ${UTIL} : connexion par mot de passe laissée active (sinon blocage)."
 fi
