@@ -30,8 +30,9 @@ type DefinitionProfil = {
 export const DEFINITIONS: Record<Profil, DefinitionProfil> = {
   vendeur: {
     libelle: 'Vendeur',
-    description: 'Compter ce qu’il reste en rayon',
-    accueil: '/saisie-vendeur',
+    description: 'Prendre les commandes, compter le rayon',
+    // Accueil propre au vendeur (22/10/2026) : nouvelle commande, comptage, retraits du jour.
+    accueil: '/',
     ecrans: ['/saisie-vendeur', '/commandes'],
   },
   patissier: {

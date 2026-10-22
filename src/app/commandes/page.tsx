@@ -6,7 +6,8 @@
 // les retraits du jour. Il s'ouvre sur « Qui prend la commande ? » parce que
 // la tablette du comptoir est partagée.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide, LienBouton, Puce } from '@/components/ui';
 import { useEquipe } from '@/lib/vendeurs';
 import { attendUnVirement, depuisApi, LIBELLE_STATUT, type Commande, type CommandeApi } from '@/lib/commandes';
@@ -20,11 +21,22 @@ import { ListeSignalements } from '@/components/signalement';
 import { echecReseau, lireReponse } from '@/components/commande/modele';
 import { sortieDe } from '@/components/commande/sorties';
 
-export default function EcranCommandes() {
+/** `useSearchParams` impose une frontière Suspense : l'écran attend l'adresse lue. */
+export default function PageCommandes() {
+  return (
+    <Suspense fallback={<Chargement libelle="Chargement des commandes…" />}>
+      <EcranCommandes />
+    </Suspense>
+  );
+}
+
+function EcranCommandes() {
   const { equipe, vendeur, prete, definirVendeur, ajouter } = useEquipe();
+  const parametres = useSearchParams();
   const [commandes, setCommandes] = useState<Commande[] | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
-  const [recherche, setRecherche] = useState('');
+  // « /commandes?q=2026-0016 » (depuis l'accueil vendeur) : liste déjà filtrée sur la commande.
+  const [recherche, setRecherche] = useState(parametres.get('q') ?? '');
   const [nouveauNom, setNouveauNom] = useState('');
   const aujourdhui = dateDuJour();
 

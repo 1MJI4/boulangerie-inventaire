@@ -7,6 +7,7 @@ import { useProfil } from '@/components/ProfilAppareil';
 import { dateDuJour, formatDateLong, journeeProduction } from '@/lib/dateProduction';
 import { DEFINITIONS, LIBELLES_ECRANS } from '@/lib/profils';
 import { CarteCommandes } from '@/components/CarteCommandes';
+import { AccueilVendeur } from '@/components/AccueilVendeur';
 
 const DESCRIPTIONS: Record<string, { description: string; moment?: string }> = {
   '/saisie-prevue': {
@@ -49,6 +50,12 @@ export default function Accueil() {
   if (!prete || !profil) return null;
 
   const definition = DEFINITIONS[profil];
+
+  // Tablette du comptoir (22/10/2026) : deux gros boutons et les retraits du
+  // jour, pensé pour un vendeur qui découvre l'application.
+  if (profil === 'vendeur') {
+    return <AccueilVendeur libelleProfil={definition.libelle} onChangerProfil={ouvrirSelecteur} />;
+  }
   const deroule = definition.ecrans.filter((e) => DEROULE.includes(e));
   const consultation = definition.ecrans.filter(
     (e) => !DEROULE.includes(e) && e !== '/commandes'

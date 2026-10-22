@@ -9,7 +9,7 @@
 // canvas, le même fichier. Ce que le vendeur voit avant de cliquer est ce
 // qu'il ira décrocher du rouleau.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alerte, Bouton, Puce } from '@/components/ui';
 import { DESTINATIONS, dessinerTicket, type Destination } from '@/lib/ticketCanvas';
 import { enBase64, pngMonochrome, zlibNavigateur } from '@/lib/pngMonochrome';
@@ -59,7 +59,16 @@ function Rouet() {
   );
 }
 
-export function ApercuReseau({ commande, onImprime }: { commande: Commande; onImprime?: () => void }) {
+export function ApercuReseau({
+  commande,
+  onImprime,
+  apresImpression,
+}: {
+  commande: Commande;
+  onImprime?: () => void;
+  /** Boutons de la suite (« Nouvelle commande », « Accueil »…), montrés une fois tout sorti. */
+  apresImpression?: ReactNode;
+}) {
   const conteneur = useRef<HTMLDivElement>(null);
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -264,6 +273,7 @@ export function ApercuReseau({ commande, onImprime }: { commande: Commande; onIm
               Vérifiez le papier et le capot de l’imprimante, puis touchez « Relancer l’impression ».
             </p>
           ) : null}
+          {tousSortis && apresImpression ? <div className="mt-3 flex flex-wrap gap-2">{apresImpression}</div> : null}
           <ul className="mt-3 space-y-1.5 text-sm">
             {travaux.map((travail) => (
               <li key={travail.id} className="flex items-center gap-2">

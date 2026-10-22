@@ -11,7 +11,7 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import { Alerte, Bouton, Chargement, Entete, Puce } from '@/components/ui';
+import { Alerte, Bouton, Chargement, Entete, LienBouton, Puce } from '@/components/ui';
 import { useEquipe } from '@/lib/vendeurs';
 import { useMemoireLocale } from '@/lib/memoireLocale';
 import { CSS_TICKET, Ticket, reglesPagesTicket } from '@/components/TicketCommande';
@@ -202,7 +202,7 @@ export default function ImprimerCommande() {
           }
           actions={
             <>
-              <Bouton onClick={() => router.push('/commandes')}>Retour</Bouton>
+              <Bouton onClick={() => router.push('/commandes')}>← Commandes</Bouton>
               <Bouton onClick={() => router.push(`/commandes/${params.id}/modifier`)}>
                 Modifier
               </Bouton>
@@ -318,7 +318,23 @@ export default function ImprimerCommande() {
       </div>
 
       {!formatPret ? null : format === 'reseau' ? (
-        <ApercuReseau commande={commande} onImprime={() => void charger()} />
+        <ApercuReseau
+          commande={commande}
+          onImprime={() => void charger()}
+          apresImpression={
+            <>
+              <LienBouton href="/commandes/nouvelle" variante="principal" className="min-h-14 px-6 text-base">
+                + Nouvelle commande
+              </LienBouton>
+              <LienBouton href="/" className="min-h-14 px-6 text-base">
+                Accueil
+              </LienBouton>
+              <LienBouton href="/commandes" className="min-h-14 px-6 text-base">
+                Liste des commandes
+              </LienBouton>
+            </>
+          }
+        />
       ) : format === 'ticket' ? (
         <div className="rouleau">
           {DESTINATIONS.map((destination, rang) => (
