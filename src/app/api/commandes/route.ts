@@ -66,7 +66,7 @@ import { chargerContexte, correspondancesServeur, priseBruxelles, resoudreServeu
 import { GOUTS_SUR_COMMANDE } from '@/catalogue/goutsSurCommande';
 
 const inclusions = {
-  lignes: { orderBy: { ordre: 'asc' } as const, include: { produitCatalogue: { select: { cleCatalogue: true } } } },
+  lignes: { orderBy: { ordre: 'asc' } as const, include: { produitCatalogue: { select: { cleCatalogue: true, categorie: true, nom: true, regimePrix: true } } } },
   evenements: { orderBy: { quand: 'desc' } as const, take: 20 },
 };
 
@@ -555,7 +555,7 @@ export async function PATCH(request: Request) {
     if (!Number.isSafeInteger(id) || id <= 0) return introuvable(route);
     const existante = await prisma.commande.findUnique({
       where: { id },
-      include: { lignes: { orderBy: { ordre: 'asc' }, include: { produitCatalogue: { select: { cleCatalogue: true } } } } },
+      include: { lignes: { orderBy: { ordre: 'asc' }, include: { produitCatalogue: { select: { cleCatalogue: true, categorie: true, nom: true, regimePrix: true } } } } },
     });
     if (!existante) return introuvable(route);
 

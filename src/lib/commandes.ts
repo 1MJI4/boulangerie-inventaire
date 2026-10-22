@@ -6,6 +6,7 @@
 // (controlerCommande, validerTransitionStatut…), les prix dans le catalogue.
 // Montants en centimes entiers, formatés et soustraits par `src/domaine/argent.ts`.
 
+import { familleDuProduit } from '../catalogue/familles.ts';
 import { formaterEuros, resteDu } from '../domaine/argent.ts';
 import { dateDuJour, type DateISO } from './dateProduction.ts';
 
@@ -48,7 +49,8 @@ export type LigneCommande = {
   decorations?: string[];
   nbObjets?: number | null;
   /** Produit du catalogue de commande (null : ligne libre ou ligne antérieure au lot 2). */
-  produitCatalogue?: { cleCatalogue: string } | null;
+  /** Rayon, nom et régime : de quoi classer la ligne (boulangerie, pâtisserie, salé). */
+  produitCatalogue?: { cleCatalogue: string; categorie?: string; nom?: string; regimePrix?: 'A' | 'B' | 'C' | null } | null;
   sousPlancherAutorisePar?: string | null;
   sousPlancherAutoriseLe?: string | null;
   ligneLibreAutoriseePar?: string | null;
@@ -196,4 +198,32 @@ export function compterCeQuiReste(
   const retraitsDuJour = commandes.filter((c) => c.retraitLe === aujourdhui && resteAFaire(c)).length;
   const virements = commandes.filter(attendUnVirement).length;
   return { aImprimer, retraitsDuJour, virements, total: aImprimer + retraitsDuJour };
+}
+
+/* ----------------------------------------------- Type de commande (accueil) */
+
+export type TypeCommande = 'boulangerie' | 'patisserie' | 'sale';
+
+export const LIBELLE_TYPE: Record<TypeCommande, string> = {
+  boulangerie: 'Boulangerie',
+  patisserie: 'Pâtisserie',
+  sale: 'Salé',
+};
+
+/**
+ * Types d'une commande (accueil vendeur, 22/10/2026), tirés du RAYON de chaque
+ * produit au tarif (famille du catalogue), jamais de son nom. Une commande
+ * mixte a plusieurs types ; boissons, suppléments et lignes libres n'en donnent pas.
+ */
+export function typesDeCommande(c: Pick<Commande, 'lignes'>): TypeCommande[] {
+  const types = new Set<TypeCommande>();
+  for (const l of c.lignes) {
+    const p = l.produitCatalogue;
+    if (!p?.categorie || !p.nom || !p.regimePrix) continue;
+    const famille = familleDuProduit(p.regimePrix === 'A' ? 'comptoir' : 'sur-commande', p.categorie, p.nom);
+    if (famille === 'gateau' || famille === 'patisserie') types.add('patisserie');
+    else if (famille === 'boulangerie' || famille === 'viennoiserie') types.add('boulangerie');
+    else if (famille === 'sale') types.add('sale');
+  }
+  return (['boulangerie', 'patisserie', 'sale'] as const).filter((t) => types.has(t));
 }
