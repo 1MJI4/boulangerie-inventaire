@@ -19,7 +19,9 @@ const CLE_ACTIF = 'pa.commandes.vendeur';
 /** Au-delà, on redemande : un service ne dure pas douze heures. */
 const DUREE_SERVICE_MS = 10 * 60 * 60 * 1000;
 
-export const EQUIPE_PAR_DEFAUT = ['Imane', 'Ayoub', 'Oumaima', 'Chaymae'];
+// Un seul prénom d'essai (22/10/2026) : chaque équipe ajoute ses propres prénoms
+// sur sa tablette, et peut retirer ceux qui ne servent plus.
+export const EQUIPE_PAR_DEFAUT = ['Test'];
 
 type VendeurRetenu = { nom: string; depuis: number };
 
@@ -47,7 +49,8 @@ export function useEquipe() {
 
   useEffect(() => {
     const liste = lire<string[]>(CLE_LISTE);
-    if (Array.isArray(liste) && liste.length > 0) setEquipe(liste);
+    // Une liste enregistrée, même vide (tous les prénoms retirés), remplace celle par défaut.
+    if (Array.isArray(liste)) setEquipe(liste);
 
     const retenu = lire<VendeurRetenu>(CLE_ACTIF);
     if (retenu && Date.now() - retenu.depuis < DUREE_SERVICE_MS) {
@@ -89,5 +92,13 @@ export function useEquipe() {
     []
   );
 
-  return { equipe, vendeur, prete, definirVendeur, definirEquipe, ajouter };
+  const retirer = useCallback((nom: string) => {
+    setEquipe((actuelle) => {
+      const suivante = actuelle.filter((n) => n !== nom);
+      ecrire(CLE_LISTE, suivante);
+      return suivante;
+    });
+  }, []);
+
+  return { equipe, vendeur, prete, definirVendeur, definirEquipe, ajouter, retirer };
 }

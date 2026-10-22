@@ -31,7 +31,8 @@ export default function PageCommandes() {
 }
 
 function EcranCommandes() {
-  const { equipe, vendeur, prete, definirVendeur, ajouter } = useEquipe();
+  const { equipe, vendeur, prete, definirVendeur, ajouter, retirer } = useEquipe();
+  const [gererNoms, setGererNoms] = useState(false);
   const parametres = useSearchParams();
   const [commandes, setCommandes] = useState<Commande[] | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -114,12 +115,29 @@ function EcranCommandes() {
         />
         <Carte className="p-4">
           <div className="flex flex-wrap gap-2">
-            {equipe.map((nom) => (
-              <Bouton key={nom} variante="secondaire" onClick={() => definirVendeur(nom)}>
-                {nom}
-              </Bouton>
-            ))}
+            {equipe.map((nom) =>
+              gererNoms ? (
+                // Mode « retirer » : un toucher retire le prénom de cette tablette.
+                <Bouton key={nom} variante="danger" onClick={() => retirer(nom)} aria-label={`Retirer ${nom}`}>
+                  {nom} ×
+                </Bouton>
+              ) : (
+                <Bouton key={nom} variante="secondaire" className="min-h-14 px-6 text-base" onClick={() => definirVendeur(nom)}>
+                  {nom}
+                </Bouton>
+              ),
+            )}
+            {equipe.length === 0 ? <p className="text-sm text-ink-2">Aucun prénom : ajoutez le vôtre ci-dessous.</p> : null}
           </div>
+          {equipe.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setGererNoms((v) => !v)}
+              className="mt-3 min-h-11 text-sm text-ink-2 underline underline-offset-2"
+            >
+              {gererNoms ? 'Terminé' : 'Retirer un prénom'}
+            </button>
+          ) : null}
           <form
             className="mt-5 flex flex-wrap items-center gap-2 border-t border-line pt-4"
             onSubmit={(e) => {
@@ -132,7 +150,7 @@ function EcranCommandes() {
             }}
           >
             <label htmlFor="nouveau-vendeur" className="text-xs text-ink-3">
-              Quelqu’un d’autre
+              Ajouter un prénom
             </label>
             <input
               id="nouveau-vendeur"
