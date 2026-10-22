@@ -83,7 +83,7 @@ test('les 4 exemplaires sortent dans l’ordre, la commande passe « imprimée �
   const { d, etat, travaux } = depot([ticket(1), ticket(2), ticket(3), ticket(4)]);
   for (const attendu of [1, 2, 3, 4]) {
     const sonde = await repondreImprimante(appel('POST', '', '{"statusCode":"200 OK","printerMAC":"00:11"}'), CLE, d, CLE);
-    assert.deepEqual(await sonde.json(), { jobReady: true, mediaTypes: ['image/png'], deleteMethod: 'DELETE' });
+    assert.deepEqual(await sonde.json(), { jobReady: true, mediaTypes: ['application/vnd.star.starprnt', 'image/png'], deleteMethod: 'DELETE' });
     const png = await repondreImprimante(appel('GET', '?type=image%2Fpng'), CLE, d, CLE);
     assert.equal(png.status, 200);
     assert.equal(png.headers.get('Content-Type'), 'image/png');

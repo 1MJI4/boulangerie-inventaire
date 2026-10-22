@@ -29,6 +29,7 @@
 
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { confirmationReussie } from '../cloudprnt.ts';
+import { MEDIA_STARPRNT, pngVersStarPrnt } from './starprnt.ts';
 
 export type TravailEnFile = { id: number; media: string; contenu: Uint8Array };
 export type TravailRemis = { id: number; commandeId: number | null };
@@ -110,7 +111,9 @@ async function sondage(requete: Request, depot: DepotImprimante): Promise<Respon
 
   return json({
     jobReady: media !== null,
-    mediaTypes: media !== null ? [media] : [],
+    // Ticket PNG : le format natif d'abord (plus rapide, rien à décoder), le PNG
+    // en secours — l'imprimante prend le premier qu'elle sait lire (22/10/2026).
+    mediaTypes: media === null ? [] : media === 'image/png' ? [MEDIA_STARPRNT, media] : [media],
     // L'imprimante confirmera par DELETE ; c'est le comportement par défaut,
     // on l'énonce quand même pour ne dépendre d'aucune valeur implicite.
     deleteMethod: 'DELETE',
@@ -119,19 +122,32 @@ async function sondage(requete: Request, depot: DepotImprimante): Promise<Respon
 
 /* --------------------------------------- GET : elle vient chercher */
 
-async function remise(depot: DepotImprimante): Promise<Response> {
+async function remise(url: URL, depot: DepotImprimante): Promise<Response> {
   const travail = await depot.travailEnAttente();
   if (!travail) return vide(404);
+  // Format choisi par l'imprimante parmi ceux proposés au sondage.
+  const demande = url.searchParams.get('type');
 
   // « remis » et pas « imprimé » : le papier n'est pas encore sorti. Si
   // l'imprimante tombe entre les deux, le travail reste visible comme non
   // terminé au lieu de disparaître en silence.
   await depot.marquerRemis(travail.id);
 
-  const octets = Buffer.from(travail.contenu);
+  let media = travail.media;
+  let octets = Buffer.from(travail.contenu);
+  if (demande === MEDIA_STARPRNT && media === 'image/png') {
+    const natif = pngVersStarPrnt(travail.contenu);
+    // PNG inattendu : on sert le PNG plutôt que rien.
+    if (natif) {
+      media = MEDIA_STARPRNT;
+      octets = Buffer.from(natif);
+    }
+  }
+  // Une ligne par ticket servi, pour mesurer (journal du serveur, jamais la clé).
+  console.info(`[imprimante] ticket ${travail.id} servi en ${media} (${octets.length} octets)`);
   return new Response(octets, {
     status: 200,
-    headers: { ...SANS_CACHE, 'Content-Type': travail.media, 'Content-Length': String(octets.length) },
+    headers: { ...SANS_CACHE, 'Content-Type': media, 'Content-Length': String(octets.length) },
   });
 }
 
@@ -177,7 +193,7 @@ export async function repondreImprimante(
     case 'POST':
       return sondage(requete, depot);
     case 'GET':
-      return remise(depot);
+      return remise(new URL(requete.url), depot);
     case 'DELETE':
       return confirmation(new URL(requete.url), depot);
     default:
