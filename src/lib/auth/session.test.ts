@@ -46,7 +46,8 @@ test('changer CODE_GESTION ferme les accès gérant, sans toucher aux tablettes'
 test('secret ou code trop courts : aucune clé, rien de signé ni d’accepté', () => {
   assert.equal(cleDeSignature('tablette', 'court', CODE_T), null);
   assert.equal(cleDeSignature('tablette', SECRET, '1234'), null, 'ancien code à 4 chiffres');
-  assert.equal(cleDeSignature('gerant', SECRET, '1234567'), null, '7 caractères');
+  assert.equal(cleDeSignature('gerant', SECRET, '12345'), null, 'code gestion : 5 caractères');
+  assert.equal(cleDeSignature('tablette', SECRET, '1234567'), null, 'code tablette : 7 caractères');
   assert.ok(cleDeSignature('gerant', SECRET, '12345678'));
   assert.equal(cleDeSignature('tablette', null, CODE_T), null);
   assert.throws(() => signerJeton(creerJeton('tablette', APPAREIL, T0), null));
@@ -130,4 +131,11 @@ test('rafraîchissement : pas à chaque requête', () => {
 test('dates dans le futur refusées', () => {
   const futur = creerJeton('tablette', APPAREIL, T0 + 10 * 60 * 1000);
   assert.equal(verifierJeton(signerJeton(futur, CLE_T), CLE_T, 'tablette', T0), null);
+});
+
+test('code gestion : 6 caractères acceptés ; code tablette : toujours 8 minimum (22/10/2026)', () => {
+  const secret = 'x'.repeat(32);
+  assert.notEqual(cleDeSignature('gerant', secret, '482915'), null);
+  assert.equal(cleDeSignature('gerant', secret, '48291'), null);
+  assert.equal(cleDeSignature('tablette', secret, '482915'), null);
 });

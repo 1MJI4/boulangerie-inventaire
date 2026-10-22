@@ -28,6 +28,13 @@ export const LONGUEUR_MIN_SECRET = 32;
  * 4 chiffres est public (historique git) : il est désormais refusé.
  */
 export const LONGUEUR_MIN_CODE = 8;
+/**
+ * Code GESTION (gérant) : 6 caractères suffisent (propriétaire, 22/10/2026 —
+ * « on n'est pas Microsoft »). Il ne s'essaie que depuis une tablette déjà
+ * installée (code tablette ≥ 8) et les essais sont limités (5 par 15 min et
+ * par source, 50 au total) : 6 chiffres = 1 million de possibilités.
+ */
+export const LONGUEUR_MIN_CODE_GESTION = 6;
 
 const JOUR_MS = 24 * 60 * 60 * 1000;
 
@@ -76,7 +83,8 @@ export function cleDeSignature(
   code: string | null | undefined
 ): Buffer | null {
   if (typeof secret !== 'string' || secret.length < LONGUEUR_MIN_SECRET) return null;
-  if (typeof code !== 'string' || code.length < LONGUEUR_MIN_CODE) return null;
+  const minimum = type === 'gerant' ? LONGUEUR_MIN_CODE_GESTION : LONGUEUR_MIN_CODE;
+  if (typeof code !== 'string' || code.length < minimum) return null;
   return createHmac('sha256', secret).update(`pp-${type}-v2\u0000${code}`, 'utf8').digest();
 }
 

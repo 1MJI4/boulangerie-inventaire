@@ -6,12 +6,12 @@
 //
 //   SESSION_SECRET  ≥ 32 caractères — clé de signature des cookies
 //   CODE_TABLETTE   ≥ 8 caractères  — tapé une fois à l'installation d'une tablette
-//   CODE_GESTION    ≥ 8 caractères  — demandé pour changer prix, produits, gâteaux
+//   CODE_GESTION    ≥ 6 caractères  — demandé pour changer prix, produits, gâteaux
 //
 // Un réglage absent ou trop court ne fait jamais « ouvrir par défaut » : l'accès
 // concerné est refusé avec ERR_CONFIGURATION_SERVEUR et une référence courte.
 
-import { cleDeSignature, LONGUEUR_MIN_CODE, LONGUEUR_MIN_SECRET, type TypeJeton } from './session.ts';
+import { cleDeSignature, LONGUEUR_MIN_CODE, LONGUEUR_MIN_CODE_GESTION, LONGUEUR_MIN_SECRET, type TypeJeton } from './session.ts';
 
 export const NOM_COOKIE_TABLETTE = 'pp_tablette';
 export const NOM_COOKIE_GERANT = 'pp_gerant';
@@ -39,7 +39,8 @@ export function lireConfiguration(type: TypeJeton): Configuration {
     return { ok: false, reference: REFERENCES_CONFIGURATION.secret };
   }
   const code = process.env[VARIABLE_CODE[type]];
-  if (typeof code !== 'string' || code.length < LONGUEUR_MIN_CODE) {
+  const minimum = type === 'gerant' ? LONGUEUR_MIN_CODE_GESTION : LONGUEUR_MIN_CODE;
+  if (typeof code !== 'string' || code.length < minimum) {
     return { ok: false, reference: REFERENCES_CONFIGURATION[type] };
   }
   const cle = cleDeSignature(type, secret, code);
