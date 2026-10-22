@@ -27,7 +27,8 @@ chmod 600 "$SAUVEGARDE"
 ls -lh "$SAUVEGARDE"
 
 echo "== Restauration dans la base locale (remplace son contenu)"
-psql -q "$CIBLE" -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;'
+# La copie contient elle-même « CREATE SCHEMA public » : on ne fait que vider.
+psql -q "$CIBLE" -c 'DROP SCHEMA IF EXISTS public CASCADE;'
 pg_restore --no-owner --no-acl --exit-on-error --dbname="$CIBLE" "$SAUVEGARDE"
 
 echo "== Contrôle : nombre de lignes par table, source et cible"
