@@ -154,12 +154,13 @@ test("affiche : supplément hors forfait, ou forfait hors supplément → bloqua
 test("famille du comptoir : tirée du rayon, chaque produit en a une", () => {
   const parRayon = new Map<string, Set<string>>();
   for (const p of cat.produits.values()) {
-    assert.ok(["patisserie", "viennoiserie", "boulangerie", "sale", "boisson", "supplement"].includes(p.famille), p.id);
+    assert.ok(["gateau", "patisserie", "viennoiserie", "boulangerie", "sale", "boisson", "supplement"].includes(p.famille), p.id);
     if (p.famille === "supplement") continue; // supplément : liste explicite, pas le rayon (testé plus haut)
     parRayon.set(p.categorie, (parRayon.get(p.categorie) ?? new Set()).add(p.famille));
   }
   for (const [rayon, familles] of parRayon) assert.equal(familles.size, 1, `une seule famille par rayon : ${rayon}`);
-  assert.deepEqual([...parRayon.get("Gâteaux et tartes")!], ["patisserie"]);
+  assert.deepEqual([...parRayon.get("Gâteaux et tartes")!], ["gateau"]);
+  assert.deepEqual([...parRayon.get("Oriental")!], ["patisserie"], "Msemen, corne de gazelle : pas des gâteaux");
   assert.deepEqual([...parRayon.get("Boulangerie")!], ["boulangerie"]);
   assert.deepEqual([...parRayon.get("Sandwichs Froids")!], ["sale"]);
 });

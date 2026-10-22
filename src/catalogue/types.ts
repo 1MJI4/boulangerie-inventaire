@@ -59,7 +59,10 @@ export type BasePrix = "piece" | "kg" | "personne" | "forfait";
  * `supplement` : supplément au forfait (Photo, Écriture), jamais un gâteau
  * (liste explicite PRODUITS_SUPPLEMENT de familles.ts, basePrix « forfait »).
  */
-export type Famille = "patisserie" | "viennoiserie" | "boulangerie" | "sale" | "boisson" | "supplement";
+// « gateau » (22/10/2026) : gâteaux ENTIERS du comptoir (Gâteaux et tartes, fin
+// d'année), seuls à porter écriture et photo ; « patisserie » = pièces
+// individuelles et rayon oriental, qui ne sont pas des gâteaux.
+export type Famille = "gateau" | "patisserie" | "viennoiserie" | "boulangerie" | "sale" | "boisson" | "supplement";
 
 /** Chaque grille a sa propre suite de versions datées. */
 export type Grille = "comptoir" | "sur-commande";

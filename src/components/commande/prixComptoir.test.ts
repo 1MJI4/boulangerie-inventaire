@@ -68,7 +68,7 @@ test('bouton « 6 parts » d’un bavarois : prix du comptoir 6P affiché, ligne
   assert.ok(r.ok);
   if (r.ok) assert.equal(r.donnees.totalCentimes, prix('gateaux-et-tartes/bavarois/6p'));
   // Le gâteau du comptoir compte pour les suppléments.
-  assert.equal(gateauxAuBon([l], catalogue, ['patisserie']), 1);
+  assert.equal(gateauxAuBon([l], catalogue, ['gateau']), 1);
   // Un nouveau toucher sur la carte « Bavarois » retrouve la ligne (pas de doublon).
   assert.equal(toucherProduit([l], ficheCatalogue('gateaux-sur-commande/bavarois')).lignes.length, 1);
 });

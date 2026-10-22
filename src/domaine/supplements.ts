@@ -29,7 +29,9 @@ export type RepereGateau = {
 /** Nombre de gâteaux qu'apporte une ligne (cf. définition en tête de fichier). */
 export function gateauxDeLigne(l: RepereGateau, famillesGateau: readonly string[]): number {
   if (l.basePrix === 'forfait' || l.basePrix === 'kg' || l.basePrix === null) return 0;
-  if (l.regimePrix === 'C') return 1;
+  // Gâteau sur commande vendu par personne. Les minis (régime C à la pièce :
+  // tartelettes, éclairs…) ne sont pas des gâteaux : ni écriture ni photo (22/10/2026).
+  if (l.regimePrix === 'C') return l.basePrix === 'personne' ? 1 : 0;
   if (l.regimePrix === 'A' && l.basePrix === 'piece' && l.famille !== null && famillesGateau.includes(l.famille)) {
     return Number.isSafeInteger(l.quantite) && l.quantite > 0 ? l.quantite : 0;
   }

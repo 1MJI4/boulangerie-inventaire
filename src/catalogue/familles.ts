@@ -26,7 +26,8 @@ export interface RegleFamille {
 
 /** Tarif comptoir : catégorie du CSV, à la lettre. « Favoris » n'est pas un rayon (LOI 4). */
 const FAMILLES_COMPTOIR: ReadonlyArray<readonly [string, RegleFamille]> = [
-  ["Gâteaux et tartes", { famille: "patisserie", hypothese: null }],
+  // Gâteaux entiers : les seuls du comptoir à recevoir écriture et photo (22/10/2026).
+  ["Gâteaux et tartes", { famille: "gateau", hypothese: null }],
   [
     "Individuelle",
     {
@@ -41,9 +42,10 @@ const FAMILLES_COMPTOIR: ReadonlyArray<readonly [string, RegleFamille]> = [
   [
     "Special fin d'année",
     {
-      famille: "patisserie",
-      // HYPOTHÈSE À VALIDER : bûches, galettes des rois, cœurs = pâtisserie.
-      hypothese: "rayon « Special fin d'année » (bûches, galettes, cœurs) classé pâtisserie",
+      famille: "gateau",
+      // HYPOTHÈSE À VALIDER : bûches, galettes des rois, cœurs = gâteaux entiers
+      // (écriture « Joyeux Noël » possible) ; bûchettes et petits cœurs compris.
+      hypothese: "rayon « Special fin d'année » (bûches, galettes, cœurs) classé gâteau : écriture et photo proposées",
     },
   ],
   [

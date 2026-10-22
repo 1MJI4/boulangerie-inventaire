@@ -126,9 +126,10 @@ export type ReglementCommande = {
 
 // R7 — suppléments « une fois par gâteau ». Ce qui compte comme gâteau est une
 // DONNÉE (famille du catalogue + régime + base de prix), jamais le libellé.
-// HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°60) : seule la famille « patisserie »
-// porte des gâteaux (pas la viennoiserie, pas le rayon inconnu : le plus sûr).
-export const FAMILLES_GATEAU: readonly string[] = ['patisserie'];
+// Depuis le 22/10/2026 : seule la famille « gateau » (Gâteaux et tartes, fin
+// d'année) porte des gâteaux au comptoir — pas les individuelles ni le rayon
+// oriental (Msemen…), où « Écriture sur le gâteau » n'avait pas de sens.
+export const FAMILLES_GATEAU: readonly string[] = ['gateau'];
 
 /** Ouverture et fermeture par défaut du magasin (décision du propriétaire, 18/10/2026). */
 export const OUVERTURE_PAR_DEFAUT = '06:00';
