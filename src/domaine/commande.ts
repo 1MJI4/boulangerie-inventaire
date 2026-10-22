@@ -423,8 +423,10 @@ function analyser(c: CommandeSaisie, ctx: ContexteCommande): Analyse {
   garder(validerTelephone(c.telephone));
   const dateRetrait = garder(validerDateRetrait(c.dateRetrait, ctx.joursFermes, aujourdhui));
 
-  // Heure de retrait (R54) : facultative, dans les heures d'ouverture du jour.
+  // Heure de retrait (R54) : OBLIGATOIRE (propriétaire, 22/10/2026 — elle était
+  // facultative depuis le 18/10), dans les heures d'ouverture du jour.
   let heureRetrait: string | null = null;
+  garder(validerChampObligatoire(c.heureRetrait ?? '', 'heure de retrait', 'heureRetrait'));
   if (dateRetrait) {
     const h = garder(validerHeureRetrait(dateRetrait, c.heureRetrait, ctx.reglement.horairesOuverture));
     if (h !== undefined) heureRetrait = h;

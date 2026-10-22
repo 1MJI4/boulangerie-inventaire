@@ -232,6 +232,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   const cadre = useRef<HTMLDivElement>(null);
   const [hautCadre, setHautCadre] = useState<number | null>(null);
   const [tentative, setTentative] = useState(false);
+  // Récapitulatif « Il manque… » au centre, ouvert par « Valider » (22/10/2026).
+  const [recapOuvert, setRecapOuvert] = useState(false);
   const [refusServeur, setRefusServeur] = useState<Echec | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [validee, setValidee] = useState<Validee | null>(null);
@@ -373,6 +375,11 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
 
   // --- Signalements par zone --------------------------------------------------
   const tous: SignalementAffichable[] = [...blocages, ...(succesCommande?.signalements ?? [])];
+  // Tout ce qui empêche de valider : refus de la commande et refus des lignes, sans doublon.
+  const manques: SignalementAffichable[] = [];
+  for (const m of [...blocages, ...resultatsLignes.flatMap((r) => (r && !r.ok ? [r] : []))]) {
+    if (!manques.some((x) => x.code === m.code && x.champ === m.champ)) manques.push(m);
+  }
   const pour = (champs: readonly string[]) => tous.filter((s) => champs.includes(champLocal(s.champ)) && indexLigne(s.champ) === null);
   const signauxClient = tentative ? pour(['client', 'telephone']) : pour(['telephone']).filter((s) => s.niveau !== 'bloquant' || telephone !== '');
   // Retrait le jour même ou le lendemain : ACCEPTÉ (LOI 11, 15/10 et 18/10/2026),
@@ -491,6 +498,12 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       }
       return;
     }
+    if (i !== null && ligne && s.code === 'ERR_GOUT_MANQUANT') {
+      // R62 : « Au choix du pâtissier » sur chaque goût encore vide (jamais retirer la ligne).
+      const f = ficheDe(catalogue, gateauDeLaLigne(ligne));
+      const n = f ? goutsAttendus(GOUTS_SUR_COMMANDE[f.produit.id], f) : 0;
+      return majLigne(i, { gouts: Array.from({ length: n }, (_, k) => ligne.gouts[k] || GOUT_AU_CHOIX) });
+    }
     if (i !== null && ligne) {
       // Supplément sans gâteau, ou plus aucune place pour ce supplément : la sortie retire la ligne.
       if (s.code === 'ERR_SUPPLEMENT_SANS_GATEAU' || (s.code === 'ERR_SUPPLEMENT_TROP_NOMBREUX' && v === 0)) {
@@ -564,6 +577,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     liste.length === 0 ? null : (
       <ListeSignalements
         className="mt-3"
+        compact
         prefixeId={prefixe}
         signalements={liste}
         libelleCorrectionPour={(s) => {
@@ -661,11 +675,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     // Une ligne incomplète (taille non choisie) bloque aussi, même si `blocages` ne la cite pas encore.
     const incomplete = lignes.some((l) => l.quantite === null && l.produitId !== null);
     if (!saisie || blocages.length > 0 || incomplete) {
-      // Après le rendu : les messages des lignes n'apparaissent qu'avec `tentative`.
-      window.setTimeout(
-        () => document.querySelector('[data-niveau="bloquant"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
-        60,
-      );
+      // Tout ce qui manque, d'un coup, au centre de l'écran.
+      setRecapOuvert(true);
       return;
     }
     setEnvoi(true);
@@ -1340,6 +1351,32 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         </DispositionAvecPave>
       ) : null}
 
+      {recapOuvert && manques.length > 0 ? (
+        <RecapManques
+          manques={manques}
+          libelle={(m) => libelleManque(m, lignes, catalogue)}
+          sortie={(m) => {
+            const i = indexLigne(m.champ);
+            if (m.code === 'ERR_GOUT_MANQUANT') return GOUT_AU_CHOIX;
+            if (m.code === 'ERR_TAILLE_NON_STANDARD') return null;
+            const so = sortieDe(m, i !== null ? uniteDe(ficheDe(catalogue, lignes[i]?.produitId ?? null)) : 'pièces');
+            return so.avecValeur ? (so.libelle ?? null) : null;
+          }}
+          onSortie={(m) => corriger(m, m.valeurProposee)}
+          onAller={(m) => {
+            setRecapOuvert(false);
+            const i = indexLigne(m.champ);
+            window.setTimeout(() => {
+              const cible =
+                document.querySelector(`[data-champ="${CSS.escape(m.champ ?? '')}"]`) ??
+                (i !== null && lignes[i] ? document.getElementById(`bon-${lignes[i].cle}`) : null);
+              cible?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 60);
+          }}
+          onFermer={() => setRecapOuvert(false)}
+        />
+      ) : null}
+
       {/* Téléphone, pavé fermé : total et validation toujours à portée de pouce. */}
       {cal && catalogue && !blocPave ? (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-4 py-2.5 backdrop-blur">
@@ -1483,6 +1520,111 @@ function PaveDeLigne({
     );
   }
   return null;
+}
+
+/** Ce qui manque, en un mot en capitales (« NOM du client », « GOÛT — Bavarois »). */
+const MOTS_MANQUANTS: Record<string, string> = {
+  client: 'NOM du client',
+  telephone: 'TÉLÉPHONE',
+  dateRetrait: 'DATE de retrait',
+  heureRetrait: 'HEURE de retrait',
+  acompte: 'ACOMPTE',
+  total: 'TOTAL',
+  texteGateau: 'ÉCRITURE sur le gâteau',
+  lignes: 'PRODUITS',
+  quantite: 'TAILLE / QUANTITÉ',
+  gouts: 'GOÛT',
+  nbSymboles: 'FORMES',
+  prixCentimes: 'PRIX',
+  nbObjets: 'NOMBRE DE SANDWICHS',
+};
+
+/** Codes dont le mot-clé suffit (champ vide) : pas besoin de la phrase complète. */
+const MANQUE_SIMPLE = new Set(['ERR_CHAMP_OBLIGATOIRE', 'ERR_QUANTITE_INVALIDE', 'ERR_GOUT_MANQUANT', 'ERR_NB_SYMBOLES_MANQUANT', 'ERR_COMMANDE_VIDE']);
+
+function libelleManque(
+  m: SignalementAffichable,
+  lignes: readonly LigneEcran[],
+  catalogue: CatalogueCommande | null,
+): { titre: string; detail: string | null } {
+  const i = indexLigne(m.champ);
+  const mot = MOTS_MANQUANTS[champLocal(m.champ)] ?? null;
+  const ligne = i !== null ? lignes[i] : undefined;
+  const fiche = ligne ? ficheDe(catalogue, gateauDeLaLigne(ligne)) : null;
+  const produit = ligne ? (fiche ? libelleProduit(fiche) : ligne.libelleLibre || 'Autre demande') : null;
+  const titre = [mot, produit].filter(Boolean).join(' — ') || m.message;
+  return { titre, detail: MANQUE_SIMPLE.has(m.code) ? null : m.message };
+}
+
+/**
+ * Récapitulatif au centre de l'écran (propriétaire, 22/10/2026) : tout ce qui
+ * empêche de valider, d'un coup d'œil, au lieu de gros messages sous chaque
+ * champ. Toucher une ligne mène au champ ; la sortie en un geste reste ici.
+ */
+function RecapManques({
+  manques,
+  libelle,
+  sortie,
+  onSortie,
+  onAller,
+  onFermer,
+}: {
+  manques: readonly SignalementAffichable[];
+  libelle: (m: SignalementAffichable) => { titre: string; detail: string | null };
+  sortie: (m: SignalementAffichable) => string | null;
+  onSortie: (m: SignalementAffichable) => void;
+  onAller: (m: SignalementAffichable) => void;
+  onFermer: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onFermer}>
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="recap-manques-titre"
+        className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border-2 border-bloquant bg-surface p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="recap-manques-titre" className="mb-3 text-xl font-bold text-bloquant">
+          {manques.length === 1 ? 'Il manque 1 chose' : `Il manque ${manques.length} choses`}
+        </h2>
+        <ul className="grid gap-2">
+          {manques.map((m) => {
+            const { titre, detail } = libelle(m);
+            const sortieLibelle = sortie(m);
+            return (
+              <li key={`${m.code}|${m.champ ?? ''}`} className="rounded-xl border border-line bg-surface-2 p-2.5">
+                <button type="button" onClick={() => onAller(m)} className="flex w-full items-start gap-2 text-left">
+                  <span aria-hidden className="text-bloquant">▸</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-base font-semibold text-ink">{titre}</span>
+                    {detail ? <span className="mt-0.5 block text-sm text-ink-2">{detail}</span> : null}
+                  </span>
+                  <span className="shrink-0 text-sm text-accent underline underline-offset-2">Voir</span>
+                </button>
+                {sortieLibelle ? (
+                  <button
+                    type="button"
+                    onClick={() => onSortie(m)}
+                    className="mt-2 min-h-11 rounded-lg bg-accent px-3 text-sm font-semibold text-white active:bg-accent-fort"
+                  >
+                    {sortieLibelle}
+                  </button>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+        <button
+          type="button"
+          onClick={onFermer}
+          className="mt-4 min-h-12 w-full rounded-xl border-2 border-line-fort text-base font-semibold text-ink"
+        >
+          Compléter
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /** Goûts toujours visibles en gros boutons ; les suivants derrière « Autres goûts ». */

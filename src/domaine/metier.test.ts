@@ -721,14 +721,17 @@ test('R54 heure de retrait hors ouverture → ERR_HEURE_HORS_OUVERTURE, borne pr
   assert.equal(ok.donnees.heureRetrait, '07:00');
 });
 
-test('R54 heure de retrait facultative pour tous : gâteau et baguettes sans heure → acceptés', () => {
+test('R54 heure de retrait OBLIGATOIRE (22/10/2026) : sans heure → ERR_CHAMP_OBLIGATOIRE sur heureRetrait', () => {
   for (const [lignes, heureRetrait] of [
     [[{ produitId: ID.layer, quantite: 20 }], null],
     [[{ produitId: ID.baguette, quantite: 30 }], undefined],
+    [[{ produitId: ID.baguette, quantite: 30 }], '  '],
   ] as const) {
     const r = controlerCommande(commande([...lignes], { heureRetrait, sansEcriture: true }), ctx);
-    assert.ok(r.ok, JSON.stringify(r));
-    assert.equal(r.donnees.heureRetrait, null);
+    assert.equal(r.ok, false);
+    if (r.ok) continue;
+    assert.equal(r.code, 'ERR_CHAMP_OBLIGATOIRE');
+    assert.equal(r.champ, 'heureRetrait');
   }
 });
 

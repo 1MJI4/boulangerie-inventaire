@@ -21,6 +21,8 @@ export type PropsListeSignalements = {
   /** Préfixe des `id` (`${prefixeId}-${code}-${champ}`) pour `aria-describedby`. */
   prefixeId?: string;
   className?: string;
+  /** Messages discrets (voir `Signalement`). */
+  compact?: boolean;
 };
 
 export function ListeSignalements({
@@ -30,12 +32,13 @@ export function ListeSignalements({
   autreSortiePour,
   prefixeId,
   className = '',
+  compact = false,
 }: PropsListeSignalements) {
   const tries = trierSignalements(signalements);
   if (tries.length === 0) return null;
 
   return (
-    <ul className={`flex flex-col gap-2 ${className}`}>
+    <ul className={`flex flex-col ${compact ? 'gap-1.5' : 'gap-2'} ${className}`}>
       {tries.map((s) => {
         const cle = cleSignalement(s);
         return (
@@ -46,6 +49,7 @@ export function ListeSignalements({
               libelleCorrection={libelleCorrectionPour?.(s)}
               onCorriger={onCorriger ? (v) => onCorriger(s, v) : undefined}
               autreSortie={autreSortiePour?.(s)}
+              compact={compact}
             />
           </li>
         );

@@ -35,6 +35,11 @@ export type PropsSignalement = {
   /** Pour relier le champ fautif : `aria-describedby={id}` sur l'input. */
   id?: string;
   className?: string;
+  /**
+   * Version discrète (22/10/2026) : petit cadre, sans bandeau de niveau. Pour
+   * les formulaires où un récapitulatif central liste déjà ce qui manque.
+   */
+  compact?: boolean;
 };
 
 const EN_DEV = process.env.NODE_ENV !== 'production';
@@ -46,6 +51,7 @@ export function Signalement({
   autreSortie,
   id,
   className = '',
+  compact = false,
 }: PropsSignalement) {
   const { niveau, code, message, valeurProposee } = signalement;
   const style = NIVEAUX[niveau];
@@ -69,14 +75,15 @@ export function Signalement({
       role={style.role}
       data-niveau={niveau}
       data-code={code}
-      className={`flex gap-3 rounded-xl p-4 ${style.cadre} ${
+      data-champ={signalement.champ ?? undefined}
+      className={`flex rounded-xl ${compact ? 'gap-2 px-3 py-2' : 'gap-3 p-4'} ${style.cadre} ${
         EN_DEV && refusSansSortie ? 'outline-2 outline-offset-2 outline-dashed outline-bloquant' : ''
       } ${className}`}
     >
-      <IconeNiveau niveau={niveau} className={`h-8 w-8 ${style.icone}`} />
+      <IconeNiveau niveau={niveau} className={`${compact ? 'h-5 w-5' : 'h-8 w-8'} shrink-0 ${style.icone}`} />
 
       <div className="min-w-0 flex-1">
-        <p className="mb-1">
+        <p className={compact ? 'sr-only' : 'mb-1'}>
           <span
             className={`inline-block rounded-md text-sm font-bold uppercase tracking-wide ${
               niveau === 'information' ? '' : 'px-2 py-0.5'
@@ -86,10 +93,10 @@ export function Signalement({
           </span>
         </p>
 
-        <p className="text-base leading-snug text-ink text-pretty sm:text-lg">{message}</p>
+        <p className={`leading-snug text-ink text-pretty ${compact ? 'text-sm' : 'text-base sm:text-lg'}`}>{message}</p>
 
         {correctionPossible || autreSortie ? (
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className={`${compact ? 'mt-1.5' : 'mt-3'} flex flex-wrap gap-2`}>
             {correctionPossible ? (
               <BoutonCorrection
                 libelle={libelleCorrection ?? ''}
