@@ -29,14 +29,24 @@ function refusApi(echec: Echec, statut: number): NextResponse {
 }
 
 /**
- * Redirection RELATIVE (« /connexion… », sans hôte) : le navigateur reste sur
- * l'adresse qu'il a tapée. Derrière le serveur web du VPS, Next se croit sur
- * « localhost:3000 » et une adresse absolue y enverrait la tablette.
+ * La redirection vise l'hôte RÉELLEMENT demandé par le navigateur (en-tête Host,
+ * protocole transmis par le serveur web) : derrière Caddy sur le VPS, Next se
+ * croit sur « localhost:3000 » et `nextUrl` y enverrait la tablette. Le proxy
+ * de Next refuse une adresse relative.
  */
 function versConnexion(requete: NextRequest): NextResponse {
+  const url = requete.nextUrl.clone();
+  const hote = requete.headers.get('host');
+  const protocole = requete.headers.get('x-forwarded-proto');
+  if (hote) {
+    url.port = ''; // un Host sans port ne remet pas le port à zéro de lui-même
+    url.host = hote;
+  }
+  if (protocole === 'https' || protocole === 'http') url.protocol = `${protocole}:`;
   const suite = `${requete.nextUrl.pathname}${requete.nextUrl.search}`;
-  const cible = suite === '/' ? CHEMIN_CONNEXION : `${CHEMIN_CONNEXION}?suite=${encodeURIComponent(suite)}`;
-  return new NextResponse(null, { status: 307, headers: { Location: cible } });
+  url.pathname = CHEMIN_CONNEXION;
+  url.search = suite === '/' ? '' : `?suite=${encodeURIComponent(suite)}`;
+  return NextResponse.redirect(url);
 }
 
 /**
