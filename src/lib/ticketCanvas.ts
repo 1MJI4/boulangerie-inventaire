@@ -374,8 +374,10 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
 
   plume.texte('PAin PAtisserie', { taille: 40, gras: true, align: 'centre' });
   plume.espace(4);
-  plume.texte('Chaussée de Louvain 906 — 1140 Evere', { taille: 17, align: 'centre', interligne: 21 });
-  plume.texte('+32 472 25 05 78', { taille: 17, align: 'centre', interligne: 21 });
+  // Gras et 19 points (22/10/2026) : en 17 points maigre, les traits fins sortaient
+  // hachés sur le ticket noir et blanc (même cas que « À présenter au retrait »).
+  plume.texte('Chaussée de Louvain 906 — 1140 Evere', { taille: 19, gras: true, align: 'centre', interligne: 24 });
+  plume.texte('+32 472 25 05 78', { taille: 19, gras: true, align: 'centre', interligne: 24 });
   plume.espace(8);
   plume.trait(3);
   plume.espace(10);
@@ -390,7 +392,7 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
   const prise = formaterDate(commande.priseLe);
   plume.texte(
     pourLeClient ? `Prise le ${prise}` : `Prise le ${prise}${commande.vendeur ? ` · ${commande.vendeur}` : ''}`,
-    { taille: 16, interligne: 20 }
+    { taille: 17, gras: true, interligne: 21 }
   );
   plume.espace(12);
 
@@ -472,9 +474,10 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
     plume.texte('Merci de votre confiance', { taille: 20, gras: true, align: 'centre', interligne: 27 });
     if (commande.modePaiement === 'virement') {
       plume.texte(`Communication du virement : ${commande.numero}`, {
-        taille: 16,
+        taille: 18,
+        gras: true,
         align: 'centre',
-        interligne: 22,
+        interligne: 24,
       });
     }
   } else if (zoneDessinImprimee(commande, destination)) {
@@ -482,7 +485,7 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
     // de quoi dessiner le gâteau. Sans demande, le ticket s'arrête ici.
     const haut = plume.y;
     plume.espace(8);
-    plume.texte('ZONE LIBRE — DESSIN, PRÉCISIONS', { taille: 14, x: MARGE + 10, interligne: 18 });
+    plume.texte('ZONE LIBRE — DESSIN, PRÉCISIONS', { taille: 15, gras: true, x: MARGE + 10, interligne: 19 });
     plume.y = haut + ZONE_LIBRE;
     plume.cadre(haut, plume.y, 2, true);
   }
