@@ -1377,14 +1377,6 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         <RecapManques
           manques={manques}
           libelle={(m) => libelleManque(m, lignes, catalogue)}
-          sortie={(m) => {
-            const i = indexLigne(m.champ);
-            if (m.code === 'ERR_GOUT_MANQUANT') return GOUT_AU_CHOIX;
-            if (m.code === 'ERR_TAILLE_NON_STANDARD') return null;
-            const so = sortieDe(m, i !== null ? uniteDe(ficheDe(catalogue, lignes[i]?.produitId ?? null)) : 'pièces');
-            return so.avecValeur ? (so.libelle ?? null) : null;
-          }}
-          onSortie={(m) => corriger(m, m.valeurProposee)}
           onAller={(m) => {
             setRecapOuvert(false);
             const i = indexLigne(m.champ);
@@ -1579,70 +1571,60 @@ function libelleManque(
 }
 
 /**
- * Récapitulatif au centre de l'écran (propriétaire, 22/10/2026) : tout ce qui
- * empêche de valider, d'un coup d'œil, au lieu de gros messages sous chaque
- * champ. Toucher une ligne mène au champ ; la sortie en un geste reste ici.
+ * Fenêtre « Il manque : » au centre de l'écran (propriétaire, 22/10/2026) :
+ * simple, une liste de mots-clés, fermée d'un geste (OK, ✕ ou à côté).
+ * Toucher un élément mène au champ concerné, sans que ce soit nécessaire.
  */
 function RecapManques({
   manques,
   libelle,
-  sortie,
-  onSortie,
   onAller,
   onFermer,
 }: {
   manques: readonly SignalementAffichable[];
   libelle: (m: SignalementAffichable) => { titre: string; detail: string | null };
-  sortie: (m: SignalementAffichable) => string | null;
-  onSortie: (m: SignalementAffichable) => void;
   onAller: (m: SignalementAffichable) => void;
   onFermer: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onFermer}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6" onClick={onFermer}>
       <div
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="recap-manques-titre"
-        className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border-2 border-bloquant bg-surface p-5 shadow-xl"
+        className="relative w-full max-w-sm rounded-2xl bg-surface p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="recap-manques-titre" className="mb-3 text-xl font-bold text-bloquant">
-          {manques.length === 1 ? 'Il manque 1 chose' : `Il manque ${manques.length} choses`}
+        <button
+          type="button"
+          onClick={onFermer}
+          aria-label="Fermer"
+          className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full text-2xl text-ink-3 hover:text-ink"
+        >
+          ✕
+        </button>
+        <h2 id="recap-manques-titre" className="mb-3 text-lg font-bold text-bloquant">
+          Il manque :
         </h2>
-        <ul className="grid gap-2">
-          {manques.map((m) => {
-            const { titre, detail } = libelle(m);
-            const sortieLibelle = sortie(m);
-            return (
-              <li key={`${m.code}|${m.champ ?? ''}`} className="rounded-xl border border-line bg-surface-2 p-2.5">
-                <button type="button" onClick={() => onAller(m)} className="flex w-full items-start gap-2 text-left">
-                  <span aria-hidden className="text-bloquant">▸</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-base font-semibold text-ink">{titre}</span>
-                    {detail ? <span className="mt-0.5 block text-sm text-ink-2">{detail}</span> : null}
-                  </span>
-                  <span className="shrink-0 text-sm text-accent underline underline-offset-2">Voir</span>
-                </button>
-                {sortieLibelle ? (
-                  <button
-                    type="button"
-                    onClick={() => onSortie(m)}
-                    className="mt-2 min-h-11 rounded-lg bg-accent px-3 text-sm font-semibold text-white active:bg-accent-fort"
-                  >
-                    {sortieLibelle}
-                  </button>
-                ) : null}
-              </li>
-            );
-          })}
+        <ul className="grid gap-1">
+          {manques.map((m) => (
+            <li key={`${m.code}|${m.champ ?? ''}`}>
+              <button
+                type="button"
+                onClick={() => onAller(m)}
+                className="w-full rounded-lg px-1 py-1.5 text-left text-base font-semibold text-ink hover:bg-surface-2"
+              >
+                • {libelle(m).titre}
+              </button>
+            </li>
+          ))}
         </ul>
         <button
           type="button"
           onClick={onFermer}
-          className="mt-4 min-h-12 w-full rounded-xl border-2 border-line-fort text-base font-semibold text-ink"
+          className="mt-4 min-h-12 w-full rounded-xl bg-accent text-base font-semibold text-white active:bg-accent-fort"
         >
-          Compléter
+          OK
         </button>
       </div>
     </div>
