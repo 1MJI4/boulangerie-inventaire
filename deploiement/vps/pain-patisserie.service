@@ -1,0 +1,28 @@
+# deploiement/vps/pain-patisserie.service — l'application, toujours allumée.
+# Installé par installer.sh dans /etc/systemd/system/.
+[Unit]
+Description=Pain Patisserie (Next.js)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pain
+Group=pain
+WorkingDirectory=/opt/pain-patisserie
+# Secrets (DATABASE_URL, SESSION_SECRET, CODE_TABLETTE, CODE_GESTION,
+# CLOUDPRNT_CLE…) : jamais dans le dépôt.
+EnvironmentFile=/etc/pain-patisserie/env
+Environment=NODE_ENV=production
+Environment=PORT=3000
+# Écoute seulement en local : Caddy fait le HTTPS devant.
+ExecStart=/usr/bin/npx next start -H 127.0.0.1 -p 3000
+Restart=always
+RestartSec=3
+# Durcissement léger
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

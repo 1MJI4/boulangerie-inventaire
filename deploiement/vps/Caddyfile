@@ -1,0 +1,12 @@
+# deploiement/vps/Caddyfile — HTTPS de l'application sur le VPS.
+# {$DOMAINE} est remplacé par installer.sh.
+{
+	# Certificat RSA et non ECDSA : l'imprimante Star TSP100IV (firmware 3.5)
+	# ne sait pas valider les chaînes ECDSA P-384 (essai Cloudflare du 21/10/2026).
+	key_type rsa2048
+}
+
+{$DOMAINE} {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3000
+}
