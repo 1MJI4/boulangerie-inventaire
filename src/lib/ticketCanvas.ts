@@ -43,6 +43,8 @@ export type LigneTicket = {
   quantite: string;
   libelle: string;
   precision: string | null;
+  /** Number Cake : « FORMES : 2  5 », déjà mis en forme (`formesAImprimer`). */
+  formes: string | null;
   /** Total formaté par le domaine, ou « à confirmer » si le total ne peut pas être calculé. */
   prix: string;
   /** Ligne libre (hors catalogue) : son prix doit être validé par le pâtissier.
@@ -51,6 +53,18 @@ export type LigneTicket = {
 };
 
 export const MENTION_LIGNE_LIBRE = 'à confirmer par le pâtissier';
+
+/**
+ * Formes d'un Number Cake, lisibles d'un coup d'œil (propriétaire, 22/10/2026) :
+ * chiffres et lettres espacés et en capitales, « 25 » → « 2  5 », « am » →
+ * « A  M ». Une autre forme (« cœur + 1 ») reste telle qu'écrite.
+ */
+export function formesAImprimer(formes: string | null | undefined): string | null {
+  const t = String(formes ?? '').trim();
+  if (!t) return null;
+  if (/^[\p{L}\p{N}]+$/u.test(t)) return [...t.toUpperCase()].join('  ');
+  return t;
+}
 
 /**
  * Formate une ligne : le total passe par `totalLigne` (domaine), jamais par
@@ -66,6 +80,7 @@ export function formaterLigneTicket(ligne: LigneCommande, destination: Destinati
     quantite: unite === 'kg' ? formaterQuantite(unite, ligne.quantite) : `${formaterQuantite(unite, ligne.quantite)} ×`,
     libelle: ligne.libelle,
     precision: ligne.precision || null,
+    formes: formesAImprimer(ligne.formes),
     // Un total incalculable ne s'imprime jamais comme un montant : on préfère
     // un trou visible à un chiffre faux sur un bon remis au client.
     prix: total.ok ? formaterEuros(total.donnees) : 'à confirmer',
@@ -486,6 +501,15 @@ function produit(plume: Plume, ligne: LigneTicket, colQuantite: number, colPrix:
     largeurMax: colNom,
     interligne,
   });
+  if (ligne.formes) {
+    plume.texte(`FORMES : ${ligne.formes}`, {
+      taille: 26,
+      gras: true,
+      x: MARGE + colQuantite,
+      largeurMax: colNom,
+      interligne: 32,
+    });
+  }
   if (ligne.precision) {
     plume.texte(ligne.precision, {
       taille: 20,

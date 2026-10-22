@@ -70,6 +70,7 @@ import { formaterQuantite } from '@/domaine/unites';
 import { libelleCorrection } from '@/domaine/messages';
 import { horairesOuvertureDuJour, validerJourMeme, validerLendemain } from '@/domaine/reglement';
 import { estGateauSimpleSurCommande, taillesAPartirDuMinimum, taillesProches } from '@/domaine/minimums';
+import { formesAImprimer } from '@/lib/ticketCanvas';
 import { FAMILLES_GATEAU, JOURS_AVANT_ARCHIVAGE } from '@/domaine/constantes';
 import { CORRESPONDANCES_COMPTOIR } from '@/catalogue/correspondancesComptoir';
 import { gateauSurCommandeDe } from '@/domaine/prixComptoir';
@@ -405,7 +406,9 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     const fiche = ficheDe(catalogue, f.produit.id);
     setAnnonce(
       t.champ === 'taille'
-        ? `${libelleProduit(f)} au bon : choisissez la taille`
+        ? f.prix.minParSymbole !== null && ligne?.nbSymboles == null
+          ? `${libelleProduit(f)} au bon : combien de formes ?`
+          : `${libelleProduit(f)} au bon : choisissez la taille`
         : ligne?.quantite != null && f.produit.unite !== 'kg'
           ? `${libelleProduit(f)} : ${ligne.quantite} ${uniteDe(fiche)} au bon`
           : `${libelleProduit(f)} ajouté au bon : saisissez le poids`,
@@ -653,7 +656,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         demandeInhabituelle,
         zoneDessin,
         remarques: remarques || null,
-        lignes: lignes.map((l, i) => ({ ...saisie.lignes[i], precision: l.precision || null })),
+        lignes: lignes.map((l, i) => ({ ...saisie.lignes[i], precision: l.precision || null, formes: l.formes.trim() || null })),
       };
       const r = await lireReponse<{ id: number; numero: string }>(
         await fetch('/api/commandes', {
@@ -890,6 +893,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                         majLigne(i, { deverrouillage: d }),
                       )
                     }
+                    onAutreForme={() => setZoneDessin(true)}
                   />
                   {rendre(signaux, unite, `ligne-${ligne.cle}`)}
                   {i === iPremierGateau ? blocGateau : null}
@@ -1345,6 +1349,7 @@ function lignesDepuisCommande(c: Commande): LigneEcran[] {
       // Prix saisi (régime C ou ligne libre) : relu tel quel ; A / B : toujours le catalogue.
       prixUnitaireCentimes: l.prixCentimes,
       nbSymboles: l.nbSymboles ?? null,
+      formes: l.formes ?? '',
       nbObjets: l.nbObjets ?? null,
       precision: l.precision ?? '',
       deverrouillage: accordPar && accordLe ? { par: accordPar, le: accordLe } : null,
@@ -1383,12 +1388,12 @@ function PaveDeLigne({
   if (champ === 'symboles') {
     return (
       <PaveEntier
-        libelle={`${nom} — chiffres ou lettres (« 25 » = 2)`}
+        libelle={`${nom} — nombre de formes`}
         contexte="commande"
-        libelleUnite="symboles"
+        libelleUnite="formes"
         quantite={ligne.nbSymboles}
         onChange={(n) => onChange({ nbSymboles: n })}
-        onValider={() => ouvrir('quantite')}
+        onValider={() => ouvrir('taille')}
         champ="nbSymboles"
       />
     );
@@ -1441,6 +1446,116 @@ function PaveDeLigne({
   return null;
 }
 
+/** Nombre de formes proposé en gros boutons (au-delà : « Autre », au pavé). */
+const NOMBRES_DE_FORMES = [1, 2, 3, 4] as const;
+
+/** Chiffres et lettres seulement (« 25 », « AM ») : le nombre de formes s'en déduit. */
+const FORMES_SIMPLES = /^[\p{L}\p{N}]+$/u;
+
+/**
+ * Number Cake (propriétaire, 22/10/2026), sans pavé ni engrenage :
+ * 1. « Combien de formes ? » en gros boutons ;
+ * 2. « Quelles formes ? » — chiffres ou lettres le plus souvent (« 25 » :
+ *    le nombre de formes suit ce qui est tapé), ou « Autre forme » (cœur,
+ *    étoile…) en texte libre, qui fait imprimer la zone de dessin ;
+ * 3. la taille (boutons à partir du minimum), puis seulement le prix.
+ */
+function BlocFormes({
+  ligne,
+  onChange,
+  paveOuvert,
+  ouvrirPave,
+  fermerPave,
+  onAutreForme,
+}: {
+  ligne: LigneEcran;
+  onChange: (p: Partial<LigneEcran>) => void;
+  paveOuvert: boolean;
+  ouvrirPave: () => void;
+  fermerPave: () => void;
+  onAutreForme: () => void;
+}) {
+  const [autre, setAutre] = useState(() => ligne.formes.trim() !== '' && !FORMES_SIMPLES.test(ligne.formes.trim()));
+  const n = ligne.nbSymboles;
+  const horsBoutons = n !== null && !(NOMBRES_DE_FORMES as readonly number[]).includes(n);
+  const apercu = formesAImprimer(ligne.formes);
+
+  const ecrire = (texte: string) => {
+    const t = texte.trim();
+    // Chiffres ou lettres : le nombre de formes suit ce qui est écrit (« 25 » = 2).
+    if (!autre && t !== '' && FORMES_SIMPLES.test(t)) onChange({ formes: texte, nbSymboles: [...t].length });
+    else onChange({ formes: texte });
+  };
+
+  return (
+    <div className="grid gap-2 rounded-lg border-l-4 border-accent bg-surface-2 px-2.5 py-2">
+      <div>
+        <p className="mb-1 text-sm font-semibold text-ink">Combien de formes ?</p>
+        <div role="group" aria-label="Nombre de formes" className="grid grid-cols-5 gap-1">
+          {NOMBRES_DE_FORMES.map((k) => (
+            <button
+              key={k}
+              type="button"
+              aria-pressed={n === k}
+              onClick={() => {
+                onChange({ nbSymboles: k });
+                fermerPave();
+              }}
+              className={`chiffres min-h-12 rounded-lg border-2 text-lg font-semibold ${
+                n === k ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
+              }`}
+            >
+              {k}
+            </button>
+          ))}
+          <button
+            type="button"
+            aria-expanded={paveOuvert}
+            onClick={ouvrirPave}
+            className={`min-h-12 rounded-lg border-2 text-sm ${
+              horsBoutons ? 'chiffres border-accent bg-accent-doux font-semibold text-accent' : 'border-line bg-surface text-ink-2'
+            }`}
+          >
+            {horsBoutons ? n : 'Autre'}
+          </button>
+        </div>
+      </div>
+
+      {n !== null ? (
+        <div>
+          <label className="block">
+            <span className="mb-1 block text-sm font-semibold text-ink">Quelles formes ?</span>
+            <input
+              className={CHAMP_TEXTE}
+              value={ligne.formes}
+              onChange={(e) => ecrire(e.target.value)}
+              placeholder={autre ? 'cœur + 1, étoile…' : n === 1 ? '5' : n === 2 ? '25' : 'Chiffres ou lettres'}
+              autoComplete="off"
+              autoCapitalize="characters"
+              aria-label="Formes à réaliser"
+            />
+          </label>
+          {apercu ? (
+            <p className="mt-1 text-sm text-ink-2">
+              Au ticket : <b className="whitespace-pre text-base text-ink">{apercu}</b>
+            </p>
+          ) : null}
+          <Case
+            compact
+            coche={autre}
+            onChange={(v) => {
+              setAutre(v);
+              if (v) onAutreForme();
+            }}
+          >
+            Autre forme (cœur, étoile…) — zone de dessin au ticket
+          </Case>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /** Une ligne du bon, compacte : champs chiffrés (pavé dans la colonne), total de ligne, précision repliable. */
 function LigneDuBon({
   ligne,
@@ -1460,6 +1575,7 @@ function LigneDuBon({
   onChange,
   onRetirer,
   onGerantLibre,
+  onAutreForme,
 }: {
   ligne: LigneEcran;
   fiche: FicheTarifee | null;
@@ -1482,6 +1598,8 @@ function LigneDuBon({
   onChange: (p: Partial<LigneEcran>) => void;
   onRetirer: () => void;
   onGerantLibre: () => void;
+  /** Number Cake « autre forme » : la zone de dessin s'imprime pour l'atelier. */
+  onAutreForme: () => void;
 }) {
   const id = (champ: string) => `${ligne.cle}.${champ}`;
   const basculer = (champ: string) => setActif(actif === id(champ) ? null : id(champ));
@@ -1499,6 +1617,8 @@ function LigneDuBon({
   const taillesLigne = simple ? tailles : ficheGateau ? taillesAPartirDuMinimum(ficheGateau, ligne.nbSymboles) : [];
   const parTailles = taillesLigne.length > 0;
   const taillesTriees = [...taillesLigne].sort((a, b) => a - b);
+  // Number Cake (donnée : minimum PAR forme), jamais déduit du nom.
+  const aFormes = fiche?.prix.minParSymbole != null;
 
   const [signalementTarif, setSignalementTarif] = useState<Echec | 'ok' | null>(null);
   const signalerAuGerant = async () => {
@@ -1546,15 +1666,19 @@ function LigneDuBon({
       </div>
 
       <div className="mt-2 grid gap-1.5">
-        {fiche?.prix.minParSymbole != null ? (
-          <ChampPave
-            libelle="Chiffres ou lettres"
-            valeur={ligne.nbSymboles === null ? null : `${ligne.nbSymboles}`}
-            ouvert={actif === id('symboles')}
-            onBasculer={() => basculer('symboles')}
+        {aFormes ? (
+          <BlocFormes
+            ligne={ligne}
+            onChange={onChange}
+            paveOuvert={actif === id('symboles')}
+            ouvrirPave={() => basculer('symboles')}
+            fermerPave={() => setActif(null)}
+            onAutreForme={onAutreForme}
           />
         ) : null}
-        {parTailles ? (
+        {/* Number Cake : rien d'autre tant que le nombre de formes n'est pas donné
+            (propriétaire, 22/10/2026 — on ne passe pas au prix avec une ligne en erreur). */}
+        {aFormes && ligne.nbSymboles === null ? null : parTailles ? (
           <div role="group" aria-label="Taille du gâteau (parts)" className="grid grid-cols-5 gap-1">
             {taillesTriees.map((t) => {
               // R60 : taille qui existe au comptoir → prix du comptoir affiché (catalogue).
@@ -1609,7 +1733,8 @@ function LigneDuBon({
             onBasculer={() => basculer('quantite')}
           />
         )}
-        {plancher || libre ? (
+        {/* Gâteau aux tailles : le prix n'apparaît qu'une fois la taille choisie. */}
+        {(plancher || libre) && !(parTailles || aFormes ? ligne.quantite === null : false) ? (
           <ChampPave
             libelle={libre ? 'Prix unitaire' : unite === 'parts' ? 'Prix / pers.' : 'Prix à la pièce'}
             valeur={
@@ -1637,7 +1762,11 @@ function LigneDuBon({
         <p className="chiffres mt-1.5 text-base font-semibold text-ink">{composantes(controlee, unite)}</p>
       ) : ligne.quantite === null ? (
         <p className="mt-1.5 text-sm text-ink-2">
-          {parTailles ? 'Touchez une taille (parts).' : `Saisissez ${auKilo ? 'le poids' : 'la quantité'} au pavé.`}
+          {aFormes && ligne.nbSymboles === null
+            ? 'Touchez le nombre de formes.'
+            : parTailles
+              ? 'Touchez une taille (parts).'
+              : `Saisissez ${auKilo ? 'le poids' : 'la quantité'} au pavé.`}
         </p>
       ) : null}
 

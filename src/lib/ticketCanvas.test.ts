@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 
 import type { Commande, LigneCommande } from './commandes.ts';
 import {
+  formesAImprimer,
   TAILLE_PRODUIT,
   couperTexte,
   dateRetraitTicket,
@@ -286,4 +287,12 @@ test('ticket : sans zone demandée, le ticket interne est plus court (pas d’es
     // ≈ 60 mm de cadre (480 points) en moins.
     assert.ok(avec - sans >= 480, `${d} : ${avec} / ${sans}`);
   }
+});
+
+test('Number Cake : formes en capitales espacées (« 25 » → « 2  5 »), autre forme telle quelle', () => {
+  assert.equal(formesAImprimer('25'), '2  5');
+  assert.equal(formesAImprimer(' am '), 'A  M');
+  assert.equal(formesAImprimer('cœur + 1'), 'cœur + 1');
+  assert.equal(formesAImprimer(''), null);
+  assert.equal(formesAImprimer(null), null);
 });

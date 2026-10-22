@@ -20,6 +20,7 @@ import {
   dateRetraitTicket,
   demandeAConfirmer,
   estExemplaireInterne,
+  formesAImprimer,
   mentionHeureRetrait,
   zoneDessinImprimee,
 } from '@/lib/ticketCanvas';
@@ -406,6 +407,9 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
             <span>{formaterQuantite(ligne.unite === 'kg' ? 'kg' : 'piece', ligne.quantite)} ×</span>
             <span>
               {ligne.libelle}
+              {formesAImprimer(ligne.formes) ? (
+                <b style={{ whiteSpace: 'pre-wrap' }}> — FORMES : {formesAImprimer(ligne.formes)}</b>
+              ) : null}
               {ligne.precision ? ` — ${ligne.precision}` : ''}
               {/* Ligne libre (hors catalogue) : prix fixé avec le gérant, à confirmer. */}
               {ligne.ligneLibreAutoriseePar && estExemplaireInterne(destination) ? ' — à confirmer par le pâtissier' : ''}

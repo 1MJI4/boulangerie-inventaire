@@ -106,14 +106,13 @@ export function toucherProduit(
     fiche.prix.basePrix === 'personne' &&
     (fiche.prix.minQuantite !== null || fiche.prix.minParSymbole !== null);
   if (estGateauSimpleSurCommande(fiche) || aMinimumParPersonne) {
-    const symboles = fiche.prix.minParSymbole !== null;
+    // Number Cake : jamais de pavé au toucher (propriétaire, 22/10/2026) — la
+    // ligne demande « Combien de formes ? » en gros boutons, puis la taille.
     let deja: LigneEcran | undefined;
     for (const l of lignes) if (l.produitId === fiche.produit.id || l.origineSurCommande === fiche.produit.id) deja = l;
-    if (deja) {
-      return { lignes: [...lignes], cle: deja.cle, champ: symboles && deja.nbSymboles === null ? 'symboles' : 'taille' };
-    }
+    if (deja) return { lignes: [...lignes], cle: deja.cle, champ: 'taille' };
     const ligne = ligneVide(fiche.produit.id);
-    return { lignes: [...lignes, ligne], cle: ligne.cle, champ: symboles ? 'symboles' : 'taille' };
+    return { lignes: [...lignes, ligne], cle: ligne.cle, champ: 'taille' };
   }
   const auKilo = fiche.produit.unite === 'kg';
   const symboles = fiche.prix.minParSymbole !== null;
@@ -201,6 +200,8 @@ export type LigneEcran = {
   /** Régime C : prix par personne / pièce saisi (null = plancher). Ligne libre : prix fixé avec le gérant. */
   prixUnitaireCentimes: number | null;
   nbSymboles: number | null;
+  /** Number Cake : formes à réaliser (« 25 », « cœur + 1 »), imprimées en gras. */
+  formes: string;
   nbObjets: number | null;
   /** Goût, garnitures, forme… (texte libre imprimé sur le bon). */
   precision: string;
@@ -230,6 +231,7 @@ export function ligneVide(produitId: string | null): LigneEcran {
     quantite: null,
     prixUnitaireCentimes: null,
     nbSymboles: null,
+    formes: '',
     nbObjets: null,
     precision: '',
     deverrouillage: null,

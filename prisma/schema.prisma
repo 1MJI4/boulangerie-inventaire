@@ -373,6 +373,9 @@ model LigneCommande {
   // Number Cake — nombre de chiffres/lettres (« 25 » = 2), pour rejouer
   // PrixProduit.minimumParSymbole cote serveur. NULL hors Number Cake.
   nbSymboles   Int?
+  // Number Cake — les formes a realiser, telles que dites par le client
+  // (« 25 », « AM », « coeur + 1 »). Decision du proprietaire, 22/10/2026.
+  formes       String?
   // R14 — pain surprise : nombre de sandwichs demandes au total (> 0). Le
   // maximum par pain est un avertissement : pas de contrainte.
   nbObjets     Int?

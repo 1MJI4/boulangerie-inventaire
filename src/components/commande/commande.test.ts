@@ -155,8 +155,12 @@ test('produit au kilo : un toucher n’ajoute jamais « +1 », il ouvre le pavé
   assert.equal(t2.lignes[0].quantite, 1250);
 });
 
-test('Number Cake : le toucher ouvre d’abord le nombre de symboles', () => {
-  assert.equal(toucherProduit([], number).champ, 'symboles');
+test('Number Cake : le toucher n’ouvre aucun pavé, la ligne demande le nombre de formes (22/10/2026)', () => {
+  const t = toucherProduit([], number);
+  assert.equal(t.champ, 'taille', 'pas de pavé : boutons « Combien de formes ? » sur la ligne');
+  assert.equal(t.lignes[0].nbSymboles, null);
+  assert.equal(t.lignes[0].quantite, null);
+  assert.equal(t.lignes[0].formes, '');
 });
 
 test('grille unique : comptoir réduit aux favoris sans recherche ; la recherche trouve tout, sans accents', () => {

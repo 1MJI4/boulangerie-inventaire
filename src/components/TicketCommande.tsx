@@ -90,6 +90,8 @@ export function Ticket({
           <span className="q">{ligne.quantite}</span>
           <span className="n">
             {ligne.libelle}
+            {/* Number Cake : formes en gras, espacées (« 2  5 ») — espaces conservés. */}
+            {ligne.formes ? <b style={{ display: 'block', whiteSpace: 'pre-wrap', fontSize: '13pt' }}>FORMES : {ligne.formes}</b> : null}
             {ligne.precision ? <em>{ligne.precision}</em> : null}
             {ligne.aConfirmer ? <strong>{MENTION_LIGNE_LIBRE}</strong> : null}
           </span>

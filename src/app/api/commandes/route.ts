@@ -165,6 +165,8 @@ type Preparation =
       ok: true;
       saisie: CommandeSaisie;
       precisions: (string | null)[];
+      /** Number Cake : formes à réaliser (« 25 »), par ligne. */
+      formes: (string | null)[];
       /** Accords confirmés : date serveur, ou date d'origine d'un accord conservé. */
       quand: Map<object, Date>;
       /**
@@ -222,6 +224,7 @@ function preparer(
 
   const lignes: LigneSaisie[] = [];
   const precisions: (string | null)[] = [];
+  const formes: (string | null)[] = [];
   const nonConfirmes: AccordsNonConfirmes = { lignes: [], remise: false };
   for (const [i, l] of lignesBrutes.entries()) {
     const produitId = texte(l.produitId, 200) || null;
@@ -251,6 +254,7 @@ function preparer(
       deverrouillageTaille,
     });
     precisions.push(texte(l.precision, 200) || null);
+    formes.push(texte(l.formes, 60) || null);
   }
 
   // Remise : seul le type est vérifié ici ; les totaux le sont après le domaine.
@@ -273,7 +277,7 @@ function preparer(
     sansEcriture: corps.sansEcriture === true,
     demandeInhabituelle: corps.demandeInhabituelle === true,
   };
-  return { ok: true, saisie, precisions, quand, remiseConservee, nonConfirmes };
+  return { ok: true, saisie, precisions, formes, quand, remiseConservee, nonConfirmes };
 }
 
 /**
@@ -353,6 +357,7 @@ function lignesAEnregistrer(r: Ok, fiches: Controle['fiches'], prep: Extract<Pre
       precision: prep.precisions[ordre],
       ordre,
       nbSymboles: l.nbSymboles,
+      formes: prep.formes[ordre],
       nbObjets: prep.saisie.lignes[ordre].nbObjets ?? null,
       produitCatalogueId: fiche ? fiche.produit.idBase : null,
       prixProduitId: fiche ? fiche.prix.prixProduitId : null,
