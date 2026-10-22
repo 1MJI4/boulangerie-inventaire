@@ -463,9 +463,11 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
 
   if (pourLeClient) {
     plume.trait(1, true);
-    plume.espace(10);
-    plume.texte('À présenter au retrait', { taille: 18, align: 'centre', interligne: 24 });
-    plume.texte('Merci de votre confiance', { taille: 18, align: 'centre', interligne: 24 });
+    plume.espace(14);
+    // Gras et 20 points (22/10/2026) : en 18 points maigre, les traits fins (accent
+    // du « À », courbes de « au ») tombaient au seuil noir/blanc et sortaient hachés.
+    plume.texte('À présenter au retrait', { taille: 20, gras: true, align: 'centre', interligne: 27 });
+    plume.texte('Merci de votre confiance', { taille: 20, gras: true, align: 'centre', interligne: 27 });
     if (commande.modePaiement === 'virement') {
       plume.texte(`Communication du virement : ${commande.numero}`, {
         taille: 16,
