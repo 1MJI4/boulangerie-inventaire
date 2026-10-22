@@ -337,7 +337,12 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
 
   const resultatsLignes: (Resultat<LigneControlee> | null)[] =
     saisie && ctx && prise
-      ? lignes.map((l, i) => (l.quantite === null && l.produitId !== null ? null : controlerLigne(saisie.lignes[i], i, prise.datePrise, ctx)))
+      ? lignes.map((l, i) =>
+          // Pendant la saisie, une ligne sans quantité (taille pas encore choisie) n'est pas
+          // jugée : pas de rouge prématuré. Dès « Valider », elle l'est, et son message
+          // s'affiche sur la ligne (sinon la validation bloquait sans rien dire, 22/10/2026).
+          l.quantite === null && l.produitId !== null && !tentative ? null : controlerLigne(saisie.lignes[i], i, prise.datePrise, ctx),
+        )
       : lignes.map(() => null);
   // Commande prise avec l'ancien tarif (lignes hors catalogue, sans accord) et
   // pas de gérant : ses lignes ne passent pas le contrôle (accord manquant). Au
@@ -653,8 +658,14 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     setTentative(true);
     setRefusServeur(null);
     setActif(null);
-    if (!saisie || blocages.length > 0) {
-      document.querySelector('[data-niveau="bloquant"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Une ligne incomplète (taille non choisie) bloque aussi, même si `blocages` ne la cite pas encore.
+    const incomplete = lignes.some((l) => l.quantite === null && l.produitId !== null);
+    if (!saisie || blocages.length > 0 || incomplete) {
+      // Après le rendu : les messages des lignes n'apparaissent qu'avec `tentative`.
+      window.setTimeout(
+        () => document.querySelector('[data-niveau="bloquant"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+        60,
+      );
       return;
     }
     setEnvoi(true);
@@ -1337,7 +1348,9 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
               <div className="chiffres text-2xl font-bold leading-tight text-ink">{formaterEuros(total)}</div>
               <div className="truncate text-sm text-ink-2">
                 {lignes.length === 0 ? 'Aucun produit' : `reste ${formaterEuros(reste)}`}
-                {blocages.length > 0 && tentative ? <span className="text-bloquant"> · à corriger</span> : null}
+                {(blocages.length > 0 || resultatsLignes.some((r) => r && !r.ok)) && tentative ? (
+                  <span className="font-semibold text-bloquant"> · à corriger (en rouge)</span>
+                ) : null}
               </div>
             </div>
             <Bouton variante="principal" className="shrink-0" disabled={envoi} onClick={() => void valider()}>
