@@ -573,7 +573,29 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   };
 
   /** Liste de signalements avec leurs sorties (bouton qui corrige / action / issue de secours). */
-  const rendre = (liste: readonly SignalementAffichable[], unite = 'pièces', prefixe?: string): ReactNode =>
+  // Champ simplement vide (nom, heure, taille, goût…) : la fenêtre « Il manque… » le
+  // dit ; sous le champ, juste « ▲ À remplir » (propriétaire, 22/10/2026). Les refus
+  // de règle (mardi, minimum…) gardent leur message et leur bouton sur place.
+  const rendre = (liste: readonly SignalementAffichable[], unite = 'pièces', prefixe?: string): ReactNode => {
+    const vides = liste.filter((s) => MANQUE_SIMPLE.has(s.code));
+    const autres = liste.filter((s) => !MANQUE_SIMPLE.has(s.code));
+    return (
+      <>
+        {vides.map((s) => (
+          <p
+            key={`${s.code}|${s.champ ?? ''}`}
+            data-niveau="bloquant"
+            data-champ={s.champ ?? undefined}
+            className="mt-1.5 text-sm font-semibold text-bloquant"
+          >
+            ▲ À remplir{MOTS_MANQUANTS[champLocal(s.champ)] ? ` : ${MOTS_MANQUANTS[champLocal(s.champ)]}` : ''}
+          </p>
+        ))}
+        {rendreRefus(autres, unite, prefixe)}
+      </>
+    );
+  };
+  const rendreRefus = (liste: readonly SignalementAffichable[], unite = 'pièces', prefixe?: string): ReactNode =>
     liste.length === 0 ? null : (
       <ListeSignalements
         className="mt-3"
