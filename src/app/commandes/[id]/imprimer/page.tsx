@@ -41,6 +41,13 @@ function montantLigne(l: Commande['lignes'][number]): string {
 const DESTINATIONS = ['CLIENT', 'BUREAU', 'MAGASIN', 'ATELIER'] as const;
 type Destination = (typeof DESTINATIONS)[number];
 
+/** L'imprimante Star d'abord ; les deux autres servent de secours (panne, autre poste). */
+const OPTIONS_FORMAT = [
+  { valeur: 'reseau', libelle: 'Imprimante Star', detail: 'Envoi direct, rien à faire sur la tablette' },
+  { valeur: 'ticket', libelle: 'Ticket 80 mm', detail: 'Par l’impression du navigateur' },
+  { valeur: 'a6', libelle: 'A4 découpé en 4', detail: 'Sur une imprimante de bureau' },
+] as const;
+
 export default function ImprimerCommande() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -52,12 +59,14 @@ export default function ImprimerCommande() {
   const [deborde, setDeborde] = useState(false);
   // Les longueurs de page du rouleau, mesurées après affichage.
   const [pagesTicket, setPagesTicket] = useState('');
-  // Le format vit sur l'appareil : la tablette du comptoir imprime en ticket,
-  // un poste de secours peut rester en A6 sans qu'on touche au code.
+  // Le format vit sur l'appareil. Par défaut : l'imprimante Star (22/10/2026) ;
+  // A4 et ticket navigateur restent en secours, rangés sous « ⋮ ». Clé « -v2 » :
+  // les tablettes restées sur l'ancien défaut (A4) repartent sur la Star.
   const [format, setFormat, formatPret] = useMemoireLocale<'a6' | 'ticket' | 'reseau'>(
-    'boulangerie:format-bon',
-    'a6'
+    'boulangerie:format-bon-v2',
+    'reseau'
   );
+  const [menuFormats, setMenuFormats] = useState(false);
 
   const charger = useCallback(async () => {
     try {
@@ -200,31 +209,61 @@ export default function ImprimerCommande() {
                   Imprimer
                 </Bouton>
               )}
+              <div className="relative">
+                <Bouton
+                  variante="discret"
+                  aria-label="Autres façons d’imprimer"
+                  aria-haspopup="menu"
+                  aria-expanded={menuFormats}
+                  className="min-w-11 px-2 text-xl leading-none"
+                  onClick={() => setMenuFormats((ouvert) => !ouvert)}
+                >
+                  ⋮
+                </Bouton>
+                {menuFormats ? (
+                  <>
+                    {/* Toucher n'importe où ailleurs referme le menu. */}
+                    <div className="fixed inset-0 z-10" onClick={() => setMenuFormats(false)} />
+                    <div
+                      role="menu"
+                      className="absolute right-0 z-20 mt-1 w-64 rounded-xl border border-line bg-surface p-1 shadow-lg"
+                    >
+                      {OPTIONS_FORMAT.map((option) => (
+                        <button
+                          key={option.valeur}
+                          role="menuitemradio"
+                          aria-checked={format === option.valeur}
+                          className="flex min-h-12 w-full flex-col items-start justify-center rounded-lg px-3 py-2 text-left hover:bg-surface-2"
+                          onClick={() => {
+                            setFormat(option.valeur);
+                            setMenuFormats(false);
+                          }}
+                        >
+                          <span className="text-sm font-medium text-ink">
+                            {format === option.valeur ? '✓ ' : ''}
+                            {option.libelle}
+                          </span>
+                          <span className="text-xs text-ink-2">{option.detail}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
+              </div>
             </>
           }
         />
 
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <span className="text-xs uppercase tracking-wide text-ink-3">Format</span>
-          <Bouton
-            variante={format === 'a6' ? 'principal' : 'secondaire'}
-            onClick={() => setFormat('a6')}
-          >
-            A4 découpé en 4
-          </Bouton>
-          <Bouton
-            variante={format === 'ticket' ? 'principal' : 'secondaire'}
-            onClick={() => setFormat('ticket')}
-          >
-            Ticket 80 mm
-          </Bouton>
-          <Bouton
-            variante={format === 'reseau' ? 'principal' : 'secondaire'}
-            onClick={() => setFormat('reseau')}
-          >
-            Imprimante Star (réseau)
-          </Bouton>
-        </div>
+        {format !== 'reseau' ? (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <Puce ton="attention">
+              Format de secours : {OPTIONS_FORMAT.find((o) => o.valeur === format)?.libelle}
+            </Puce>
+            <Bouton variante="discret" onClick={() => setFormat('reseau')}>
+              Revenir à l’imprimante Star
+            </Bouton>
+          </div>
+        ) : null}
 
         <div className="mb-5 flex flex-wrap items-center gap-2">
           <Puce ton={commande.statut === 'a_imprimer' ? 'accent' : 'ok'}>
