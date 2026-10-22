@@ -1160,6 +1160,26 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   // Calcul à 820 px de haut (barre ≈ 61 px) : cadre = 820 − 77 − 12 = 731 px ;
   // bande 48 + 8 → zone de travail ≈ 675 px ; colonne : pavé compact ≈ 390,
   // pied (total + Valider) ≈ 130 → le bon garde ≈ 150 px et défile.
+  // Fenêtre « Il manque : » — commune aux mises en page tablette et téléphone.
+  const recap =
+    recapOuvert && manques.length > 0 ? (
+        <RecapManques
+          manques={manques}
+          libelle={(m) => libelleManque(m, lignes, catalogue)}
+          onAller={(m) => {
+            setRecapOuvert(false);
+            const i = indexLigne(m.champ);
+            window.setTimeout(() => {
+              const cible =
+                document.querySelector(`[data-champ="${CSS.escape(m.champ ?? '')}"]`) ??
+                (i !== null && lignes[i] ? document.getElementById(`bon-${lignes[i].cle}`) : null);
+              cible?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 60);
+          }}
+          onFermer={() => setRecapOuvert(false)}
+        />
+      ) : null;
+
   if (!etroit) {
     const gauche = cotePave === 'gauche';
     const styleCadre: CSSProperties = {
@@ -1288,6 +1308,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
             </div>
           </div>
         ) : null}
+      {recap}
       </>
     );
   }
@@ -1373,23 +1394,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         </DispositionAvecPave>
       ) : null}
 
-      {recapOuvert && manques.length > 0 ? (
-        <RecapManques
-          manques={manques}
-          libelle={(m) => libelleManque(m, lignes, catalogue)}
-          onAller={(m) => {
-            setRecapOuvert(false);
-            const i = indexLigne(m.champ);
-            window.setTimeout(() => {
-              const cible =
-                document.querySelector(`[data-champ="${CSS.escape(m.champ ?? '')}"]`) ??
-                (i !== null && lignes[i] ? document.getElementById(`bon-${lignes[i].cle}`) : null);
-              cible?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }, 60);
-          }}
-          onFermer={() => setRecapOuvert(false)}
-        />
-      ) : null}
+      {recap}
 
       {/* Téléphone, pavé fermé : total et validation toujours à portée de pouce. */}
       {cal && catalogue && !blocPave ? (
