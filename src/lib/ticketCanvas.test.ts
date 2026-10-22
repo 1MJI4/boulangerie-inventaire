@@ -5,7 +5,9 @@ import assert from 'node:assert/strict';
 
 import type { Commande, LigneCommande } from './commandes.ts';
 import {
+  dateHeureCourte,
   formesAImprimer,
+  modifieeApresImpression,
   goutsAImprimer,
   TAILLE_PRODUIT,
   couperTexte,
@@ -302,4 +304,21 @@ test('R62 : goût en capitales ; pièce montée, un goût par étage', () => {
   assert.equal(goutsAImprimer(['Framboise']), 'GOÛT : FRAMBOISE');
   assert.equal(goutsAImprimer(['Chocolat', 'Vanille']), 'ÉTAGE 1 : CHOCOLAT · ÉTAGE 2 : VANILLE');
   assert.equal(goutsAImprimer([]), null);
+});
+
+test('commande modifiée après impression : la dernière modification « à réimprimer » est retenue', () => {
+  assert.equal(modifieeApresImpression({ evenements: [] }), null);
+  assert.equal(
+    modifieeApresImpression({ evenements: [{ quand: '2026-10-22T16:49:36Z', action: 'modification', detail: 'aucun changement' }] }),
+    null,
+  );
+  const quand = modifieeApresImpression({
+    evenements: [
+      { quand: '2026-10-22T15:00:00Z', action: 'modification', detail: 'produits…, à réimprimer' },
+      { quand: '2026-10-22T16:40:00Z', action: 'modification', detail: 'date de retrait…, à réimprimer' },
+      { quand: '2026-10-22T14:00:00Z', action: 'creation', detail: null },
+    ],
+  });
+  assert.equal(quand, '2026-10-22T16:40:00Z');
+  assert.equal(dateHeureCourte(quand!), '22/10 à 18h40');
 });

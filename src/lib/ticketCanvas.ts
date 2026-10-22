@@ -59,6 +59,28 @@ export type LigneTicket = {
 export const MENTION_LIGNE_LIBRE = 'à confirmer par le pâtissier';
 
 /**
+ * Commande modifiée APRÈS avoir été imprimée (22/10/2026) : instant de la
+ * dernière modification qui l'a renvoyée « à réimprimer » (historique tracé
+ * par l'API), sinon null. Le ticket le dit, pour qu'on jette l'ancien.
+ */
+export function modifieeApresImpression(commande: Pick<Commande, 'evenements'>): string | null {
+  const e = (commande.evenements ?? [])
+    .filter((x) => x.action === 'modification' && (x.detail ?? '').includes('à réimprimer'))
+    .sort((a, b) => b.quand.localeCompare(a.quand))[0];
+  return e ? e.quand : null;
+}
+
+/** « 22/10 à 18h40 », heure de Bruxelles. */
+export function dateHeureCourte(iso: string): string {
+  const d = new Date(iso);
+  const jour = d.toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Brussels' });
+  const heure = d
+    .toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' })
+    .replace(':', 'h');
+  return `${jour} à ${heure}`;
+}
+
+/**
  * Goût(s) d'un gâteau sur commande (R62), en capitales pour l'atelier :
  * « GOÛT : FRAMBOISE » ; pièce montée : « ÉTAGE 1 : CHOCOLAT · ÉTAGE 2 : VANILLE ».
  */
@@ -384,6 +406,23 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
 
   plume.bandeau(destination);
   plume.espace(14);
+
+  // Nouvelle version d'une commande déjà imprimée : l'atelier doit jeter l'ancien ticket.
+  const modifieeLe = modifieeApresImpression(commande);
+  if (modifieeLe) {
+    if (pourLeClient) {
+      plume.texte(`Version du ${dateHeureCourte(modifieeLe)}`, { taille: 18, gras: true, align: 'centre', interligne: 24 });
+      plume.espace(8);
+    } else {
+      const haut = plume.y;
+      plume.espace(10);
+      plume.texte(`MODIFIÉE le ${dateHeureCourte(modifieeLe)}`, { taille: 28, gras: true, align: 'centre', interligne: 34 });
+      plume.texte('Jetez l’ancien ticket', { taille: 22, gras: true, align: 'centre', interligne: 28 });
+      plume.espace(8);
+      plume.cadre(haut, plume.y, 5);
+      plume.espace(14);
+    }
+  }
 
   // Numéro : toujours présent (communication du virement, recherche dans
   // l'application), mais en petit depuis le 19/10/2026 — la place va au

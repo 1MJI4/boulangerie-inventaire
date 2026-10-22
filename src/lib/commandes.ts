@@ -98,6 +98,8 @@ export type Commande = {
   avertissements: AvertissementTrace[];
   anonymiseeLe: string | null;
   lignes: LigneCommande[];
+  /** Historique (20 derniers, du plus récent au plus ancien), tel que renvoyé par l'API. */
+  evenements?: { quand: string; action: string; detail: string | null; auteur?: string }[];
 };
 
 /** Commande telle que renvoyée par GET /api/commandes (dates en ISO, avertissements en JSON). */
