@@ -16,8 +16,7 @@ lancer() { sudo -u pain --preserve-env=DATABASE_URL,DIRECT_URL bash -c "$1"; }
 set -a; . /etc/pain-patisserie/env; set +a
 
 echo "== Code ($BRANCHE)"
-lancer "git fetch --quiet origin && git checkout --quiet $BRANCHE && git reset --quiet --hard origin/$BRANCHE"
-git log --oneline -1
+lancer "git fetch --quiet origin && git checkout --quiet $BRANCHE && git reset --quiet --hard origin/$BRANCHE && git log --oneline -1"
 
 echo "== Dépendances"
 lancer "npm ci --no-audit --no-fund"
