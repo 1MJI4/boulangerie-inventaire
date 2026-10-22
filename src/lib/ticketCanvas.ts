@@ -311,15 +311,17 @@ class Plume {
     this.texte(contenu.toUpperCase(), { taille: 15, gras: true, interligne: 19 });
   }
 
-  /** La bande noire de destination : le seul aplat, il se lit à un mètre. */
+  /**
+   * Destination (CLIENT, BUREAU…) : très grand, en gras, noir sur blanc — plus
+   * d'aplat noir (22/10/2026) : une imprimante thermique ralentit sur les grandes
+   * zones noires, et elles usent la tête. Il se lit toujours à un mètre.
+   */
   bandeau(contenu: string) {
-    const hauteur = 54;
+    const hauteur = 60;
     if (this.ctx) {
       this.ctx.save();
       this.ctx.fillStyle = '#000';
-      this.ctx.fillRect(MARGE, this.y, UTILE, hauteur);
-      this.ctx.fillStyle = '#fff';
-      this.ctx.font = `700 34px ${SANS}`;
+      this.ctx.font = `800 50px ${SANS}`;
       this.ctx.textBaseline = 'middle';
       const espace = contenu.split('').join(' ');
       const l = this.ctx.measureText(espace).width;
@@ -594,9 +596,11 @@ function montant(plume: Plume, etiquette: string, valeur: string, inverse = fals
   if (ctx) {
     ctx.save();
     if (inverse) {
+      // TOTAL : cadre épais au lieu d'un aplat noir (plus rapide à imprimer).
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 5;
+      ctx.strokeRect(MARGE + 2.5, plume.y + 2.5, UTILE - 5, hauteur - 5);
       ctx.fillStyle = '#000';
-      ctx.fillRect(MARGE, plume.y, UTILE, hauteur);
-      ctx.fillStyle = '#fff';
     } else {
       ctx.strokeStyle = '#000';
       ctx.lineWidth = 2;
