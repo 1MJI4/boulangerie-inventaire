@@ -83,6 +83,7 @@ const EXEMPLES: Partial<Record<CodeCatalogue, unknown>> = {
   ERR_QUANTITE_INVALIDE: { unite: 'kg', proposition: '1' },
   ERR_QUANTITE_NEGATIVE: { produit: 'P' },
   ERR_NB_SYMBOLES_MANQUANT: { produit: 'Number Cake' },
+  ERR_GOUT_MANQUANT: { produit: 'Pièce montée 3 étages', objet: 'le goût', etage: 3 },
   ERR_CONFLIT_COMPTAGE: { produit: 'P' },
   ERR_SUPPLEMENT_TROP_NOMBREUX: { max: 3, produit: 'P' },
   ERR_SUPPLEMENT_SANS_GATEAU: { produit: 'P' },

@@ -73,6 +73,8 @@ import { estGateauSimpleSurCommande, taillesAPartirDuMinimum, taillesProches } f
 import { formesAImprimer } from '@/lib/ticketCanvas';
 import { FAMILLES_GATEAU, JOURS_AVANT_ARCHIVAGE } from '@/domaine/constantes';
 import { CORRESPONDANCES_COMPTOIR } from '@/catalogue/correspondancesComptoir';
+import { GOUTS_SUR_COMMANDE } from '@/catalogue/goutsSurCommande';
+import { GOUT_AU_CHOIX, goutsAttendus, type ChoixGout } from '@/domaine/gouts';
 import { gateauSurCommandeDe } from '@/domaine/prixComptoir';
 import type { Echec, Resultat } from '@/domaine/resultat';
 import type { Deverrouillage, FicheTarifee } from '@/domaine/types';
@@ -320,6 +322,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       reglement: cal.reglement,
       // R60 : gâteau sur commande au prix du comptoir (donnée du catalogue).
       correspondancesComptoir: CORRESPONDANCES_COMPTOIR,
+      // R62 : goût obligatoire des gâteaux sur commande (donnée du catalogue).
+      goutsSurCommande: GOUTS_SUR_COMMANDE,
       aujourdhui: cal.aujourdhui,
       existante: commande
         ? { statut: commande.statut, retraitLe: commande.retraitLe, anonymiseeLe: commande.anonymiseeLe }
@@ -559,7 +563,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         signalements={liste}
         libelleCorrectionPour={(s) => {
           // Taille hors standard : DEUX sorties (dessous / dessus), rendues plus bas.
-          if (s.code === 'ERR_TAILLE_NON_STANDARD') return undefined;
+          // Goût manquant (R62) : sortie « Au choix du pâtissier », rendue plus bas.
+          if (s.code === 'ERR_TAILLE_NON_STANDARD' || s.code === 'ERR_GOUT_MANQUANT') return undefined;
           const so = sortieDe(s, unite);
           return so.avecValeur ? so.libelle : undefined;
         }}
@@ -568,6 +573,22 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
           const so = sortieDe(s, unite);
           const boutons: ReactNode[] = [];
           const iLigne = indexLigne(s.champ);
+          // R62 : goût manquant → « Au choix du pâtissier » sur chaque goût encore vide.
+          if (s.code === 'ERR_GOUT_MANQUANT' && iLigne !== null) {
+            const l = lignes[iLigne];
+            const f = l ? ficheDe(catalogue, l.produitId) : null;
+            const n = l && f ? goutsAttendus(GOUTS_SUR_COMMANDE[f.produit.id], f) : 0;
+            boutons.push(
+              <BoutonSortie
+                key="gout-au-choix"
+                onClick={() =>
+                  majLigne(iLigne, { gouts: Array.from({ length: n }, (_, k) => l?.gouts[k] || GOUT_AU_CHOIX) })
+                }
+              >
+                {GOUT_AU_CHOIX}
+              </BoutonSortie>,
+            );
+          }
           // LOI 11 : taille de gâteau hors standard. Les deux tailles standard les
           // plus proches (jamais une seule : on ne pousse pas le vendeur vers le
           // haut), puis l'exception par le code gérant, tracée sur la ligne.
@@ -656,7 +677,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         demandeInhabituelle,
         zoneDessin,
         remarques: remarques || null,
-        lignes: lignes.map((l, i) => ({ ...saisie.lignes[i], precision: l.precision || null, formes: l.formes.trim() || null })),
+        lignes: lignes.map((l, i) => ({ ...saisie.lignes[i], precision: l.precision || null, formes: l.formes.trim() || null, decorations: l.decorations })),
       };
       const r = await lireReponse<{ id: number; numero: string }>(
         await fetch('/api/commandes', {
@@ -1350,6 +1371,8 @@ function lignesDepuisCommande(c: Commande): LigneEcran[] {
       prixUnitaireCentimes: l.prixCentimes,
       nbSymboles: l.nbSymboles ?? null,
       formes: l.formes ?? '',
+      gouts: l.gouts ?? [],
+      decorations: l.decorations ?? [],
       nbObjets: l.nbObjets ?? null,
       precision: l.precision ?? '',
       deverrouillage: accordPar && accordLe ? { par: accordPar, le: accordLe } : null,
@@ -1444,6 +1467,134 @@ function PaveDeLigne({
     );
   }
   return null;
+}
+
+/** Goûts toujours visibles en gros boutons ; les suivants derrière « Autres goûts ». */
+const GOUTS_VISIBLES = 8;
+
+/**
+ * R62 (propriétaire, 22/10/2026) : le goût du gâteau, bien en vue sous la
+ * taille. Un goût (ou une recette d'entremet), un par étage pour une pièce
+ * montée ; « Au choix du pâtissier » quand le client hésite. Décorations
+ * (Oreo, Kinder…) à part, facultatives, repliées.
+ */
+function BlocGouts({
+  choix,
+  attendus,
+  gouts,
+  decorations,
+  options,
+  onGouts,
+  onDecorations,
+}: {
+  choix: ChoixGout;
+  attendus: number;
+  gouts: readonly string[];
+  decorations: readonly string[];
+  options: OptionsGateau | null;
+  onGouts: (gouts: string[]) => void;
+  onDecorations: (decorations: string[]) => void;
+}) {
+  const liste = (choix.liste === 'entremet' ? options?.entremets : options?.parfums) ?? [];
+  const noms = liste.filter((o) => o.actif !== false).map((o) => o.nom);
+  const [tout, setTout] = useState(false);
+  const [libre, setLibre] = useState<number | null>(null);
+  const [deco, setDeco] = useState(decorations.length > 0);
+  const nomsDeco = (options?.decorations ?? []).filter((o) => o.actif !== false && o.nom !== 'Sans décoration').map((o) => o.nom);
+
+  const choisir = (etage: number, nom: string) => {
+    const suivants = Array.from({ length: attendus }, (_, k) => gouts[k] ?? '');
+    suivants[etage] = suivants[etage] === nom ? '' : nom;
+    onGouts(suivants);
+  };
+  const titre = (etage: number) =>
+    attendus > 1 ? `Goût de l’étage ${etage + 1}` : choix.liste === 'entremet' ? 'Quel entremet ?' : 'Goût ?';
+  const pastille = (actif: boolean) =>
+    `min-h-11 rounded-lg border-2 px-2.5 text-sm font-medium leading-tight ${
+      actif ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
+    }`;
+
+  return (
+    <div className="mt-2 grid gap-2 rounded-lg border-l-4 border-accent bg-surface-2 px-2.5 py-2">
+      {Array.from({ length: attendus }, (_, etage) => {
+        const choisi = gouts[etage] ?? '';
+        const visibles = tout ? noms : noms.slice(0, GOUTS_VISIBLES);
+        // Un goût choisi hors des premiers (ou libre) reste visible et coché.
+        const enPlus = choisi && !visibles.includes(choisi) ? [choisi] : [];
+        return (
+          <div key={etage} role="group" aria-label={titre(etage)}>
+            <p className="mb-1 text-sm font-semibold text-ink">
+              {titre(etage)}
+              {choisi ? <span className="ml-1 font-bold text-accent">— {choisi}</span> : null}
+            </p>
+            <div className="flex flex-wrap gap-1">
+              {[...visibles, ...enPlus].map((nom) => (
+                <button key={nom} type="button" aria-pressed={choisi === nom} onClick={() => choisir(etage, nom)} className={pastille(choisi === nom)}>
+                  {nom}
+                </button>
+              ))}
+              {noms.length > GOUTS_VISIBLES ? (
+                <button type="button" onClick={() => setTout((v) => !v)} className="min-h-11 rounded-lg px-2.5 text-sm text-ink-2 underline underline-offset-2">
+                  {tout ? 'Moins' : `+ ${noms.length - GOUTS_VISIBLES} autres`}
+                </button>
+              ) : null}
+              <button type="button" onClick={() => setLibre(libre === etage ? null : etage)} className="min-h-11 rounded-lg px-2.5 text-sm text-ink-2 underline underline-offset-2">
+                Autre…
+              </button>
+              <button
+                type="button"
+                aria-pressed={choisi === GOUT_AU_CHOIX}
+                onClick={() => choisir(etage, GOUT_AU_CHOIX)}
+                className={pastille(choisi === GOUT_AU_CHOIX)}
+              >
+                {GOUT_AU_CHOIX}
+              </button>
+            </div>
+            {libre === etage ? (
+              <input
+                className={`${CHAMP_TEXTE} mt-1`}
+                value={noms.includes(choisi) || choisi === GOUT_AU_CHOIX ? '' : choisi}
+                onChange={(e) => {
+                  const suivants = Array.from({ length: attendus }, (_, k) => gouts[k] ?? '');
+                  suivants[etage] = e.target.value;
+                  onGouts(suivants);
+                }}
+                placeholder={choix.liste === 'entremet' ? 'Autre recette' : 'Chocolat caramel…'}
+                autoComplete="off"
+                aria-label={`${titre(etage)} — autre`}
+              />
+            ) : null}
+          </div>
+        );
+      })}
+
+      {nomsDeco.length > 0 ? (
+        <div role="group" aria-label="Décoration (facultatif)">
+          <button type="button" onClick={() => setDeco((v) => !v)} className="text-sm text-ink-2 underline underline-offset-2">
+            Décoration (facultatif){decorations.length ? ` — ${decorations.join(', ')}` : ''} {deco ? '▴' : '▾'}
+          </button>
+          {deco ? (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {nomsDeco.map((nom) => {
+                const actif = decorations.includes(nom);
+                return (
+                  <button
+                    key={nom}
+                    type="button"
+                    aria-pressed={actif}
+                    onClick={() => onDecorations(actif ? decorations.filter((d) => d !== nom) : [...decorations, nom])}
+                    className={pastille(actif)}
+                  >
+                    {nom}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 /** Nombre de formes proposé en gros boutons (au-delà : « Autre », au pavé). */
@@ -1608,7 +1759,9 @@ function LigneDuBon({
   const plancher = regime === 'C' && fiche?.prix.prixEstPlancher === true;
   const auKilo = fiche?.produit.unite === 'kg';
   const controlee = resultat?.ok ? resultat.donnees : null;
-  const suggestions = regime === 'B' ? options?.garnitures : regime === 'C' ? options?.parfums : undefined;
+  // R62 : le goût d'un gâteau sur commande a son propre bloc ; la précision reste libre.
+  const goutAPart = fiche !== null && GOUTS_SUR_COMMANDE[fiche.produit.id] !== undefined;
+  const suggestions = regime === 'B' ? options?.garnitures : regime === 'C' && !goutAPart ? options?.parfums : undefined;
   // LOI 11 : gâteau simple sur commande (données de la fiche, jugées par le
   // domaine) → la taille se choisit d'abord aux boutons des tailles standard.
   // R61 : gâteau à minimum (Layer, Number Cake, pièces montées) → tailles de 5
@@ -1619,6 +1772,8 @@ function LigneDuBon({
   const taillesTriees = [...taillesLigne].sort((a, b) => a - b);
   // Number Cake (donnée : minimum PAR forme), jamais déduit du nom.
   const aFormes = fiche?.prix.minParSymbole != null;
+  // R62 : goût demandé par ce gâteau sur commande (donnée). Gâteau du comptoir : absent.
+  const choixGout = fiche ? (GOUTS_SUR_COMMANDE[fiche.produit.id] ?? null) : null;
 
   const [signalementTarif, setSignalementTarif] = useState<Echec | 'ok' | null>(null);
   const signalerAuGerant = async () => {
@@ -1758,6 +1913,18 @@ function LigneDuBon({
         ) : null}
       </div>
 
+      {choixGout && fiche && !(aFormes && ligne.nbSymboles === null) ? (
+        <BlocGouts
+          choix={choixGout}
+          attendus={goutsAttendus(choixGout, fiche)}
+          gouts={ligne.gouts}
+          decorations={ligne.decorations}
+          options={options}
+          onGouts={(gouts) => onChange({ gouts })}
+          onDecorations={(decorations) => onChange({ decorations })}
+        />
+      ) : null}
+
       {controlee ? (
         <p className="chiffres mt-1.5 text-base font-semibold text-ink">{composantes(controlee, unite)}</p>
       ) : ligne.quantite === null ? (
@@ -1783,7 +1950,7 @@ function LigneDuBon({
         aria-expanded={detail}
         className="mt-1 min-h-10 max-w-full truncate text-left text-sm text-ink-2 underline underline-offset-2"
       >
-        {ligne.precision ? `Précision : ${ligne.precision}` : regime === 'B' ? 'Garnitures, précision…' : 'Parfum, précision…'}
+        {ligne.precision ? `Précision : ${ligne.precision}` : regime === 'B' ? 'Garnitures, précision…' : goutAPart ? 'Précision (peu sucré, sans gluten…)' : 'Parfum, précision…'}
       </button>
 
       {detail ? (

@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import type { Commande, LigneCommande } from './commandes.ts';
 import {
   formesAImprimer,
+  goutsAImprimer,
   TAILLE_PRODUIT,
   couperTexte,
   dateRetraitTicket,
@@ -295,4 +296,10 @@ test('Number Cake : formes en capitales espacées (« 25 » → « 2  5 »), aut
   assert.equal(formesAImprimer('cœur + 1'), 'cœur + 1');
   assert.equal(formesAImprimer(''), null);
   assert.equal(formesAImprimer(null), null);
+});
+
+test('R62 : goût en capitales ; pièce montée, un goût par étage', () => {
+  assert.equal(goutsAImprimer(['Framboise']), 'GOÛT : FRAMBOISE');
+  assert.equal(goutsAImprimer(['Chocolat', 'Vanille']), 'ÉTAGE 1 : CHOCOLAT · ÉTAGE 2 : VANILLE');
+  assert.equal(goutsAImprimer([]), null);
 });

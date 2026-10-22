@@ -197,7 +197,7 @@ export default function ReglagesCommandes() {
   const onglets: { id: Onglet; libelle: string }[] = [
     { id: 'heures', libelle: 'Heures d’ouverture' },
     { id: 'tailles', libelle: 'Gâteaux' },
-    { id: 'mots', libelle: 'Parfums et garnitures' },
+    { id: 'mots', libelle: 'Goûts, entremets, garnitures' },
     { id: 'signales', libelle: `Signalés${signales.length > 0 ? ` (${signales.length})` : ''}` },
   ];
 
@@ -243,9 +243,10 @@ export default function ReglagesCommandes() {
         </div>
       ) : onglet === 'mots' ? (
         <div className="grid gap-4 lg:grid-cols-3">
-          <ListeOptions titre="Parfums" detail="Proposés pour décrire un gâteau sur commande." genre="parfum" liste={options.parfums} envoyer={envoyer} />
+          <ListeOptions titre="Goûts" detail="Un goût obligatoire par gâteau sur commande (un par étage). Les 8 premiers sont en gros boutons." genre="parfum" liste={options.parfums} envoyer={envoyer} />
+          <ListeOptions titre="Entremets" detail="Recettes proposées pour un entremet sur commande (une obligatoire)." genre="entremet" liste={options.entremets ?? []} envoyer={envoyer} />
           <ListeOptions titre="Garnitures" detail="Proposées pour le salé sur commande." genre="garniture" liste={options.garnitures} envoyer={envoyer} />
-          <ListeOptions titre="Décorations" detail="Mots seulement : un supplément payant passe par le tarif." genre="decoration" liste={options.decorations} envoyer={envoyer} />
+          <ListeOptions titre="Décorations" detail="Facultatives (Oreo, Kinder…). Mots seulement : un supplément payant passe par le tarif." genre="decoration" liste={options.decorations} envoyer={envoyer} />
         </div>
       ) : (
         <section>

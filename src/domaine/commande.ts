@@ -23,6 +23,7 @@ import { FAMILLES_GATEAU } from './constantes.ts';
 import type { DelaisCommande, ReglementCommande } from './constantes.ts';
 import { controlerSupplements, gateauxDeLigne } from './supplements.ts';
 import { validerQuantiteMin, validerMaximum, validerTailleGateau } from './minimums.ts';
+import { validerGouts, type ChoixGout } from './gouts.ts';
 import { deverrouillageValide, prixLigne } from './regimes.ts';
 import { gateauSurCommandeDe, validerPrixComptoir } from './prixComptoir.ts';
 import type { CorrespondanceComptoir } from './prixComptoir.ts';
@@ -80,6 +81,8 @@ export type LigneSaisie = {
   nbSymboles?: number | null;
   /** Pain surprise : nombre de sandwichs demandés au total. */
   nbObjets?: number | null;
+  /** R62 : goût (ou recette d'entremet) du gâteau, un par étage. */
+  gouts?: readonly string[] | null;
   /** Accord du gérant : prix sous plancher (C) ou prix d'une ligne libre. */
   deverrouillage?: Deverrouillage | null;
   /**
@@ -163,6 +166,8 @@ export type ContexteCommande = {
    * règle sans objet.
    */
   correspondancesComptoir: readonly CorrespondanceComptoir[];
+  /** R62 : goût demandé par gâteau sur commande (donnée du catalogue). Absent → non contrôlé. */
+  goutsSurCommande?: Readonly<Record<string, ChoixGout>>;
 };
 
 export type CommandeControlee = {
@@ -233,7 +238,7 @@ export function controlerLigne(
   saisie: LigneSaisie,
   index: number,
   datePrise: DateISO,
-  ctx: Pick<ContexteCommande, 'resoudre' | 'delais' | 'reglement' | 'correspondancesComptoir'>,
+  ctx: Pick<ContexteCommande, 'resoudre' | 'delais' | 'reglement' | 'correspondancesComptoir' | 'goutsSurCommande'>,
 ): Resultat<LigneControlee> {
   const p = `lignes[${index}].`;
   const r = controlerLigneSansPrefixe(saisie, index, datePrise, ctx);
@@ -245,7 +250,7 @@ function controlerLigneSansPrefixe(
   saisie: LigneSaisie,
   index: number,
   datePrise: DateISO,
-  ctx: Pick<ContexteCommande, 'resoudre' | 'delais' | 'reglement' | 'correspondancesComptoir'>,
+  ctx: Pick<ContexteCommande, 'resoudre' | 'delais' | 'reglement' | 'correspondancesComptoir' | 'goutsSurCommande'>,
 ): Resultat<LigneControlee> {
   const produitId = saisie.produitId?.trim() || null;
   const libelleLibre = saisie.libelle?.trim() || '';
@@ -275,6 +280,10 @@ function controlerLigneSansPrefixe(
   // R60 : taille qui existe au comptoir → la ligne doit être le gâteau du comptoir.
   const comptoir = validerPrixComptoir(fiche, saisie.quantite, ctx.correspondancesComptoir);
   if (!comptoir.ok) return comptoir;
+
+  // R62 : goût du gâteau sur commande (un par étage), après la taille.
+  const gouts = validerGouts(ctx.goutsSurCommande?.[fiche.produit.id], fiche, saisie.gouts);
+  if (!gouts.ok) return gouts;
 
   const prixFixe = !(fiche.produit.regimePrix === 'C' && fiche.prix.prixEstPlancher);
   if (prixFixe && saisie.prixUnitaireCentimes != null && saisie.prixUnitaireCentimes !== fiche.prix.prixCentimes) {

@@ -19,7 +19,7 @@ function texte(valeur: unknown, max = 80): string {
 }
 
 function genreDe(type: unknown): GenreOption | null {
-  return type === 'parfum' || type === 'garniture' || type === 'decoration' ? type : null;
+  return type === 'parfum' || type === 'garniture' || type === 'decoration' || type === 'entremet' ? type : null;
 }
 
 function refus(echec: Parameters<typeof reponseEchec>[0], route: string) {
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     });
     const de = (genre: GenreOption) =>
       options.filter((o) => o.genre === genre).map((o) => ({ id: o.id, nom: o.nom, actif: o.actif }));
-    return NextResponse.json({ parfums: de('parfum'), garnitures: de('garniture'), decorations: de('decoration') });
+    return NextResponse.json({ parfums: de('parfum'), garnitures: de('garniture'), decorations: de('decoration'), entremets: de('entremet') });
   } catch (error) {
     const { corps, statut } = traiterErreur(error, 'GET /api/gateaux');
     return NextResponse.json(corps, { status: statut });

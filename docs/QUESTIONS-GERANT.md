@@ -302,3 +302,9 @@
     employé tape plus de 2000 pièces, ou plus de 4 fois ce qu'on compte d'habitude pour ce
     produit. Exemple : 400 croissants alors qu'on en compte 80 d'habitude → « Vérifiez ».
     Ces seuils vous conviennent-ils ?
+
+- ❓ **Minis sur commande (tartelette, bavarois, éclair / mille-feuille) : faut-il un goût ?**
+  Aujourd'hui l'application les traite comme des assortiments, sans goût obligatoire (R62).
+- ❓ **« Morceau praline » dans la liste des entremets** : c'est le nom du tarif (catégorie
+  Individuelle). Pour un entremet entier, voulez-vous l'appeler autrement (« Praliné ») ?
+  Modifiable dans Réglages → Entremets.

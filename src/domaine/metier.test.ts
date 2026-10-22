@@ -23,6 +23,8 @@ import {
   type ContexteCommande,
   type LigneSaisie,
 } from './commande.ts';
+import { GOUT_AU_CHOIX } from './gouts.ts';
+import { GOUTS_SUR_COMMANDE } from '../catalogue/goutsSurCommande.ts';
 import { compterSymboles, taillesAPartirDuMinimum, taillesProches, validerMaximum, validerQuantiteMin, validerTailleGateau } from './minimums.ts';
 import { prixLigne, validerPrixParPersonne } from './regimes.ts';
 import type { FicheTarifee } from './types.ts';
@@ -859,4 +861,37 @@ test('R61 tailles à partir du minimum : Layer 20…60, pièces montées 40… e
   assert.deepEqual(taillesAPartirDuMinimum(fiche(ID.bavaroisC)), []);
   // Raccourcis seulement : une taille hors liste au-dessus du minimum reste acceptée.
   assert.equal(validerQuantiteMin(fiche(ID.layer), 22).ok, true);
+});
+
+// --- R62 : goût obligatoire des gâteaux sur commande (propriétaire, 22/10/2026) ---
+
+const ctxGouts: ContexteCommande = { ...ctxReglement, goutsSurCommande: GOUTS_SUR_COMMANDE };
+const ligneGout = (produitId: string, quantite: number, gouts?: string[]) =>
+  controlerLigne({ produitId, quantite, gouts }, 0, PRISE, ctxGouts);
+
+test('R62 : Layer Cake sans goût → ERR_GOUT_MANQUANT, sortie « Au choix du pâtissier »', () => {
+  const r = ligneGout(ID.layer, 20);
+  assert.equal(r.ok, false);
+  if (r.ok) return;
+  assert.equal(r.code, 'ERR_GOUT_MANQUANT');
+  assert.equal(r.valeurProposee, GOUT_AU_CHOIX);
+  assert.equal(ligneGout(ID.layer, 20, ['Framboise']).ok, true);
+  assert.equal(ligneGout(ID.layer, 20, [GOUT_AU_CHOIX]).ok, true);
+});
+
+test('R62 : pièce montée 3 étages → un goût PAR étage ; il manque l’étage 3', () => {
+  const r = ligneGout(ID.pieceMontee, 60, ['Chocolat', 'Vanille']);
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.message, /étage 3/);
+  assert.equal(ligneGout(ID.pieceMontee, 60, ['Chocolat', 'Vanille', 'Fraise']).ok, true);
+  assert.equal(ligneGout(ID.mariage, 40, ['Chocolat']).ok, false, '2 étages : 2 goûts');
+});
+
+test('R62 : entremet → une recette ; comptoir, minis et salé ne sont pas concernés', () => {
+  const entremet = ligneGout('gateaux-sur-commande/entremet', 8);
+  assert.equal(entremet.ok, false);
+  if (!entremet.ok) assert.match(entremet.message, /recette/);
+  assert.equal(ligneGout('gateaux-sur-commande/entremet', 8, ['Javanais']).ok, true);
+  assert.equal(ligneGout(ID.bavarois6pComptoir, 1).ok, true, 'gâteau du comptoir : goût déjà connu');
+  assert.equal(ligneGout('gateaux-sur-commande/mini-bavarois', 15).ok, true, 'minis : assortiment');
 });

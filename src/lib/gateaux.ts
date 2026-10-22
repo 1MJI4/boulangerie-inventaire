@@ -9,7 +9,7 @@
 // formats fixes, réglage des coupes et suppléments « moins de 6 personnes »
 // ont disparu (décision du gérant du 15/10/2026).
 
-export type GenreOption = 'parfum' | 'garniture' | 'decoration';
+export type GenreOption = 'parfum' | 'garniture' | 'decoration' | 'entremet';
 
 export type OptionGateau = {
   id: number;
@@ -23,4 +23,6 @@ export type OptionsGateau = {
   parfums: OptionGateau[];
   garnitures: OptionGateau[];
   decorations: OptionGateau[];
+  /** Recettes d'entremet (R62, 22/10/2026) : Saint-Michel, Javanais… */
+  entremets: OptionGateau[];
 };

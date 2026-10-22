@@ -132,6 +132,11 @@ vitrine = 31,00 €. Le même commandé en régime C = 4,50 €/pers minimum, pr
   comptoir, au prix exact du tarif, **non modifiable**. Correspondance = donnée explicite
   (`src/catalogue/correspondancesComptoir.ts`), jamais déduite du nom.
 → Chaque produit porte un `regime_prix` explicite. **Le régime ne se déduit jamais du nom.**
+→ Goût obligatoire (R62, propriétaire 22/10/2026) : tout gâteau sur commande porte **un goût**
+  (Entremet : **une recette**, Saint-Michel, Javanais… ; pièce montée : **un goût par étage**),
+  sinon `ERR_GOUT_MANQUANT` avec la sortie « Au choix du pâtissier ». Qui demande quoi = donnée
+  (`src/catalogue/goutsSurCommande.ts`). Oreo, Speculoos, Kinder, Raffaello, Ferrero, Nutella
+  sont des **décorations** (facultatives), pas des goûts.
 
 ## LOI N°7 — Tous les minimums sont BLOQUANTS
 

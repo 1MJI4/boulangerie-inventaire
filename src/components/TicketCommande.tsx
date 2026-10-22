@@ -92,6 +92,8 @@ export function Ticket({
             {ligne.libelle}
             {/* Number Cake : formes en gras, espacées (« 2  5 ») — espaces conservés. */}
             {ligne.formes ? <b style={{ display: 'block', whiteSpace: 'pre-wrap', fontSize: '13pt' }}>FORMES : {ligne.formes}</b> : null}
+            {ligne.gouts ? <b style={{ display: 'block', fontSize: '12pt' }}>{ligne.gouts}</b> : null}
+            {ligne.decorations ? <em>Déco : {ligne.decorations}</em> : null}
             {ligne.precision ? <em>{ligne.precision}</em> : null}
             {ligne.aConfirmer ? <strong>{MENTION_LIGNE_LIBRE}</strong> : null}
           </span>

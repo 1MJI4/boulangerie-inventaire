@@ -63,6 +63,7 @@ import { signaler } from '@/domaine/messages';
 import type { Echec } from '@/domaine/resultat';
 import type { Deverrouillage } from '@/domaine/types';
 import { chargerContexte, correspondancesServeur, priseBruxelles, resoudreServeur } from './contexteServeur';
+import { GOUTS_SUR_COMMANDE } from '@/catalogue/goutsSurCommande';
 
 const inclusions = {
   lignes: { orderBy: { ordre: 'asc' } as const, include: { produitCatalogue: { select: { cleCatalogue: true } } } },
@@ -150,6 +151,11 @@ export async function GET(request: Request) {
 
 type LigneEntrante = Record<string, unknown>;
 
+/** Liste de mots reçue (goûts, décorations) : au plus 6, 60 caractères chacun. */
+function listeDeMots(v: unknown): string[] {
+  return Array.isArray(v) ? v.slice(0, 6).map((m) => texte(m, 60)) : [];
+}
+
 /** Accord reçu de la tablette : seul le NOM est lu, l'heure est celle du serveur. */
 function lireAccord(brut: unknown): { par: string; le: string } | null {
   if (!brut || typeof brut !== 'object') return null;
@@ -167,6 +173,8 @@ type Preparation =
       precisions: (string | null)[];
       /** Number Cake : formes à réaliser (« 25 »), par ligne. */
       formes: (string | null)[];
+      /** R62 : décorations facultatives, par ligne. */
+      decorations: string[][];
       /** Accords confirmés : date serveur, ou date d'origine d'un accord conservé. */
       quand: Map<object, Date>;
       /**
@@ -225,6 +233,7 @@ function preparer(
   const lignes: LigneSaisie[] = [];
   const precisions: (string | null)[] = [];
   const formes: (string | null)[] = [];
+  const decorations: string[][] = [];
   const nonConfirmes: AccordsNonConfirmes = { lignes: [], remise: false };
   for (const [i, l] of lignesBrutes.entries()) {
     const produitId = texte(l.produitId, 200) || null;
@@ -250,11 +259,13 @@ function preparer(
       prixUnitaireCentimes: prix,
       nbSymboles: entierOuNull(l.nbSymboles),
       nbObjets: entierOuNull(l.nbObjets),
+      gouts: listeDeMots(l.gouts),
       deverrouillage: accord,
       deverrouillageTaille,
     });
     precisions.push(texte(l.precision, 200) || null);
     formes.push(texte(l.formes, 60) || null);
+    decorations.push(listeDeMots(l.decorations).filter(Boolean));
   }
 
   // Remise : seul le type est vérifié ici ; les totaux le sont après le domaine.
@@ -277,7 +288,7 @@ function preparer(
     sansEcriture: corps.sansEcriture === true,
     demandeInhabituelle: corps.demandeInhabituelle === true,
   };
-  return { ok: true, saisie, precisions, formes, quand, remiseConservee, nonConfirmes };
+  return { ok: true, saisie, precisions, formes, decorations, quand, remiseConservee, nonConfirmes };
 }
 
 /**
@@ -327,6 +338,7 @@ async function controler(
     delais: contexte.delais,
     reglement: contexte.reglement,
     correspondancesComptoir: correspondances.donnees,
+    goutsSurCommande: GOUTS_SUR_COMMANDE,
     aujourdhui,
     existante,
     joursAvantArchivage: JOURS_AVANT_ARCHIVAGE,
@@ -358,6 +370,8 @@ function lignesAEnregistrer(r: Ok, fiches: Controle['fiches'], prep: Extract<Pre
       ordre,
       nbSymboles: l.nbSymboles,
       formes: prep.formes[ordre],
+      gouts: [...(prep.saisie.lignes[ordre].gouts ?? [])],
+      decorations: prep.decorations[ordre],
       nbObjets: prep.saisie.lignes[ordre].nbObjets ?? null,
       produitCatalogueId: fiche ? fiche.produit.idBase : null,
       prixProduitId: fiche ? fiche.prix.prixProduitId : null,

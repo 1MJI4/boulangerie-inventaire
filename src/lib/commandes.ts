@@ -42,6 +42,10 @@ export type LigneCommande = {
   nbSymboles?: number | null;
   /** Number Cake : formes à réaliser (« 25 », « cœur + 1 »). */
   formes?: string | null;
+  /** R62 : goût(s) du gâteau, un par étage. */
+  gouts?: string[];
+  /** R62 : décorations facultatives. */
+  decorations?: string[];
   nbObjets?: number | null;
   /** Produit du catalogue de commande (null : ligne libre ou ligne antérieure au lot 2). */
   produitCatalogue?: { cleCatalogue: string } | null;

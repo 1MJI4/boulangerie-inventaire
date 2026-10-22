@@ -45,6 +45,10 @@ export type LigneTicket = {
   precision: string | null;
   /** Number Cake : « FORMES : 2  5 », déjà mis en forme (`formesAImprimer`). */
   formes: string | null;
+  /** R62 : « GOÛT : FRAMBOISE », ou un goût par étage (`goutsAImprimer`). */
+  gouts: string | null;
+  /** R62 : décorations facultatives, « Oreo, Kinder Bueno ». */
+  decorations: string | null;
   /** Total formaté par le domaine, ou « à confirmer » si le total ne peut pas être calculé. */
   prix: string;
   /** Ligne libre (hors catalogue) : son prix doit être validé par le pâtissier.
@@ -53,6 +57,17 @@ export type LigneTicket = {
 };
 
 export const MENTION_LIGNE_LIBRE = 'à confirmer par le pâtissier';
+
+/**
+ * Goût(s) d'un gâteau sur commande (R62), en capitales pour l'atelier :
+ * « GOÛT : FRAMBOISE » ; pièce montée : « ÉTAGE 1 : CHOCOLAT · ÉTAGE 2 : VANILLE ».
+ */
+export function goutsAImprimer(gouts: readonly string[] | null | undefined): string | null {
+  const g = (gouts ?? []).map((x) => x.trim()).filter(Boolean);
+  if (g.length === 0) return null;
+  if (g.length === 1) return `GOÛT : ${g[0].toUpperCase()}`;
+  return g.map((x, i) => `ÉTAGE ${i + 1} : ${x.toUpperCase()}`).join(' · ');
+}
 
 /**
  * Formes d'un Number Cake, lisibles d'un coup d'œil (propriétaire, 22/10/2026) :
@@ -81,6 +96,8 @@ export function formaterLigneTicket(ligne: LigneCommande, destination: Destinati
     libelle: ligne.libelle,
     precision: ligne.precision || null,
     formes: formesAImprimer(ligne.formes),
+    gouts: goutsAImprimer(ligne.gouts),
+    decorations: ligne.decorations?.length ? ligne.decorations.join(', ') : null,
     // Un total incalculable ne s'imprime jamais comme un montant : on préfère
     // un trou visible à un chiffre faux sur un bon remis au client.
     prix: total.ok ? formaterEuros(total.donnees) : 'à confirmer',
@@ -508,6 +525,23 @@ function produit(plume: Plume, ligne: LigneTicket, colQuantite: number, colPrix:
       x: MARGE + colQuantite,
       largeurMax: colNom,
       interligne: 32,
+    });
+  }
+  if (ligne.gouts) {
+    plume.texte(ligne.gouts, {
+      taille: 24,
+      gras: true,
+      x: MARGE + colQuantite,
+      largeurMax: colNom,
+      interligne: 30,
+    });
+  }
+  if (ligne.decorations) {
+    plume.texte(`Déco : ${ligne.decorations}`, {
+      taille: 20,
+      x: MARGE + colQuantite,
+      largeurMax: colNom,
+      interligne: 25,
     });
   }
   if (ligne.precision) {

@@ -202,6 +202,10 @@ export type LigneEcran = {
   nbSymboles: number | null;
   /** Number Cake : formes à réaliser (« 25 », « cœur + 1 »), imprimées en gras. */
   formes: string;
+  /** R62 : goût (ou recette d'entremet) du gâteau, un par étage ('' = pas encore choisi). */
+  gouts: string[];
+  /** R62 : décorations facultatives (Oreo, Kinder…). */
+  decorations: string[];
   nbObjets: number | null;
   /** Goût, garnitures, forme… (texte libre imprimé sur le bon). */
   precision: string;
@@ -232,6 +236,8 @@ export function ligneVide(produitId: string | null): LigneEcran {
     prixUnitaireCentimes: null,
     nbSymboles: null,
     formes: '',
+    gouts: [],
+    decorations: [],
     nbObjets: null,
     precision: '',
     deverrouillage: null,
@@ -251,6 +257,7 @@ export function versLigneSaisie(l: LigneEcran, fiche: FicheTarifee | null): Lign
     quantite: l.quantite ?? 0,
     nbSymboles: l.nbSymboles,
     nbObjets: l.nbObjets,
+    gouts: l.gouts,
     deverrouillage: l.deverrouillage,
     deverrouillageTaille: l.deverrouillageTaille,
   };

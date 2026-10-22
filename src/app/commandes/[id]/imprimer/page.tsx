@@ -21,6 +21,7 @@ import {
   demandeAConfirmer,
   estExemplaireInterne,
   formesAImprimer,
+  goutsAImprimer,
   mentionHeureRetrait,
   zoneDessinImprimee,
 } from '@/lib/ticketCanvas';
@@ -410,6 +411,8 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
               {formesAImprimer(ligne.formes) ? (
                 <b style={{ whiteSpace: 'pre-wrap' }}> — FORMES : {formesAImprimer(ligne.formes)}</b>
               ) : null}
+              {goutsAImprimer(ligne.gouts) ? <b> — {goutsAImprimer(ligne.gouts)}</b> : null}
+              {ligne.decorations?.length ? ` — Déco : ${ligne.decorations.join(', ')}` : ''}
               {ligne.precision ? ` — ${ligne.precision}` : ''}
               {/* Ligne libre (hors catalogue) : prix fixé avec le gérant, à confirmer. */}
               {ligne.ligneLibreAutoriseePar && estExemplaireInterne(destination) ? ' — à confirmer par le pâtissier' : ''}

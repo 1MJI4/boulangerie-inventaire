@@ -82,6 +82,7 @@ export type ParametresMessages = {
   ERR_QUANTITE_NEGATIVE: { produit?: string };
   /** `produit` absent quand le refus vient de la base. */
   ERR_NB_SYMBOLES_MANQUANT: { produit?: string };
+  ERR_GOUT_MANQUANT: { produit: string; objet: string; etage: number | null };
   ERR_CONFLIT_COMPTAGE: { produit: string };
   /**
    * Supplément (option comptée une fois par gâteau) en quantité supérieure au
@@ -413,6 +414,14 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
       (p.produit ? ` (« ${p.produit} »)` : '') +
       `. Saisissez zéro si le rayon est vide.`,
     correction: () => 'Mettre zéro',
+  },
+  ERR_GOUT_MANQUANT: {
+    niveau: 'bloquant',
+    cas: 'Gâteau sur commande sans goût (ou sans recette d’entremet), un par étage pour une pièce montée (R62, 22/10/2026).',
+    message: (p) =>
+      `Choisissez ${p.objet} ${p.etage !== null ? `de l’étage ${p.etage} ` : ''}pour « ${p.produit} ». ` +
+      `Si le client hésite : « au choix du pâtissier ».`,
+    correction: () => 'Au choix du pâtissier',
   },
   ERR_NB_SYMBOLES_MANQUANT: {
     niveau: 'bloquant',
