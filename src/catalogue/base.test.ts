@@ -19,7 +19,7 @@ import {
   type ClientEcritureCatalogue,
   type DepotEcritureCatalogue,
 } from "./ecritureBase.ts";
-import { verifierCibleEcriture, verifierCiblePremierImportProduction } from "./gardeEcriture.ts";
+import { verifierCibleEcriture, verifierCibleMiseAJourProduction, verifierCiblePremierImportProduction } from "./gardeEcriture.ts";
 import {
   creerLecteurBase,
   dateBaseVersIso,
@@ -228,6 +228,21 @@ test("garde-fou production : premier import seulement, hôte confirmé, catalogu
   assert.equal(verifierCiblePremierImportProduction(undefined, hote, 0).ok, false);
   assert.equal(verifierCiblePremierImportProduction("pas une url", hote, 0).ok, false);
   assert.equal(verifierCiblePremierImportProduction("mysql://u:p@h/app", "h", 0).ok, false);
+});
+
+test("garde-fou production : nouvelle version de tarif seulement sur catalogue rempli, après sauvegarde", () => {
+  const prod = "postgresql://pain:motdepasse@127.0.0.1:5432/pain";
+  const ok = verifierCibleMiseAJourProduction(prod, "127.0.0.1", 329, true);
+  assert.ok(ok.ok);
+  assert.equal(ok.ok && ok.base, "pain");
+  // Sauvegarde non déclarée, catalogue vide, confirmation fausse, base de recette : refus.
+  const sansSauvegarde = verifierCibleMiseAJourProduction(prod, "127.0.0.1", 329, false);
+  assert.equal(sansSauvegarde.ok, false);
+  assert.ok(!sansSauvegarde.ok && !sansSauvegarde.message.includes("motdepasse"), "le mot de passe n'apparaît jamais");
+  assert.equal(verifierCibleMiseAJourProduction(prod, "127.0.0.1", 0, true).ok, false);
+  assert.equal(verifierCibleMiseAJourProduction(prod, "127.0.0.1", Number.NaN, true).ok, false);
+  assert.equal(verifierCibleMiseAJourProduction(prod, "autre.exemple.be", 329, true).ok, false);
+  assert.equal(verifierCibleMiseAJourProduction("postgresql://u:p@localhost:55432/pain_recette", "localhost", 329, true).ok, false);
 });
 
 // ------------------------------------------------------------ Écriture

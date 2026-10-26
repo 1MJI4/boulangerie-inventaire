@@ -106,8 +106,39 @@ export function verifierCiblePremierImportProduction(
   if (!Number.isInteger(produitsCatalogueEnBase) || produitsCatalogueEnBase !== 0) {
     return {
       ok: false,
-      message: `Le catalogue de production contient déjà ${produitsCatalogueEnBase} produit(s) : un nouveau tarif passe par la procédure de déploiement (sauvegarde puis import). Rien n'est écrit.`,
+      message: `Le catalogue de production contient déjà ${produitsCatalogueEnBase} produit(s) : pour un nouveau tarif, faire une sauvegarde vérifiée puis relancer avec --mise-a-jour --sauvegarde-verifiee. Rien n'est écrit.`,
     };
   }
   return { ok: true, hote, base };
+}
+
+/**
+ * Nouvelle version de tarif sur une production DÉJÀ remplie (26/10/2026,
+ * Pâte à sucre). Mêmes garde-fous que le premier import (pas de recette, hôte
+ * confirmé), plus : catalogue non vide et sauvegarde vérifiée déclarée. Les
+ * anciennes versions ne sont jamais écrasées : `ecrireCatalogueEnBase` ferme
+ * l'ancien prix et ajoute le nouveau (LOI 1, catalogue versionné).
+ */
+export function verifierCibleMiseAJourProduction(
+  databaseUrl: string | undefined,
+  confirmation: string | undefined,
+  produitsCatalogueEnBase: number,
+  sauvegardeVerifiee: boolean,
+): VerdictCible {
+  const cible = verifierCiblePremierImportProduction(databaseUrl, confirmation, 0);
+  if (!cible.ok) return cible;
+  if (!Number.isInteger(produitsCatalogueEnBase) || produitsCatalogueEnBase <= 0) {
+    return {
+      ok: false,
+      message: "Le catalogue de production est vide : c'est un premier import, relancer sans --mise-a-jour. Rien n'est écrit.",
+    };
+  }
+  if (!sauvegardeVerifiee) {
+    return {
+      ok: false,
+      message:
+        "Faire d'abord une sauvegarde vérifiée (sudo systemctl start pain-sauvegarde, DERNIERE-VERIFICATION = OK), puis relancer avec --sauvegarde-verifiee. Rien n'est écrit.",
+    };
+  }
+  return cible;
 }
