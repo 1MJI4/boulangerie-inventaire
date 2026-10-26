@@ -18,6 +18,7 @@ import type { Commande, LigneCommande } from './commandes';
 import { formaterEuros } from '../domaine/argent.ts';
 import { formaterQuantite, totalLigne } from '../domaine/unites.ts';
 import { formaterHeure, lireHeure, nomJour } from '../domaine/reglement.ts';
+import { LIBELLES_FORME } from '../domaine/messages.ts';
 
 export const DESTINATIONS = ['CLIENT', 'BUREAU', 'MAGASIN', 'ATELIER'] as const;
 export type Destination = (typeof DESTINATIONS)[number];
@@ -45,6 +46,11 @@ export type LigneTicket = {
   precision: string | null;
   /** Number Cake : « FORMES : 2  5 », déjà mis en forme (`formesAImprimer`). */
   formes: string | null;
+  /** R63 : « FORME : CARRÉ » / « FORME : ROND » (`formeAImprimer`), null sans forme. */
+  forme: string | null;
+  /** Galerie de modèles (propriétaire, 26/10/2026) : « Photo sélectionnée : G043 »
+      (`photoModeleAImprimer`), null sans photo. Texte seul, jamais l'image. */
+  photoModele: string | null;
   /** R62 : « GOÛT : FRAMBOISE », ou un goût par étage (`goutsAImprimer`). */
   gouts: string | null;
   /** R62 : décorations facultatives, « Oreo, Kinder Bueno ». */
@@ -104,6 +110,49 @@ export function formesAImprimer(formes: string | null | undefined): string | nul
 }
 
 /**
+ * Forme d'un gâteau sur commande (R63, propriétaire, 26/10/2026), en capitales
+ * pour l'atelier : « FORME : CARRÉ » / « FORME : ROND », libellés du domaine
+ * (`LIBELLES_FORME`). À ne pas confondre avec `formes` (Number Cake).
+ * Une valeur inconnue (refusée par la base, donc anormale) s'imprime telle
+ * quelle plutôt que de disparaître : une forme ne doit jamais se perdre en route.
+ */
+export function formeAImprimer(forme: unknown): string | null {
+  const t = typeof forme === 'string' ? forme.trim() : '';
+  if (!t) return null;
+  const libelle = t === 'carre' || t === 'rond' ? LIBELLES_FORME[t] : t;
+  return `FORME : ${libelle.toUpperCase()}`;
+}
+
+/**
+ * Lit la forme d'une ligne. Le type d'affichage `LigneCommande` ne porte pas
+ * encore le champ (dépendance signalée à `commandes-traiteur`) ; la valeur,
+ * elle, arrive déjà avec la ligne Prisma renvoyée par l'API.
+ */
+export function formeDeLigne(ligne: object): string | null {
+  return formeAImprimer((ligne as { forme?: unknown }).forme);
+}
+
+/**
+ * Photo modèle choisie dans la galerie (propriétaire, 26/10/2026) : le bon ne
+ * porte que le code, « Photo sélectionnée : G043 » (imprimante monochrome :
+ * jamais l'image). Rien sans photo (aucun champ vide imprimé). À ne pas
+ * confondre avec `photoWhatsapp` / `photoImprimee` de la commande.
+ */
+export function photoModeleAImprimer(code: unknown): string | null {
+  const t = typeof code === 'string' ? code.trim() : '';
+  return t ? `Photo sélectionnée : ${t}` : null;
+}
+
+/**
+ * Lit la photo modèle d'une ligne. Comme `formeDeLigne` : le type d'affichage
+ * `LigneCommande` ne porte pas encore `photoModele` (en cours chez
+ * `commandes-traiteur`) ; la valeur arrive avec la ligne Prisma de l'API.
+ */
+export function photoModeleDeLigne(ligne: object): string | null {
+  return photoModeleAImprimer((ligne as { photoModele?: unknown }).photoModele);
+}
+
+/**
  * Formate une ligne : le total passe par `totalLigne` (domaine), jamais par
  * une multiplication locale — au kilo, la quantité est en grammes et le prix
  * au kilo ; une multiplication nue imprimerait mille fois le bon montant.
@@ -118,6 +167,8 @@ export function formaterLigneTicket(ligne: LigneCommande, destination: Destinati
     libelle: ligne.libelle,
     precision: ligne.precision || null,
     formes: formesAImprimer(ligne.formes),
+    forme: formeDeLigne(ligne),
+    photoModele: photoModeleDeLigne(ligne),
     gouts: goutsAImprimer(ligne.gouts),
     decorations: ligne.decorations?.length ? ligne.decorations.join(', ') : null,
     // Un total incalculable ne s'imprime jamais comme un montant : on préfère
@@ -481,9 +532,8 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
 
   if (commande.texteGateau) {
     mention(plume, 'Sur le gâteau', commande.texteGateau);
-  } else if (commande.sansEcriture && !pourLeClient) {
-    mention(plume, 'Écriture', 'Aucune — demandé au client', true);
   }
+  // Pas d'écriture : rien d'imprimé, même « sans écriture » demandé (propriétaire, 26/10/2026).
   if (commande.photoImprimee) {
     mention(plume, 'Photo', 'À IMPRIMER SUR LE GÂTEAU');
   }
@@ -532,9 +582,11 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
   plume.espace(MARGE);
 }
 
-function champ(plume: Plume, etiquette: string, valeur: string) {
+function champ(plume: Plume, etiquette: string, valeur: string | null | undefined) {
+  // Champ vide : rien d'imprimé, ni étiquette ni tiret (propriétaire, 26/10/2026).
+  if (!valeur?.trim()) return;
   plume.texte(etiquette.toUpperCase(), { taille: 15, gras: true, interligne: 0 });
-  plume.texte(valeur || '—', {
+  plume.texte(valeur, {
     taille: 24,
     gras: true,
     align: 'droite',
@@ -571,6 +623,24 @@ function produit(plume: Plume, ligne: LigneTicket, colQuantite: number, colPrix:
       x: MARGE + colQuantite,
       largeurMax: colNom,
       interligne: 32,
+    });
+  }
+  if (ligne.forme) {
+    plume.texte(ligne.forme, {
+      taille: 24,
+      gras: true,
+      x: MARGE + colQuantite,
+      largeurMax: colNom,
+      interligne: 30,
+    });
+  }
+  if (ligne.photoModele) {
+    plume.texte(ligne.photoModele, {
+      taille: 24,
+      gras: true,
+      x: MARGE + colQuantite,
+      largeurMax: colNom,
+      interligne: 30,
     });
   }
   if (ligne.gouts) {

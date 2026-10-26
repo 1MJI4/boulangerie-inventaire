@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import type { Commande, LigneCommande } from './commandes.ts';
 import {
   dateHeureCourte,
+  formeAImprimer,
+  photoModeleAImprimer,
   formesAImprimer,
   modifieeApresImpression,
   goutsAImprimer,
@@ -22,6 +24,7 @@ import {
   zoneDessinImprimee,
 } from './ticketCanvas.ts';
 import { nomJour } from '../domaine/reglement.ts';
+import { LIBELLES_FORME } from '../domaine/messages.ts';
 
 function ligne(partiel: Partial<LigneCommande>): LigneCommande {
   return { libelle: 'Produit test', quantite: 1, prixCentimes: 1000, poste: null, precision: null, ...partiel };
@@ -321,4 +324,149 @@ test('commande modifiée après impression : la dernière modification « à ré
   });
   assert.equal(quand, '2026-10-22T16:40:00Z');
   assert.equal(dateHeureCourte(quand!), '22/10 à 18h40');
+});
+
+/* ------------------------- R63 : forme du gâteau (propriétaire, 26/10/2026) */
+
+/** Ligne telle que renvoyée par l'API : `forme` vient de la ligne Prisma. */
+function ligneAvecForme(forme: string | null, partiel: Partial<LigneCommande> = {}): LigneCommande {
+  return { ...ligne({ libelle: 'Gâteau test', quantite: 6, ...partiel }), forme } as LigneCommande;
+}
+
+test('R63 : « FORME : CARRÉ » / « FORME : ROND », libellés du domaine en capitales', () => {
+  assert.equal(formeAImprimer('carre'), `FORME : ${LIBELLES_FORME.carre.toUpperCase()}`);
+  assert.equal(formeAImprimer('carre'), 'FORME : CARRÉ');
+  assert.equal(formeAImprimer('rond'), 'FORME : ROND');
+  assert.equal(formeAImprimer(null), null);
+  assert.equal(formeAImprimer(undefined), null);
+  assert.equal(formeAImprimer(''), null);
+  // Valeur anormale (la base la refuse) : visible, jamais perdue.
+  assert.equal(formeAImprimer('ovale'), 'FORME : OVALE');
+});
+
+test('R63 : la forme passe par la ligne du ticket ; rien sans forme ; distincte des formes du Number Cake', () => {
+  assert.equal(formaterLigneTicket(ligneAvecForme('rond'), 'ATELIER').forme, 'FORME : ROND');
+  assert.equal(formaterLigneTicket(ligneAvecForme(null), 'ATELIER').forme, null);
+  assert.equal(formaterLigneTicket(ligne({}), 'ATELIER').forme, null, 'ligne antérieure, sans le champ');
+  const nc = formaterLigneTicket(ligne({ formes: '25' }), 'ATELIER');
+  assert.equal(nc.forme, null);
+  assert.equal(nc.formes, '2  5');
+});
+
+test('ticket : « FORME : CARRÉ » en gras sur les 4 exemplaires, dans la colonne ; rien si forme null', () => {
+  const avec = commande({ lignes: [ligneAvecForme('carre')] });
+  for (const d of DESTINATIONS) {
+    const { ctx, traces } = contexteFactice();
+    const polices: string[] = [];
+    const tracer = ctx.fillText.bind(ctx);
+    ctx.fillText = (texte: string, x: number, y: number) => {
+      if (texte === 'FORME : CARRÉ') polices.push(ctx.font);
+      tracer(texte, x, y);
+    };
+    dessinerSurContexte(ctx, d, avec);
+    const t = traces.find((x) => x.texte === 'FORME : CARRÉ');
+    assert.ok(t, d);
+    assert.ok(polices.length > 0 && polices.every((f) => f.startsWith('700 ')), `${d} : gras (${polices.join()})`);
+    assert.ok(t.x + t.largeur <= LARGEUR, d);
+  }
+  const sans = commande({ lignes: [ligneAvecForme(null)] });
+  for (const d of DESTINATIONS) assert.ok(!textes(d, sans).some((x) => x.texte.startsWith('FORME ')), d);
+});
+
+test('Pâte à sucre : imprimée comme un supplément — parts × prix unitaire, libellé du catalogue, ni forme ni goût', () => {
+  // Prix FICTIF (LOI 1) : seul compte le calcul parts × prix par personne, par le domaine.
+  const pate = ligne({
+    libelle: 'Pâte à sucre',
+    quantite: 24,
+    prixCentimes: 1000,
+    produitCatalogue: { cleCatalogue: 'gateaux-sur-commande/supplement-pate-a-sucre', regimePrix: 'C' },
+  });
+  const l = formaterLigneTicket(pate, 'CLIENT');
+  assert.equal(l.libelle, 'Pâte à sucre');
+  assert.equal(l.quantite, '24 ×');
+  assert.equal(l.prix, '240,00 €');
+  assert.equal(l.forme, null);
+  assert.equal(l.formes, null);
+  assert.equal(l.gouts, null);
+  const t = textes('ATELIER', commande({ lignes: [ligneAvecForme('carre', { libelle: 'Bavarois' }), pate] })).map((x) => x.texte);
+  assert.ok(t.includes('Pâte à sucre'));
+  assert.ok(t.includes('240,00 €'));
+  assert.equal(t.filter((x) => x.startsWith('FORME ')).length, 1, 'la forme reste sur le gâteau, pas sur le supplément');
+});
+
+/* --------------- Photo modèle de la galerie (propriétaire, 26/10/2026) */
+
+/** Ligne telle que renvoyée par l'API : `photoModele` vient de la ligne Prisma. */
+function ligneAvecPhoto(photoModele: string | null, partiel: Partial<LigneCommande> = {}): LigneCommande {
+  return { ...ligne({ libelle: 'Gâteau test', quantite: 6, ...partiel }), photoModele } as LigneCommande;
+}
+
+test('photo modèle : « Photo sélectionnée : G043 », rien si null / vide / absent', () => {
+  assert.equal(photoModeleAImprimer('G043'), 'Photo sélectionnée : G043');
+  assert.equal(photoModeleAImprimer('  G043 '), 'Photo sélectionnée : G043');
+  assert.equal(photoModeleAImprimer(null), null);
+  assert.equal(photoModeleAImprimer(undefined), null);
+  assert.equal(photoModeleAImprimer('  '), null);
+  assert.equal(formaterLigneTicket(ligneAvecPhoto('G043'), 'CLIENT').photoModele, 'Photo sélectionnée : G043');
+  assert.equal(formaterLigneTicket(ligneAvecPhoto(null), 'CLIENT').photoModele, null);
+  assert.equal(formaterLigneTicket(ligne({}), 'ATELIER').photoModele, null, 'ligne antérieure, sans le champ');
+});
+
+test('ticket : « Photo sélectionnée : G043 » en gras sur les 4 exemplaires (CLIENT compris), après la forme, dans 576 points', () => {
+  const attendu = 'Photo sélectionnée : G043';
+  const avec = commande({ lignes: [{ ...ligneAvecForme('carre'), photoModele: 'G043' } as LigneCommande] });
+  for (const d of DESTINATIONS) {
+    const { ctx, traces } = contexteFactice();
+    const polices: string[] = [];
+    const tracer = ctx.fillText.bind(ctx);
+    ctx.fillText = (texte: string, x: number, y: number) => {
+      polices.push(ctx.font);
+      tracer(texte, x, y);
+    };
+    dessinerSurContexte(ctx, d, avec);
+    // Colonne étroite : le texte peut passer à la ligne, entre les mots
+    // seulement — le code « G043 » n'est jamais coupé.
+    const i = traces.findIndex((x) => x.texte.startsWith('Photo'));
+    assert.ok(i >= 0, d);
+    let j = i;
+    while (!traces[j].texte.includes('G043')) j += 1;
+    const morceaux = traces.slice(i, j + 1);
+    assert.equal(morceaux.map((x) => x.texte).join(' '), attendu, d);
+    assert.ok(morceaux.some((x) => x.texte.split(/\s+/).includes('G043')), `${d} : code entier`);
+    for (let k = i; k <= j; k += 1) {
+      assert.ok(polices[k].startsWith('700 '), `${d} : gras (${polices[k]})`);
+      assert.ok(traces[k].x >= 0 && traces[k].x + traces[k].largeur <= LARGEUR, `${d} : tient dans ${LARGEUR} points`);
+    }
+    const iForme = traces.findIndex((x) => x.texte === 'FORME : CARRÉ');
+    assert.ok(iForme >= 0 && iForme < i, `${d} : juste après la forme`);
+  }
+  const sans = commande({ lignes: [ligneAvecPhoto(null)] });
+  for (const d of DESTINATIONS) assert.ok(!textes(d, sans).some((x) => x.texte.startsWith('Photo sélectionnée')), d);
+});
+
+/* ------------------- Champs vides : rien d'imprimé (propriétaire, 26/10/2026) */
+
+test('ticket : champ vide jamais imprimé — ni « NOM » / « TÉLÉPHONE » seuls, ni tiret « — »', () => {
+  for (const d of DESTINATIONS) {
+    const plein = textes(d, commande()).map((x) => x.texte);
+    assert.ok(plein.includes('NOM') && plein.includes('TÉLÉPHONE'), d);
+    const vide = textes(d, commande({ client: '', telephone: '  ' })).map((x) => x.texte);
+    assert.ok(!vide.includes('NOM') && !vide.includes('TÉLÉPHONE') && !vide.includes('—'), `${d} : ${vide.join(' | ')}`);
+  }
+});
+
+test('ticket : sans photo, sans modèle WhatsApp, sans remarque, sans demande inhabituelle → aucune de ces lignes', () => {
+  const nue = commande({ photoImprimee: false, photoWhatsapp: false, remarques: null, demandeInhabituelle: false, texteGateau: null, sansEcriture: false });
+  for (const d of DESTINATIONS) {
+    const t = textes(d, nue).map((x) => x.texte.toUpperCase()).join(' | ');
+    for (const m of ['PHOTO', 'MODÈLE', 'REMARQUES', 'DEMANDE INHABITUELLE', 'ÉCRITURE', 'SUR LE GÂTEAU']) assert.ok(!t.includes(m), `${d} : ${m}`);
+  }
+});
+
+test('ticket : « sans écriture » jamais imprimé, sur aucun exemplaire (propriétaire, 26/10/2026)', () => {
+  const c = commande({ texteGateau: null, sansEcriture: true });
+  for (const d of DESTINATIONS) {
+    const t = textes(d, c).map((x) => x.texte.toUpperCase()).join(' | ');
+    assert.ok(!t.includes('ÉCRITURE') && !t.includes('DEMANDÉ AU CLIENT'), d);
+  }
 });

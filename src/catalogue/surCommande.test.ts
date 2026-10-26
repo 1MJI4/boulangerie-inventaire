@@ -8,6 +8,9 @@ import { join } from "node:path";
 import { chargerCatalogueDepuisDossier, DOSSIER_DATA_PAR_DEFAUT } from "./chargerFichiers.ts";
 import { importerTarifsSurCommande } from "./importSurCommande.ts";
 import { getPrix, listerParCategorie } from "./catalogue.ts";
+import { comparerVersions, formaterRapportDiff } from "./diff.ts";
+import { eurosTexteEnCentimes } from "./normaliser.ts";
+import { multiplier } from "../domaine/argent.ts";
 
 const JSON_AFFICHES = JSON.parse(readFileSync(join(DOSSIER_DATA_PAR_DEFAUT, "tarifs-sur-commande_2026-10.json"), "utf8"));
 const OPTS = { code: "sur-commande_2026-10", valideDu: "2026-10-15", source: "test" };
@@ -23,7 +26,8 @@ function ligne(id: string) {
 
 test("le dossier data/ se charge sans blocage (comptoir + sur commande)", () => {
   assert.equal(charge.ok, true, JSON.stringify(charge.rapports));
-  assert.equal(cat.versions.length, 2);
+  // tarif_2026-09 (comptoir) · sur-commande_2026-10 · sur-commande_2026-10-26 (Pâte à sucre).
+  assert.equal(cat.versions.length, 3);
 });
 
 test("chaque produit sur commande porte un régime B ou C explicite", () => {
@@ -109,26 +113,124 @@ test("famille explicite : affiche des gâteaux = pâtisserie, affiche traiteur =
 
 // ------------------------------------------------------------ Suppléments (R7)
 
-const SUPPLEMENTS_ATTENDUS = [
-  "gateaux-et-tartes/supplement/photo",
-  "gateaux-et-tartes/supplement/ecriture",
-  "gateaux-sur-commande/supplement-photo",
-  "gateaux-sur-commande/supplement-ecriture-simple",
-];
+// Base de prix de chaque supplément : forfait (une fois par gâteau), sauf la
+// Pâte à sucre, par personne (décision du propriétaire du 26/10/2026).
+const SUPPLEMENTS_ATTENDUS: Record<string, { basePrix: string; produit: string }> = {
+  "gateaux-et-tartes/supplement/photo": { basePrix: "forfait", produit: "Supplément" },
+  "gateaux-et-tartes/supplement/ecriture": { basePrix: "forfait", produit: "Supplément" },
+  "gateaux-sur-commande/supplement-photo": { basePrix: "forfait", produit: "Supplément" },
+  "gateaux-sur-commande/supplement-ecriture-simple": { basePrix: "forfait", produit: "Supplément" },
+  "gateaux-sur-commande/supplement-pate-a-sucre": { basePrix: "personne", produit: "Pâte à sucre" },
+};
+const IDS_SUPPLEMENTS = Object.keys(SUPPLEMENTS_ATTENDUS);
+const PATE_A_SUCRE = "gateaux-sur-commande/supplement-pate-a-sucre";
 
-test("suppléments : exactement 4, au forfait, famille « supplement », libellés intacts", () => {
+test("suppléments : exactement 5, base déclarée, prix fixe, famille « supplement », libellés intacts", () => {
   const derniere = (id: string) => [...cat.versions].reverse().find((v) => v.lignes.has(id))!.lignes.get(id)!;
   const supplements = [...cat.produits.values()].filter((p) => p.famille === "supplement").map((p) => p.id);
-  assert.deepEqual(supplements.sort(), [...SUPPLEMENTS_ATTENDUS].sort());
-  for (const id of SUPPLEMENTS_ATTENDUS) {
-    assert.equal(derniere(id).basePrix, "forfait", id);
-    assert.equal(cat.produits.get(id)!.produit, "Supplément", `${id} : libellé à la lettre (LOI 5)`);
+  assert.deepEqual(supplements.sort(), [...IDS_SUPPLEMENTS].sort());
+  for (const [id, attendu] of Object.entries(SUPPLEMENTS_ATTENDUS)) {
+    assert.equal(derniere(id).basePrix, attendu.basePrix, id);
+    assert.equal(derniere(id).prixEstPlancher, false, `${id} : prix fixe`);
+    assert.equal(cat.produits.get(id)!.produit, attendu.produit, `${id} : libellé à la lettre (LOI 5)`);
   }
   // Seuls les suppléments sont au forfait, dans toutes les versions.
-  for (const v of cat.versions) for (const [id, l] of v.lignes) assert.equal(l.basePrix === "forfait", SUPPLEMENTS_ATTENDUS.includes(id), id);
+  const auForfait = IDS_SUPPLEMENTS.filter((id) => SUPPLEMENTS_ATTENDUS[id].basePrix === "forfait");
+  for (const v of cat.versions) for (const [id, l] of v.lignes) assert.equal(l.basePrix === "forfait", auForfait.includes(id), id);
   // « Supplément (oeuf) » (sandwichs) n'est pas listé : reste à la pièce.
   const oeuf = [...cat.produits.values()].find((p) => p.produit === "Supplément (oeuf)")!;
   assert.equal(oeuf.famille, "sale");
+});
+
+// ------------------------------------------------------------ Pâte à sucre (26/10/2026)
+
+const DOC_AFFICHES = readFileSync(new URL("../../docs/TARIFS-SUR-COMMANDE.md", import.meta.url), "utf8");
+const euros = (t: string) => {
+  const c = eurosTexteEnCentimes(t.replace(/\s*€$/u, ""));
+  assert.ok(c !== null, t);
+  return c;
+};
+
+/** Prix de la Pâte à sucre lu dans l'affiche transcrite (docs/), jamais écrit dans le test. */
+function prixPateASucreDansLaDoc(): number {
+  const m = DOC_AFFICHES.match(/^\|\s*Pâte à sucre\s*\|\s*(\d+(?:,\d{2})?)\s*€\/pers\s*\|/mu);
+  assert.ok(m, "ligne « Pâte à sucre » absente de docs/TARIFS-SUR-COMMANDE.md");
+  return euros(m[1]);
+}
+
+/** Supplément d'un gâteau de 20 parts, tel qu'écrit dans l'exemple de la doc (« 20 × … = … + X »). */
+function supplement20PartsDansLaDoc(): number {
+  const m = DOC_AFFICHES.match(/\+ 20 × \d+,\d{2} € = [\d,]+ € \+ (\d+,\d{2}) €/u);
+  assert.ok(m, "exemple « 20 parts » de la Pâte à sucre absent de docs/TARIFS-SUR-COMMANDE.md");
+  return euros(m[1]);
+}
+
+test("Pâte à sucre : régime C, par personne, prix fixe, en vigueur le 26/10/2026, prix de l'affiche", () => {
+  const r = getPrix(cat, PATE_A_SUCRE, "2026-10-26");
+  assert.ok(r.ok);
+  assert.equal(r.donnees.prixCentimes, prixPateASucreDansLaDoc());
+  assert.equal(r.donnees.basePrix, "personne");
+  assert.equal(r.donnees.prixEstPlancher, false);
+  assert.equal(r.donnees.minQuantite, null, "le minimum 20 parts est une règle de regles-metier, pas de cette ligne");
+  assert.equal(r.donnees.valideDu, "2026-10-26");
+  const p = cat.produits.get(PATE_A_SUCRE)!;
+  assert.equal(p.regimePrix, "C");
+  assert.equal(p.famille, "supplement");
+  assert.equal(p.unite, "piece");
+  assert.equal(p.sousCategorie, "");
+  assert.equal(Number.isInteger(r.donnees.prixCentimes), true);
+  // Décision du propriétaire : gâteau de 20 parts → supplément de 120 € (exemple de la doc),
+  // calculé en centimes entiers par le helper du domaine.
+  assert.equal(multiplier(20, r.donnees.prixCentimes), supplement20PartsDansLaDoc());
+  // Avant sa date d'effet, la Pâte à sucre n'existe pas : une commande passée ne la voit pas.
+  const veille = getPrix(cat, PATE_A_SUCRE, "2026-10-25");
+  assert.equal(veille.ok, false);
+});
+
+test("version du 26/10/2026 : l'ancienne n'est pas écrasée, diff = 1 ajouté, rien d'autre", () => {
+  const ancienne = cat.versions.find((v) => v.code === "sur-commande_2026-10")!;
+  const nouvelle = cat.versions.find((v) => v.code === "sur-commande_2026-10-26")!;
+  assert.equal(ancienne.valideAu, "2026-10-25");
+  assert.equal(nouvelle.valideDu, "2026-10-26");
+  assert.equal(nouvelle.valideAu, null);
+  assert.equal(ancienne.lignes.has(PATE_A_SUCRE), false);
+  const diff = comparerVersions(ancienne, nouvelle);
+  assert.deepEqual(diff.ajoutes, [PATE_A_SUCRE]);
+  assert.deepEqual(diff.modifies, []);
+  assert.deepEqual(diff.disparus, []);
+  assert.equal(diff.inchanges.length, ancienne.lignes.size);
+  assert.match(formaterRapportDiff(diff, cat), /Pâte à sucre/);
+  // Les prix d'avant le 26/10 restent ceux du 15/10.
+  for (const [id, l] of ancienne.lignes) {
+    const avant = getPrix(cat, id, "2026-10-25");
+    assert.ok(avant.ok && avant.donnees.prixCentimes === l.prixCentimes && avant.donnees.versionCode === "sur-commande_2026-10", id);
+  }
+});
+
+test("Pâte à sucre : au forfait, ou en plancher « à partir de » → bloquant", () => {
+  const JSON_26 = JSON.parse(readFileSync(join(DOSSIER_DATA_PAR_DEFAUT, "tarifs-sur-commande_2026-10-26.json"), "utf8"));
+  const opts = { code: "sur-commande_2026-10-26", valideDu: "2026-10-26", source: "test" };
+  assert.equal(importerTarifsSurCommande(JSON_26, opts).ok, true);
+  const trouver = (d: typeof JSON_26) =>
+    d.affiches.flatMap((a: { produits: { id: string }[] }) => a.produits).find((p: { id: string }) => p.id === PATE_A_SUCRE);
+
+  const auForfait = structuredClone(JSON_26);
+  trouver(auForfait).basePrix = "forfait";
+  const imp1 = importerTarifsSurCommande(auForfait, opts);
+  assert.equal(imp1.ok, false);
+  assert.ok(imp1.signalements.some((s) => s.code === "ERR_REGIME_INCOHERENT" && s.produitId === PATE_A_SUCRE));
+
+  const plancher = structuredClone(JSON_26);
+  trouver(plancher).prixEstPlancher = true;
+  const imp2 = importerTarifsSurCommande(plancher, opts);
+  assert.equal(imp2.ok, false);
+  assert.ok(imp2.signalements.some((s) => s.code === "ERR_REGIME_INCOHERENT" && s.produitId === PATE_A_SUCRE));
+});
+
+test("import idempotent : recharger le dossier donne le même catalogue", () => {
+  const encore = chargerCatalogueDepuisDossier();
+  assert.equal(encore.ok, true);
+  assert.deepEqual(encore.catalogue.versions.map((v) => [v.code, v.valideDu, v.valideAu, v.lignes.size]), cat.versions.map((v) => [v.code, v.valideDu, v.valideAu, v.lignes.size]));
 });
 
 test("affiche : supplément hors forfait, ou forfait hors supplément → bloquant", () => {

@@ -102,6 +102,17 @@ const EXEMPLES: Partial<Record<CodeCatalogue, unknown>> = {
   ERR_HEURE_HORS_OUVERTURE: { ouverture: 'Ho', fermeture: 'Hf', jour: 'le samedi', heureProposee: 'Hp' },
   ERR_TAILLE_NON_STANDARD: { parts: 7, inferieure: 6, superieure: 8 },
   ERR_PRIX_COMPTOIR: { produit: 'P', parts: 6 },
+  ERR_FORME_MANQUANTE: { produit: 'Bavarois' },
+  ERR_FORME_ROND_IMPOSSIBLE: { produit: 'Bavarois', parts: 12, partsMaxRond: 8, gateauRond: 'Layer Cake', partsRond: 20 },
+  ERR_TAILLE_INTERDITE: {
+    produit: 'Matadi chocolat 4P',
+    remplacements: [
+      { libelle: 'Matadi chocolat 6P', action: 'passer' },
+      { libelle: 'Mousse chocolat 4P', action: 'prendre' },
+    ],
+  },
+  ERR_SUPPLEMENT_PARTS: { produit: 'Pâte à sucre', gateau: 'Layer Cake', parts: 25 },
+  ERR_SUPPLEMENT_NON_ADMIS: { produit: 'Pâte à sucre', gateaux: 'Layer Cake, Bavarois' },
   AVERT_TAILLE_NON_STANDARD_AUTORISEE: { par: 'Karim' },
   ERR_DECOMPTE_INCOMPLET: { restants: 2 },
   AVERT_COMMANDE_INHABITUELLE: {},

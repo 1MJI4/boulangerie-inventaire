@@ -59,5 +59,28 @@ export type PrixRegle = {
 /** Un produit et son prix en vigueur à la date de la commande. */
 export type FicheTarifee = { produit: ProduitRegle; prix: PrixRegle };
 
+/**
+ * R63 — forme d'un gâteau simple sur commande (propriétaire, 26/10/2026).
+ * `carre` couvre aussi le rectangle (libellé écran « Carré / rectangle »,
+ * HYPOTHÈSE À VALIDER : QUESTIONS-GERANT n°65).
+ */
+export type Forme = 'carre' | 'rond';
+
+/**
+ * Sortie en un geste qui REMPLACE le produit de la ligne (R63 rond → Layer Cake,
+ * R65 Matadi 4P → Matadi 6P / Mousse chocolat 4P). Portée par `valeurProposee`.
+ * L'écran remplace `produitId` et `quantite` de la ligne et affiche `bouton`
+ * tel quel ; tout le reste de la ligne est revalidé par le domaine.
+ */
+export type SortieRemplacement = {
+  produitId: string;
+  /** Libellé du catalogue, à la lettre (LOI 5). */
+  libelle: string;
+  /** Quantité à mettre sur la ligne (déjà au minimum du nouveau produit). */
+  quantite: number;
+  /** Texte du bouton, tiré du catalogue des messages. */
+  bouton: string;
+};
+
 /** Déverrouillage d'un prix sous plancher (LOI 6) : identité déclarée + horodatage. */
 export type Deverrouillage = { par: string; le: string };

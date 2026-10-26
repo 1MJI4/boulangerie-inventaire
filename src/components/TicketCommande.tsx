@@ -69,14 +69,19 @@ export function Ticket({
         {!pourLeClient && commande.vendeur ? ` · ${commande.vendeur}` : ''}
       </div>
 
-      <div className="tk-champ">
-        <span>Nom</span>
-        <b>{commande.client}</b>
-      </div>
-      <div className="tk-champ">
-        <span>Téléphone</span>
-        <b>{commande.telephone}</b>
-      </div>
+      {/* Champ vide : rien d'imprimé (propriétaire, 26/10/2026). */}
+      {commande.client?.trim() ? (
+        <div className="tk-champ">
+          <span>Nom</span>
+          <b>{commande.client}</b>
+        </div>
+      ) : null}
+      {commande.telephone?.trim() ? (
+        <div className="tk-champ">
+          <span>Téléphone</span>
+          <b>{commande.telephone}</b>
+        </div>
+      ) : null}
 
       <div className="tk-retrait">
         <span>Pour le</span>
@@ -92,6 +97,10 @@ export function Ticket({
             {ligne.libelle}
             {/* Number Cake : formes en gras, espacées (« 2  5 ») — espaces conservés. */}
             {ligne.formes ? <b style={{ display: 'block', whiteSpace: 'pre-wrap', fontSize: '13pt' }}>FORMES : {ligne.formes}</b> : null}
+            {/* R63 : forme du gâteau, « FORME : CARRÉ » — même corps que le goût. */}
+            {ligne.forme ? <b style={{ display: 'block', fontSize: '12pt' }}>{ligne.forme}</b> : null}
+            {/* Galerie de modèles : le code seul, jamais l'image (imprimante monochrome). */}
+            {ligne.photoModele ? <b style={{ display: 'block', fontSize: '12pt' }}>{ligne.photoModele}</b> : null}
             {ligne.gouts ? <b style={{ display: 'block', fontSize: '12pt' }}>{ligne.gouts}</b> : null}
             {ligne.decorations ? <em>Déco : {ligne.decorations}</em> : null}
             {ligne.precision ? <em>{ligne.precision}</em> : null}
@@ -105,11 +114,6 @@ export function Ticket({
         <div className="tk-mention">
           <span>Sur le gâteau</span>
           <b>{commande.texteGateau}</b>
-        </div>
-      ) : commande.sansEcriture && !pourLeClient ? (
-        <div className="tk-mention discret">
-          <span>Écriture</span>
-          <i>aucune — demandé au client</i>
         </div>
       ) : null}
 

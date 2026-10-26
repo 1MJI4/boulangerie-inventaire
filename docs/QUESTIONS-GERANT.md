@@ -11,6 +11,23 @@
 > Les numéros ne changent jamais : une question ajoutée prend le numéro suivant, même si
 > elle est rangée plus haut dans la liste.
 
+## Déjà tranché — 26/10/2026
+
+- ✅ **Pâte à sucre : prix fixe de 6,00 € par personne** (« non laisse 6€ »). Ce n'est pas
+  un prix « à partir de » : le pâtissier ne peut ni le baisser ni le monter, comme la photo
+  et l'écriture.
+- ✅ **Forme du gâteau** (Bavarois, Crème fraîche, Entremet, Cake nature) : carré ou rond
+  de 4 à 8 parts, carré d'office au-dessus. Un rond plus grand devient un Layer Cake
+  (20 parts minimum). (R63)
+- ✅ **Pâte à sucre** : un supplément compté par personne, sur un Layer Cake ou un gâteau
+  carré, gâteau de 20 parts au moins (« Passer à 20 parts »). (R64)
+- ✅ **Matadi chocolat 4P : ne se fait pas.** La commande propose « Passer en Matadi
+  chocolat 6P » ou « Prendre Mousse chocolat 4P ». La ligne de votre tarif n'est pas
+  supprimée. (R65)
+- ✅ **Rond au-dessus de 8 parts → Layer Cake, même en pâte à sucre.** Les gâteaux ronds
+  bas en pâte à sucre sont des Layer Cakes ; un Bavarois, une Crème fraîche, un Entremet ou
+  un Cake nature ne reçoit la pâte à sucre que s'il est carré. (R63, R64)
+
 ## Déjà tranché — 18/10/2026
 
 - ✅ **Retrait le jour même : accepté.** Aucun délai minimum pour le comptoir commandé, les
@@ -308,3 +325,92 @@
 - ❓ **« Morceau praline » dans la liste des entremets** : c'est le nom du tarif (catégorie
   Individuelle). Pour un entremet entier, voulez-vous l'appeler autrement (« Praliné ») ?
   Modifiable dans Réglages → Entremets.
+
+### Gâteaux sur commande — forme, pâte à sucre, Matadi (26/10/2026)
+
+65. **« Carré » ou « Carré / rectangle » ?** Vos gâteaux carrés sont souvent rectangulaires.
+    Le bouton et le bon disent « Carré » : le pâtissier comprend-il « carré ou rectangle » ?
+    *(en attendant, l'application fait : « Carré » veut dire carré ou rectangle.)*
+
+66. **Bavarois 10 parts** : il devient le Bavarois 10P du comptoir (prix du comptoir), et
+    au-dessus de 8 parts il est carré d'office. Le Bavarois 10P de la vitrine est-il bien
+    carré / rectangle ? Et un gâteau de la vitrine commandé directement (Bavarois 6P choisi
+    au comptoir, sans passer par « gâteau sur commande ») : faut-il aussi demander la forme ?
+    *(en attendant, l'application fait : Bavarois 10P carré d'office ; pas de forme demandée
+    pour un gâteau de vitrine choisi directement.)*
+
+67. **Pâte à sucre sur un Number Cake ou une pièce montée** : est-ce possible ?
+    *(en attendant, l'application fait : non, seulement sur un Layer Cake, un Bavarois, une
+    Crème fraîche, un Entremet ou un Cake nature — carré, 20 parts au moins.)*
+
+68. **Pâte à sucre et photo, ou pâte à sucre et écriture, sur le même gâteau** : est-ce
+    possible ? *(en attendant, l'application fait : oui, rien ne l'empêche.)*
+
+69. **Layer Cake, Number Cake, pièces montées** : faut-il aussi demander une forme
+    (rond / carré) ? *(en attendant, l'application fait : non, pas de forme demandée.)*
+
+70. **Rond au-dessus de 8 parts → Layer Cake** : le goût choisi est-il toujours possible en
+    Layer Cake ? Pour un **Entremet** (une recette : Saint-Michel, Javanais…), quel goût de
+    Layer Cake proposer ? *(en attendant, l'application fait : le goût d'un Bavarois ou d'une
+    Crème fraîche est gardé ; pour un Entremet, le goût du Layer Cake est redemandé.)*
+
+71. **Bûches 4P et Cœurs 5P au goût « Matadi »** (rayon fin d'année) : sont-ils possibles,
+    alors que le Matadi chocolat 4P ne l'est pas ?
+    *(en attendant, l'application fait : oui, rien n'est changé pour les bûches et les cœurs.)*
+
+### Galerie de photos de modèles (26/10/2026)
+
+Relevé en transcrivant les notes que vous avez écrites dans les noms des photos
+(`src/catalogue/photosModeles.ts`). Aucun prix n'est repris de ces notes tant que vous ne
+l'avez pas confirmé ici.
+
+72. **Pâte à sucre « carré » (G068, G122, G134, G196)** : sur quel gâteau de base ces
+    modèles sont-ils faits (Bavarois, Crème fraîche, Entremet ou Cake nature carré) ?
+    *(en attendant, l'application fait : ces 4 photos ne sont pas dans la galerie.)*
+
+73. **Layer Cake triple chocolat « 6,5 par part » (G010)** : votre tarif dit Layer Cake à
+    partir de 5,00 € par personne. Le triple chocolat est-il toujours à 6,50 € par personne ?
+    *(en attendant, l'application fait : prix « à partir de » du Layer Cake, que le pâtissier
+    peut monter.)*
+
+74. **Pochage « 5 euros » (G050, Crème fraîche)** : ce supplément n'est pas dans votre tarif.
+    5,00 € par gâteau ? À ajouter au tarif ?
+    *(en attendant, l'application fait : rien n'est ajouté ; la photo porte la note
+    « Pochage (supplément à confirmer) ».)*
+
+75. **Moelleux avec Smarties et Maltesers (G104)** : est-ce la « Tarte Moelleux 6P » du
+    comptoir ? Le supplément Smarties / Maltesers coûte combien ?
+    *(en attendant, l'application fait : la photo choisit la Tarte Moelleux 6P, sans
+    supplément ; la photo porte la note « supplément à confirmer ».)*
+
+76. **« Demi layer cake » (G011)** : qu'est-ce que c'est, et quel prix / quel minimum ?
+    *(en attendant, l'application fait : Layer Cake normal, 20 parts minimum, note « Demi
+    layer cake · Déco à valider sur WhatsApp ».)*
+
+77. **Bavarois citron (G042)** : le citron n'est pas dans les goûts du Bavarois sur votre
+    affiche (fraise, framboise, mangue, passion). Est-il possible sur commande ?
+    *(en attendant, l'application fait : la photo choisit le Bavarois sur commande ; le goût
+    reste à saisir.)*
+
+78. **Entremet sur deux étages (G075)** : prix de l'Entremet par personne, ou prix de la
+    Pièce montée 2 étages (40 parts minimum) ?
+    *(en attendant, l'application fait : Entremet, comme vous l'avez rangé.)*
+
+79. **Forêt noire ronde et Tiramisu « même prix que l'entremet » (G065, G071)** : faut-il
+    les ajouter à la liste des recettes d'entremet (Réglages → Entremets) ?
+    *(en attendant, l'application fait : la photo choisit l'Entremet ; la recette reste à
+    choisir dans la liste actuelle.)*
+
+80. **Photos sans produit au tarif** : la vendeuse choisit le produit elle-même pour
+    - les **bûches** (4P, 6P, 8P, 10P ou bûchette : impossible à voir sur la photo) ;
+    - la **tarte aux fraises** (G047) : Croûte fraises 6P ou 8P ?
+    - la **tarte banane** (G081) et la **tarte citron meringuée** (G107) : pas au tarif ;
+    - les **éclairs « Bonne Année »** (G083), les **gros macarons** (G101), les
+      **pâtisseries individuelles** (G115, G139) et l'**assortiment** (G144) : pas au tarif
+      sur commande.
+    Faut-il créer ces produits, et à quel prix ? Même question pour les photos du dossier
+    « Nouveaux produits » : mini choux (« 3 € pièce »), gâteau cœur (« 6,5 »), cupcake avec
+    photo, macarons, macarons burger.
+    *(en attendant, l'application fait : ces photos restent dans la galerie, sans produit
+    choisi d'office ; les « nouveaux produits » ne sont pas dans la galerie.)*
+    Les petits carrés G009 et G015 sont rangés en **Mini bavarois** : est-ce juste ?

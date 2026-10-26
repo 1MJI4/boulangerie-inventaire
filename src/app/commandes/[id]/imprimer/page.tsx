@@ -20,6 +20,8 @@ import {
   dateRetraitTicket,
   demandeAConfirmer,
   estExemplaireInterne,
+  formeDeLigne,
+  photoModeleDeLigne,
   formesAImprimer,
   goutsAImprimer,
   mentionHeureRetrait,
@@ -399,16 +401,23 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
         </div>
       </div>
 
-      <div className="bon-grille2">
-        <div className="bon-champ">
-          <span>Nom</span>
-          <b>{commande.client}</b>
+      {/* Champ vide : rien d'imprimé, ni étiquette ni trait (propriétaire, 26/10/2026). */}
+      {commande.client?.trim() || commande.telephone?.trim() ? (
+        <div className="bon-grille2">
+          {commande.client?.trim() ? (
+            <div className="bon-champ">
+              <span>Nom</span>
+              <b>{commande.client}</b>
+            </div>
+          ) : null}
+          {commande.telephone?.trim() ? (
+            <div className="bon-champ">
+              <span>Téléphone</span>
+              <b>{commande.telephone}</b>
+            </div>
+          ) : null}
         </div>
-        <div className="bon-champ">
-          <span>Téléphone</span>
-          <b>{commande.telephone}</b>
-        </div>
-      </div>
+      ) : null}
 
       <div className="bon-retrait">
         <span>Pour le</span>
@@ -429,6 +438,10 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
               {formesAImprimer(ligne.formes) ? (
                 <b style={{ whiteSpace: 'pre-wrap' }}> — FORMES : {formesAImprimer(ligne.formes)}</b>
               ) : null}
+              {/* R63 : « FORME : CARRÉ » / « FORME : ROND », rien sans forme. */}
+              {formeDeLigne(ligne) ? <b> — {formeDeLigne(ligne)}</b> : null}
+              {/* Galerie de modèles : « Photo sélectionnée : G043 », rien sans photo. */}
+              {photoModeleDeLigne(ligne) ? <b> — {photoModeleDeLigne(ligne)}</b> : null}
               {goutsAImprimer(ligne.gouts) ? <b> — {goutsAImprimer(ligne.gouts)}</b> : null}
               {ligne.decorations?.length ? ` — Déco : ${ligne.decorations.join(', ')}` : ''}
               {ligne.precision ? ` — ${ligne.precision}` : ''}
@@ -447,11 +460,6 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
         <div className="bon-mention">
           <span>Sur le gâteau</span>
           <b>{commande.texteGateau}</b>
-        </div>
-      ) : commande.sansEcriture && !pourLeClient ? (
-        <div className="bon-mention pointille">
-          <span>Écriture</span>
-          <em>Aucune — demandé au client</em>
         </div>
       ) : null}
 
@@ -477,12 +485,22 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
       ) : null}
 
       <div className="bon-pied">
-        <div className="bon-remarques">
-          <span>{pourLeClient ? 'À présenter au retrait' : 'Remarques'}</span>
-          <i>{!pourLeClient && commande.remarques ? commande.remarques : ''}</i>
-          <hr />
-          {pourLeClient ? null : <hr />}
-        </div>
+        {/* Exemplaires internes sans remarque : ni étiquette « Remarques » ni lignes
+            vides (propriétaire, 26/10/2026) ; le bloc vide garde la colonne des montants. */}
+        {pourLeClient ? (
+          <div className="bon-remarques">
+            <span>À présenter au retrait</span>
+            <i />
+            <hr />
+          </div>
+        ) : commande.remarques?.trim() ? (
+          <div className="bon-remarques">
+            <span>Remarques</span>
+            <i>{commande.remarques}</i>
+          </div>
+        ) : (
+          <div className="bon-remarques" />
+        )}
         <div className="bon-montants">
           <div className="total">
             <span>Total</span>

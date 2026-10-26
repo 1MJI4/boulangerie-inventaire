@@ -6,7 +6,7 @@
 // La famille (pâtisserie / salé) vient du TITRE de l'affiche, via ./familles.ts.
 // Textes du rapport : catalogue unique des messages, via ./rapport.ts.
 
-import { FAMILLE_PAR_DEFAUT, estSupplement, regleFamille } from "./familles.ts";
+import { FAMILLE_PAR_DEFAUT, baseDuSupplement, regleFamille } from "./familles.ts";
 import { estDateISO, slug } from "./normaliser.ts";
 import { entreeRapport, type CodeRapport } from "./rapport.ts";
 import type {
@@ -102,17 +102,27 @@ export function importerTarifsSurCommande(donnees: unknown, options: OptionsImpo
       if (regime === "B" && brut.prixEstPlancher === true) {
         err("ERR_REGIME_INCOHERENT", "le régime B est un prix fixe, pas un plancher");
       }
-      if (regime === "C" && (basePrix === "personne" || basePrix === "piece") && brut.prixEstPlancher !== true) {
+      // Supplément = liste explicite de familles.ts, avec SA base de prix (forfait, ou
+      // par personne pour la Pâte à sucre) ; lui seul peut être au forfait (relu tel
+      // quel depuis la base : la famille y est reconstruite par le nom).
+      const baseSupplement = baseDuSupplement("sur-commande", categorie, nom);
+      const supplement = baseSupplement !== null;
+      if (!supplement && regime === "C" && (basePrix === "personne" || basePrix === "piece") && brut.prixEstPlancher !== true) {
         err("ERR_REGIME_INCOHERENT", "en régime C, le prix par personne ou par mini-pièce est un plancher « à partir de »");
       }
       if (regime === "B" && basePrix === "personne") {
         err("ERR_REGIME_INCOHERENT", "le régime B ne se vend pas par personne");
       }
-      // Supplément = liste explicite de familles.ts, et lui seul est au forfait (relu
-      // tel quel depuis la base : la famille y est reconstruite par le nom).
-      const supplement = estSupplement("sur-commande", categorie, nom);
-      if (supplement && basePrix !== "forfait") {
-        err("ERR_REGIME_INCOHERENT", "un supplément se compte au forfait, une fois par gâteau");
+      if (supplement && basePrix !== baseSupplement) {
+        err(
+          "ERR_REGIME_INCOHERENT",
+          baseSupplement === "forfait"
+            ? "un supplément se compte au forfait, une fois par gâteau"
+            : "ce supplément se compte par personne, comme les parts du gâteau",
+        );
+      }
+      if (supplement && brut.prixEstPlancher !== false) {
+        err("ERR_REGIME_INCOHERENT", "un supplément a un prix fixe, pas un plancher « à partir de »");
       }
       if (!supplement && basePrix === "forfait") {
         err("ERR_REGIME_INCOHERENT", "prix au forfait réservé aux suppléments déclarés dans le catalogue");

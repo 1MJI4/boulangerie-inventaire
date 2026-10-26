@@ -43,11 +43,18 @@ export type LigneCommande = {
   nbSymboles?: number | null;
   /** Number Cake : formes à réaliser (« 25 », « cœur + 1 »). */
   formes?: string | null;
+  /** R63 : forme du gâteau (carré / rond), null si non concerné. Distinct de `formes` (Number Cake). */
+  forme?: 'carre' | 'rond' | null;
   /** R62 : goût(s) du gâteau, un par étage. */
   gouts?: string[];
   /** R62 : décorations facultatives. */
   decorations?: string[];
   nbObjets?: number | null;
+  /**
+   * Galerie (26/10/2026) : identifiant de la photo de modèle choisie (« G043 »),
+   * imprimé « Photo sélectionnée : G043 » sur le bon. null / absent : pas de photo.
+   */
+  photoModele?: string | null;
   /** Produit du catalogue de commande (null : ligne libre ou ligne antérieure au lot 2). */
   /** Rayon, nom et régime : de quoi classer la ligne (boulangerie, pâtisserie, salé). */
   produitCatalogue?: { cleCatalogue: string; categorie?: string; nom?: string; regimePrix?: 'A' | 'B' | 'C' | null } | null;

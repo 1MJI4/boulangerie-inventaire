@@ -16,6 +16,7 @@ import type { Resultat } from './resultat.ts';
 import { succes } from './resultat.ts';
 import { signaler } from './messages.ts';
 import { deverrouillageValide } from './regimes.ts';
+import { FAMILLE_SUPPLEMENT } from './constantes.ts';
 import type { Deverrouillage, FicheTarifee } from './types.ts';
 
 function libelleUnite(fiche: FicheTarifee, n: number): string {
@@ -136,7 +137,7 @@ export function taillesProches(
 /**
  * Le produit est-il un « gâteau simple sur commande », soumis aux tailles
  * standard ? Lu dans les DONNÉES de la fiche, jamais dans le nom :
- * régime C, prix par personne, SANS minimum particulier (ni `minQuantite`, ni
+ * régime C, prix par personne, pas un supplément (Pâte à sucre, R64), SANS minimum particulier (ni `minQuantite`, ni
  * `minParSymbole`), sans étages, sans maximum par unité.
  * Layer Cake (minimum 20), Number Cake (minimum par symbole), gâteau de
  * mariage et pièce montée (minimum + étages) gardent leurs propres règles (LOI 7).
@@ -148,6 +149,7 @@ export function estGateauSimpleSurCommande(fiche: FicheTarifee): boolean {
   return (
     produit.regimePrix === 'C' &&
     prix.basePrix === 'personne' &&
+    produit.famille !== FAMILLE_SUPPLEMENT &&
     prix.minQuantite === null &&
     prix.minParSymbole === null &&
     !(typeof prix.etages === 'number' && prix.etages > 0) &&
@@ -173,6 +175,7 @@ export const NB_TAILLES_A_MINIMUM = 9;
  */
 export function taillesAPartirDuMinimum(fiche: FicheTarifee, nbSymboles?: number | null): number[] {
   if (fiche.produit.regimePrix !== 'C' || fiche.prix.basePrix !== 'personne') return [];
+  if (fiche.produit.famille === FAMILLE_SUPPLEMENT) return [];
   if (fiche.prix.minParSymbole !== null && !(typeof nbSymboles === 'number' && nbSymboles > 0)) return [];
   const minimum = minimumApplicable(fiche, nbSymboles ?? undefined);
   if (minimum === null || minimum <= 0) return [];

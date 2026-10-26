@@ -56,14 +56,17 @@ import {
   type AccordsNonConfirmes,
 } from '@/components/commande/accords';
 import { decalerJours, estDateISO } from '@/domaine/calendrier';
-import { JOURS_AVANT_ARCHIVAGE } from '@/domaine/constantes';
+import { JOURS_AVANT_ARCHIVAGE, REGLES_FORME, TAILLES_INTERDITES } from '@/domaine/constantes';
 import { formaterEuros } from '@/domaine/argent';
 import { formaterQuantite } from '@/domaine/unites';
-import { signaler } from '@/domaine/messages';
+import { LIBELLES_FORME, signaler } from '@/domaine/messages';
+import { estForme } from '@/domaine/formes';
 import type { Echec } from '@/domaine/resultat';
 import type { Deverrouillage } from '@/domaine/types';
 import { chargerContexte, correspondancesServeur, priseBruxelles, resoudreServeur } from './contexteServeur';
 import { GOUTS_SUR_COMMANDE } from '@/catalogue/goutsSurCommande';
+import { PHOTOS_MODELES } from '@/catalogue/photosModeles';
+import { lirePhotoModele } from '@/components/commande/galerie';
 
 const inclusions = {
   lignes: { orderBy: { ordre: 'asc' } as const, include: { produitCatalogue: { select: { cleCatalogue: true, categorie: true, nom: true, regimePrix: true } } } },
@@ -175,6 +178,8 @@ type Preparation =
       formes: (string | null)[];
       /** R62 : décorations facultatives, par ligne. */
       decorations: string[][];
+      /** Galerie (26/10/2026) : photo de modèle, par ligne (format et existence vérifiés). */
+      photos: (string | null)[];
       /** Accords confirmés : date serveur, ou date d'origine d'un accord conservé. */
       quand: Map<object, Date>;
       /**
@@ -234,8 +239,14 @@ function preparer(
   const precisions: (string | null)[] = [];
   const formes: (string | null)[] = [];
   const decorations: string[][] = [];
+  const photos: (string | null)[] = [];
   const nonConfirmes: AccordsNonConfirmes = { lignes: [], remise: false };
   for (const [i, l] of lignesBrutes.entries()) {
+    // Photo de modèle : format ET présence dans la galerie, refusée avec un message
+    // humain AVANT la base (sa contrainte CHECK n'est que le filet, LOI 9).
+    const photo = lirePhotoModele(l.photoModele, PHOTOS_MODELES, `lignes[${i}].photoModele`);
+    if (!photo.ok) return { ok: false, echec: photo };
+    photos.push(photo.valeur);
     const produitId = texte(l.produitId, 200) || null;
     const libelle = produitId ? null : texte(l.libelle, 120);
     const prix = entierOuNull(l.prixUnitaireCentimes);
@@ -261,6 +272,8 @@ function preparer(
       nbObjets: entierOuNull(l.nbObjets),
       gouts: listeDeMots(l.gouts),
       origineSurCommande: texte(l.origineSurCommande, 200) || null,
+      // R63 : transmise telle quelle (texte court) ; le domaine refuse une forme inconnue.
+      forme: texte(l.forme, 20) || null,
       deverrouillage: accord,
       deverrouillageTaille,
     });
@@ -289,7 +302,7 @@ function preparer(
     sansEcriture: corps.sansEcriture === true,
     demandeInhabituelle: corps.demandeInhabituelle === true,
   };
-  return { ok: true, saisie, precisions, formes, decorations, quand, remiseConservee, nonConfirmes };
+  return { ok: true, saisie, precisions, formes, decorations, photos, quand, remiseConservee, nonConfirmes };
 }
 
 /**
@@ -340,6 +353,9 @@ async function controler(
     reglement: contexte.reglement,
     correspondancesComptoir: correspondances.donnees,
     goutsSurCommande: GOUTS_SUR_COMMANDE,
+    // R63 (forme carré / rond) et R65 (tailles qui ne se font pas), décisions du 26/10/2026.
+    formes: REGLES_FORME,
+    taillesInterdites: TAILLES_INTERDITES,
     aujourdhui,
     existante,
     joursAvantArchivage: JOURS_AVANT_ARCHIVAGE,
@@ -371,8 +387,11 @@ function lignesAEnregistrer(r: Ok, fiches: Controle['fiches'], prep: Extract<Pre
       ordre,
       nbSymboles: l.nbSymboles,
       formes: prep.formes[ordre],
+      // R63 : forme RETENUE par le domaine (carré d'office au-dessus du seuil), null si non concerné.
+      forme: l.forme ?? null,
       gouts: [...(prep.saisie.lignes[ordre].gouts ?? [])],
       decorations: prep.decorations[ordre],
+      photoModele: prep.photos[ordre] ?? null,
       nbObjets: prep.saisie.lignes[ordre].nbObjets ?? null,
       produitCatalogueId: fiche ? fiche.produit.idBase : null,
       prixProduitId: fiche ? fiche.prix.prixProduitId : null,
@@ -483,7 +502,14 @@ export async function POST(request: Request) {
 
 /* ------------------------------------------------------------------ PATCH */
 
-type LigneTexte = { libelle: string; quantite: number; prixCentimes: number; unite: string };
+type LigneTexte = {
+  libelle: string;
+  quantite: number;
+  prixCentimes: number;
+  unite: string;
+  forme?: string | null;
+  photoModele?: string | null;
+};
 
 /** État de la commande après modification, pour l'historique. */
 type Apres = {
@@ -529,7 +555,15 @@ function changementsLisibles(
     changements.push(`zone dessin : ${existante.zoneDessin ? 'oui' : 'non'} → ${apres.zoneDessin ? 'oui' : 'non'}`);
   }
   const versTexte = (ls: LigneTexte[]) =>
-    ls.map((l) => `${formaterQuantite(l.unite === 'kg' ? 'kg' : 'piece', l.quantite)} × ${l.libelle} à ${formaterEuros(l.prixCentimes)}`).join(' ; ');
+    ls
+      .map((l) => {
+        // R63 : un changement de forme seul change le bon (réimpression, historique).
+        const forme = estForme(l.forme) ? ` (${LIBELLES_FORME[l.forme].toLowerCase()})` : '';
+        // Galerie : un changement de photo seul change le bon (réimpression, historique).
+        const photo = l.photoModele ? ` (photo ${l.photoModele})` : '';
+        return `${formaterQuantite(l.unite === 'kg' ? 'kg' : 'piece', l.quantite)} × ${l.libelle}${forme}${photo} à ${formaterEuros(l.prixCentimes)}`;
+      })
+      .join(' ; ');
   const avant = versTexte(existante.lignes);
   if (avant !== versTexte(lignesApres)) changements.push(`produits — avant : ${avant}`);
   if (apres.totalCentimes !== existante.totalCentimes) {

@@ -16,7 +16,7 @@
 // plutôt qu'accepter à tort), signalé dans le rapport d'import.
 
 import { cleStricte } from "./normaliser.ts";
-import type { Famille, Grille } from "./types.ts";
+import type { BasePrix, Famille, Grille } from "./types.ts";
 
 export interface RegleFamille {
   famille: Famille;
@@ -117,27 +117,47 @@ export function familleDuRayon(grille: Grille, rayon: string): Famille {
 // Décision catalogue-prix (15/10/2026), donnée explicite, PAS une recherche
 // sur le nom : un supplément est un produit dont (grille, rayon, colonne
 // « produit ») figure À LA LETTRE (clé stricte) dans la table ci-dessous.
-// Un supplément est vendu AU FORFAIT (`basePrix = "forfait"` : une fois par
-// gâteau, règle R7 de `regles-metier`) et porte la famille « supplement » :
-// il n'est jamais compté comme un gâteau ni comme une pâtisserie.
-// Lignes concernées (tarif comptoir 09/2026 + affiche gâteaux 10/2026) :
-//   comptoir     « Gâteaux et tartes » / « Supplément » / « Photo »     → gateaux-et-tartes/supplement/photo
-//   comptoir     « Gâteaux et tartes » / « Supplément » / « Ecriture »  → gateaux-et-tartes/supplement/ecriture
-//   sur-commande affiche gâteaux / « Supplément » / « Photo »           → gateaux-sur-commande/supplement-photo
-//   sur-commande affiche gâteaux / « Supplément » / « Écriture simple » → gateaux-sur-commande/supplement-ecriture-simple
+// Un supplément porte la famille « supplement » : il n'est jamais compté comme
+// un gâteau ni comme une pâtisserie. Son prix est FIXE (jamais un plancher).
+// Sa base de prix est déclarée ICI, ligne par ligne, et l'import refuse toute
+// autre base :
+//   « forfait »  : une fois par gâteau (règle R7 de `regles-metier`) ;
+//   « personne » : par part du gâteau auquel il s'ajoute (Pâte à sucre,
+//                  décision du propriétaire du 26/10/2026 : 6,00 €/pers,
+//                  gâteau de 20 parts → +120,00 €).
+// Lignes concernées (tarif comptoir 09/2026 + affiches gâteaux 10/2026) :
+//   comptoir     « Gâteaux et tartes » / « Supplément » / « Photo »     → gateaux-et-tartes/supplement/photo           (forfait)
+//   comptoir     « Gâteaux et tartes » / « Supplément » / « Ecriture »  → gateaux-et-tartes/supplement/ecriture        (forfait)
+//   sur-commande affiche gâteaux / « Supplément » / « Photo »           → gateaux-sur-commande/supplement-photo           (forfait)
+//   sur-commande affiche gâteaux / « Supplément » / « Écriture simple » → gateaux-sur-commande/supplement-ecriture-simple (forfait)
+//   sur-commande affiche gâteaux / « Pâte à sucre »                     → gateaux-sur-commande/supplement-pate-a-sucre    (personne, dès le 26/10/2026)
 // NON concerné : « Supplément (oeuf) » (Sandwichs Froids) — autre libellé,
 // ajout payant PAR sandwich, reste à la pièce.
 // HYPOTHÈSE À VALIDER : le supplément œuf est bien un prix par sandwich (et non un forfait).
-const PRODUITS_SUPPLEMENT: ReadonlyArray<{ grille: Grille; rayon: string; produit: string }> = [
-  { grille: "comptoir", rayon: "Gâteaux et tartes", produit: "Supplément" },
-  { grille: "sur-commande", rayon: "Tarifs (minimum) pour les Gâteaux SIMPLES sur commande", produit: "Supplément" },
+// Pâte à sucre : prix FIXE de 6,00 €/pers, ni plancher « à partir de », ni modifiable
+// par le pâtissier — décision du propriétaire du 26/10/2026 (« non laisse 6€ »).
+const GATEAUX_SUR_COMMANDE = "Tarifs (minimum) pour les Gâteaux SIMPLES sur commande";
+const PRODUITS_SUPPLEMENT: ReadonlyArray<{ grille: Grille; rayon: string; produit: string; basePrix: BaseSupplement }> = [
+  { grille: "comptoir", rayon: "Gâteaux et tartes", produit: "Supplément", basePrix: "forfait" },
+  { grille: "sur-commande", rayon: GATEAUX_SUR_COMMANDE, produit: "Supplément", basePrix: "forfait" },
+  { grille: "sur-commande", rayon: GATEAUX_SUR_COMMANDE, produit: "Pâte à sucre", basePrix: "personne" },
 ];
 
-const CLES_SUPPLEMENT = new Set(PRODUITS_SUPPLEMENT.map((s) => `${s.grille}|${cleStricte(s.rayon)}|${cleStricte(s.produit)}`));
+/** Bases de prix possibles pour un supplément. */
+export type BaseSupplement = Extract<BasePrix, "forfait" | "personne">;
 
-/** true si (grille, rayon, produit) est un supplément au forfait déclaré dans PRODUITS_SUPPLEMENT. */
+const BASE_SUPPLEMENT = new Map(
+  PRODUITS_SUPPLEMENT.map((s) => [`${s.grille}|${cleStricte(s.rayon)}|${cleStricte(s.produit)}`, s.basePrix] as const),
+);
+
+/** Base de prix déclarée du supplément (grille, rayon, produit), ou null si ce n'est pas un supplément. */
+export function baseDuSupplement(grille: Grille, rayon: string, produit: string): BaseSupplement | null {
+  return BASE_SUPPLEMENT.get(`${grille}|${cleStricte(rayon)}|${cleStricte(produit)}`) ?? null;
+}
+
+/** true si (grille, rayon, produit) est un supplément déclaré dans PRODUITS_SUPPLEMENT. */
 export function estSupplement(grille: Grille, rayon: string, produit: string): boolean {
-  return CLES_SUPPLEMENT.has(`${grille}|${cleStricte(rayon)}|${cleStricte(produit)}`);
+  return baseDuSupplement(grille, rayon, produit) !== null;
 }
 
 /** Famille d'un produit : « supplement » pour un supplément déclaré, sinon celle du rayon. */

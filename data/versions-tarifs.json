@@ -14,6 +14,12 @@
       "fichier": "tarifs-sur-commande_2026-10.json",
       "valideDu": "2026-10-15",
       "hypothese": "HYPOTHÈSE À VALIDER : affiches transcrites le 15/10/2026 ; date d'entrée en vigueur réelle inconnue."
+    },
+    {
+      "grille": "sur-commande",
+      "code": "sur-commande_2026-10-26",
+      "fichier": "tarifs-sur-commande_2026-10-26.json",
+      "valideDu": "2026-10-26"
     }
   ]
 }

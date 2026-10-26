@@ -143,6 +143,26 @@ export type ParametresMessages = {
    * gâteau sur commande ; `parts` : taille demandée.
    */
   ERR_PRIX_COMPTOIR: { produit: string; parts: number };
+  /** R63 (26/10/2026) — gâteau simple sans forme choisie (carré ou rond). */
+  ERR_FORME_MANQUANTE: { produit: string };
+  /**
+   * R63 — rond demandé au-dessus du nombre de parts permis (donnée). `gateauRond` :
+   * libellé du gâteau proposé pour un grand rond (Layer Cake), `partsRond` : ses
+   * parts (déjà au minimum) ; tous deux absents si ce gâteau n'est pas disponible.
+   */
+  ERR_FORME_ROND_IMPOSSIBLE: {
+    produit: string;
+    parts: number;
+    partsMaxRond: number;
+    gateauRond?: string;
+    partsRond?: number;
+  };
+  /** R65 (26/10/2026) — produit qui ne se fait pas dans cette taille ; remplaçants à la lettre. */
+  ERR_TAILLE_INTERDITE: { produit: string; remplacements: readonly { libelle: string; action: ActionRemplacement }[] };
+  /** R64 (26/10/2026) — supplément par personne dont la quantité n'est pas le nombre de parts du gâteau. */
+  ERR_SUPPLEMENT_PARTS: { produit: string; gateau: string; parts: number };
+  /** R64 — supplément par personne sans gâteau qui puisse le recevoir. `gateaux` : liste en clair. */
+  ERR_SUPPLEMENT_NON_ADMIS: { produit: string; gateaux: string };
   /** LOI 11 — décompte des articles devant le client non terminé à la remise. */
   ERR_DECOMPTE_INCOMPLET: { restants: number };
 
@@ -316,6 +336,22 @@ type EntreeAvec<P> = {
 type Entree<C extends CodeCatalogue> = EntreeAvec<ParametresMessages[C]>;
 
 const pluriel = (n: number, un: string, plusieurs: string) => (n > 1 ? plusieurs : un);
+
+/** Verbe d'un bouton qui remplace le produit d'une ligne (R63, R65). */
+export type ActionRemplacement = 'passer' | 'prendre';
+
+/**
+ * Texte du bouton qui remplace le produit d'une ligne : « Passer en Matadi
+ * chocolat 6P » (même gâteau, autre taille ; ou Layer Cake pour un grand rond),
+ * « Prendre Mousse chocolat 4P » (autre gâteau). `parts` : précisé si utile.
+ */
+export function libelleRemplacement(action: ActionRemplacement, libelle: string, parts?: number): string {
+  const verbe = action === 'passer' ? 'Passer en' : 'Prendre';
+  return `${verbe} ${libelle}` + (parts !== undefined ? ` (${parts} parts)` : '');
+}
+
+/** R63 — libellé d'une forme sur un bouton ou sur le bon. HYPOTHÈSE À VALIDER (n°65) : « Carré » couvre le rectangle. */
+export const LIBELLES_FORME: Readonly<Record<'carre' | 'rond', string>> = { carre: 'Carré', rond: 'Rond' };
 
 /** Issue commune quand l'employé ne peut rien corriger lui-même. */
 export const APPELER_LE_GERANT = 'Appeler le gérant';
@@ -590,6 +626,52 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
       `« ${p.produit} » en ${p.parts} parts existe au comptoir : il se vend au prix du comptoir. ` +
       `Prenez le gâteau du comptoir à la place.`,
     correction: () => 'Prendre le gâteau du comptoir',
+  },
+  ERR_FORME_MANQUANTE: {
+    niveau: 'bloquant',
+    cas: 'Gâteau simple sur commande (Bavarois, Crème fraîche, Entremet, Cake nature) sans forme choisie (R63, 26/10/2026).',
+    message: (p) => `Choisissez la forme de « ${p.produit} » : carré ou rond.`,
+    correction: () => 'Choisir carré ou rond',
+  },
+  ERR_FORME_ROND_IMPOSSIBLE: {
+    niveau: 'bloquant',
+    cas: 'Gâteau simple demandé rond au-dessus du nombre de parts permis : il est carré d’office, ou devient un Layer Cake (R63, 26/10/2026).',
+    message: (p) =>
+      `« ${p.produit} » se fait rond jusqu’à ${p.partsMaxRond} parts : en ${p.parts} parts, il est carré. ` +
+      (p.gateauRond && p.partsRond !== undefined
+        ? `Pour un rond, passez en « ${p.gateauRond} »` +
+          (p.partsRond > p.parts ? ` (minimum ${p.partsRond} parts).` : '.')
+        : `Passez en carré.`),
+    correction: () => 'Passer en carré',
+  },
+  ERR_TAILLE_INTERDITE: {
+    niveau: 'bloquant',
+    cas: 'Produit qui ne se fait pas dans cette taille (Matadi chocolat 4P, décision du 26/10/2026).',
+    message: (p) =>
+      `« ${p.produit} » ne se fait pas. ` +
+      (p.remplacements.length > 0
+        ? `Proposez au client ${p.remplacements.map((r) => `« ${r.libelle} »`).join(' ou ')}.`
+        : `Choisissez un autre produit.`),
+    correction: (p) => {
+      const r = p.remplacements[0];
+      return r ? libelleRemplacement(r.action, r.libelle) : 'Choisir un autre produit';
+    },
+  },
+  ERR_SUPPLEMENT_PARTS: {
+    niveau: 'bloquant',
+    cas: 'Supplément par personne (Pâte à sucre) dont la quantité n’est pas le nombre de parts du gâteau (R64, 26/10/2026).',
+    message: (p) =>
+      `« ${p.produit} » se compte par part du gâteau : « ${p.gateau} » fait ${p.parts} parts. ` +
+      `Mettez ${p.parts} parts de « ${p.produit} ».`,
+    correction: (p) => `Passer à ${p.parts} parts`,
+  },
+  ERR_SUPPLEMENT_NON_ADMIS: {
+    niveau: 'bloquant',
+    cas: 'Supplément par personne (Pâte à sucre) sans gâteau qui puisse le recevoir (R64, 26/10/2026).',
+    message: (p) =>
+      `« ${p.produit} » se fait seulement sur : ${p.gateaux}. ` +
+      `Ajoutez un de ces gâteaux ou supprimez la ligne.`,
+    correction: () => 'Supprimer la ligne',
   },
   ERR_DECOMPTE_INCOMPLET: {
     niveau: 'bloquant',

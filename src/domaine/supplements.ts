@@ -10,12 +10,14 @@
 //   - régime C vendu à la pièce (minis) : la ligne (le plateau) est UN gâteau ;
 //   - régime A à la pièce, d'une famille « gâteau » (FAMILLES_GATEAU) : chaque
 //     pièce est un gâteau (2 Bavarois 6P = 2 gâteaux) ;
-//   - tout le reste (kilo, traiteur B, viennoiserie, supplément, ligne libre) : 0.
+//   - tout le reste (kilo, traiteur B, viennoiserie, supplément — y compris
+//     par personne, famille « supplement » —, ligne libre) : 0.
 // HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°60) : plateau de minis = un gâteau ;
 // pâtisserie individuelle du comptoir (éclair…) = un gâteau par pièce.
 
 import type { Echec } from './resultat.ts';
 import { signaler } from './messages.ts';
+import { FAMILLE_SUPPLEMENT } from './constantes.ts';
 import type { BasePrix, RegimePrix } from './types.ts';
 
 export type RepereGateau = {
@@ -29,6 +31,9 @@ export type RepereGateau = {
 /** Nombre de gâteaux qu'apporte une ligne (cf. définition en tête de fichier). */
 export function gateauxDeLigne(l: RepereGateau, famillesGateau: readonly string[]): number {
   if (l.basePrix === 'forfait' || l.basePrix === 'kg' || l.basePrix === null) return 0;
+  // Un supplément n'est jamais un gâteau, même vendu par personne (Pâte à sucre,
+  // R64, 26/10/2026) : la famille du catalogue le dit, avant le régime.
+  if (l.famille === FAMILLE_SUPPLEMENT) return 0;
   // Gâteau sur commande vendu par personne. Les minis (régime C à la pièce :
   // tartelettes, éclairs…) ne sont pas des gâteaux : ni écriture ni photo (22/10/2026).
   if (l.regimePrix === 'C') return l.basePrix === 'personne' ? 1 : 0;

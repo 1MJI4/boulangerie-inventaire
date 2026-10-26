@@ -291,7 +291,8 @@ test("relecture : fiche produit, grille et régime reconstruits", async () => {
 test("le plancher se déduit du régime et de la base, comme sur les affiches", () => {
   for (const v of CAT.versions) {
     for (const [id, l] of v.lignes) {
-      assert.equal(prixEstPlancherDepuisBase(CAT.produits.get(id)!.regimePrix, l.basePrix), l.prixEstPlancher, id);
+      const p = CAT.produits.get(id)!;
+      assert.equal(prixEstPlancherDepuisBase(p.regimePrix, l.basePrix, p.famille === "supplement"), l.prixEstPlancher, id);
     }
   }
 });

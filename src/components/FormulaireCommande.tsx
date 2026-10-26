@@ -37,6 +37,7 @@ import {
   type CSSProperties,
   type ReactNode,
   type Ref,
+  type SetStateAction,
 } from 'react';
 import { Bouton, Carte, Chargement, Entete } from '@/components/ui';
 import { useEquipe } from '@/lib/vendeurs';
@@ -67,17 +68,25 @@ import {
 import { ajouterJoursOuvres, fermetureDuJour, formaterDate, prochainJourOuvert } from '@/domaine/calendrier';
 import { formaterEuros, resteDu, somme } from '@/domaine/argent';
 import { formaterQuantite } from '@/domaine/unites';
-import { libelleCorrection } from '@/domaine/messages';
+import { LIBELLES_FORME, libelleCorrection } from '@/domaine/messages';
+import { estForme, formesPossibles } from '@/domaine/formes';
+import { estSupplementParPersonne } from '@/domaine/supplementsParPersonne';
 import { horairesOuvertureDuJour, validerJourMeme, validerLendemain } from '@/domaine/reglement';
 import { estGateauSimpleSurCommande, taillesAPartirDuMinimum, taillesProches } from '@/domaine/minimums';
 import { formesAImprimer } from '@/lib/ticketCanvas';
-import { FAMILLES_GATEAU, JOURS_AVANT_ARCHIVAGE } from '@/domaine/constantes';
+import {
+  FAMILLES_GATEAU,
+  JOURS_AVANT_ARCHIVAGE,
+  REGLES_FORME,
+  SUPPLEMENTS_PAR_PERSONNE,
+  TAILLES_INTERDITES,
+} from '@/domaine/constantes';
 import { CORRESPONDANCES_COMPTOIR } from '@/catalogue/correspondancesComptoir';
 import { GOUTS_SUR_COMMANDE } from '@/catalogue/goutsSurCommande';
 import { GOUT_AU_CHOIX, goutsAttendus, type ChoixGout } from '@/domaine/gouts';
 import { gateauSurCommandeDe } from '@/domaine/prixComptoir';
 import type { Echec, Resultat } from '@/domaine/resultat';
-import type { Deverrouillage, FicheTarifee } from '@/domaine/types';
+import type { Deverrouillage, FicheTarifee, Forme, SortieRemplacement } from '@/domaine/types';
 import {
   champLocal,
   choisirTaille,
@@ -101,7 +110,12 @@ import {
   estSupplement,
   gateauxAuBon,
   aSupplement,
+  appliquerRemplacement,
   basculerSupplement,
+  basculerSupplementParPersonne,
+  remplacementsProposes,
+  synchroniserSupplementsParPersonne,
+  SUPPLEMENT_PATE_A_SUCRE,
   indexPremierGateau,
   precisionsAEnregistrer,
   saisirEcriture,
@@ -119,6 +133,9 @@ import { sortieDe } from '@/components/commande/sorties';
 import { ChampPave } from '@/components/commande/ChampPave';
 import { AccesGerant } from '@/components/commande/AccesGerant';
 import { BandeRetrait } from '@/components/commande/BandeRetrait';
+import { GaleriePhotos } from '@/components/commande/GaleriePhotos';
+import { ajouterAvecPhoto, ficheDePhoto, navigationPourPhoto, retirerPhoto } from '@/components/commande/galerie';
+import type { PhotoModele } from '@/catalogue/photosModeles';
 
 const CHAMP_TEXTE =
   'min-h-12 w-full rounded-xl border-2 border-line-fort bg-surface px-3 text-base text-ink placeholder:text-ink-3';
@@ -186,7 +203,16 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   const [heureRetrait, setHeureRetrait] = useState(commande?.retraitHeure ?? '');
   const [origine, setOrigine] = useState<Origine>(commande?.origine ?? 'comptoir');
   const [modePaiement, setModePaiement] = useState<ModePaiement>(commande?.modePaiement ?? 'especes');
-  const [lignes, setLignes] = useState<LigneEcran[]>(() => (commande ? lignesDepuisCommande(commande) : []));
+  const [lignes, setLignesEtat] = useState<LigneEcran[]>(() => (commande ? lignesDepuisCommande(commande) : []));
+  // R64 : toute modification du bon passe par ici — une ligne de supplément par
+  // personne (Pâte à sucre) reprend aussitôt les parts du gâteau qu'elle accompagne.
+  const setLignes = useCallback(
+    (maj: SetStateAction<LigneEcran[]>) =>
+      setLignesEtat((ls) =>
+        synchroniserSupplementsParPersonne(typeof maj === 'function' ? maj(ls) : maj, SUPPLEMENTS_PAR_PERSONNE, CORRESPONDANCES_COMPTOIR),
+      ),
+    [],
+  );
   const [acompte, setAcompte] = useState<number | null>(commande ? commande.acompteCentimes : null);
   const [totalConvenu, setTotalConvenu] = useState<number | null>(() =>
     commande && commande.totalTarifCentimes != null && commande.totalCentimes < commande.totalTarifCentimes
@@ -222,6 +248,12 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   const [rayonsOuverts, setRayonsOuverts] = useState(false);
   const [eclair, setEclair] = useState<Eclair | null>(null);
   const [ligneDetail, setLigneDetail] = useState<string | null>(null);
+  // Galerie de photos de modèles (26/10/2026) : montée seulement quand elle est
+  // ouverte (aucune image chargée avant). Photo sans produit unique (bûches…) :
+  // gardée en attente, posée sur le prochain produit touché (bandeau visible).
+  const [galerieOuverte, setGalerieOuverte] = useState(false);
+  const [photoEnAttente, setPhotoEnAttente] = useState<PhotoModele | null>(null);
+  const fermerGalerie = useCallback(() => setGalerieOuverte(false), []);
   const [annonce, setAnnonce] = useState('');
   const etroit = useEcranEtroit();
   const [cotePave] = useCotePave();
@@ -326,6 +358,9 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       correspondancesComptoir: CORRESPONDANCES_COMPTOIR,
       // R62 : goût obligatoire des gâteaux sur commande (donnée du catalogue).
       goutsSurCommande: GOUTS_SUR_COMMANDE,
+      // R63 : forme carré / rond ; R65 : tailles qui ne se font pas (décisions du 26/10/2026).
+      formes: REGLES_FORME,
+      taillesInterdites: TAILLES_INTERDITES,
       aujourdhui: cal.aujourdhui,
       existante: commande
         ? { statut: commande.statut, retraitLe: commande.retraitLe, anonymiseeLe: commande.anonymiseeLe }
@@ -403,6 +438,12 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   const majLigne = (i: number, partiel: Partial<LigneEcran>) =>
     setLignes((ls) => ls.map((l, j) => (j === i ? majLigneEcran(l, partiel) : l)));
   const retirerLigne = (i: number) => setLignes((ls) => ls.filter((_, j) => j !== i));
+  /** R63 / R65 : la ligne devient le produit proposé par le domaine (un geste). */
+  const remplacer = (i: number, r: SortieRemplacement) =>
+    setLignes((ls) => ls.map((l, j) => (j === i ? appliquerRemplacement(l, r, GOUTS_SUR_COMMANDE) : l)));
+  /** Amène une ligne du bon à l'écran (champ simplement vide : rien à « corriger » d'autre). */
+  const montrerLigne = (i: number) =>
+    document.getElementById(`bon-${lignes[i]?.cle ?? ''}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
   const avecGerant = (raison: string, appliquer: (d: Deverrouillage) => void) => {
     if (parGerant !== null) {
@@ -412,23 +453,57 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     setDemande({ raison, appliquer });
   };
 
-  /** Un toucher = +1 (pièces ou parts) ; au kilo : pavé du poids. Le domaine juge la ligne aussitôt. */
-  const toucher = (f: FicheCatalogue) => {
-    const t = toucherProduit(lignes, f);
+  /**
+   * Un toucher = +1 (pièces ou parts) ; au kilo : pavé du poids. Le domaine juge la ligne aussitôt.
+   * Avec une photo de modèle (galerie, ou photo en attente) : même ajout, la
+   * ligne retient l'identifiant de la photo (src/components/commande/galerie.ts).
+   */
+  const toucher = (f: FicheCatalogue, photoChoisie?: PhotoModele) => {
+    // Photo en attente : posée sur le prochain produit touché, jamais sur un supplément.
+    const photo = photoChoisie ?? (photoEnAttente && !estSupplement(f) ? photoEnAttente : undefined);
+    if (photo && photo === photoEnAttente) setPhotoEnAttente(null);
+    const t = photo
+      ? ajouterAvecPhoto(lignes, f, photo, catalogue, famillesGateau, SUPPLEMENTS_PAR_PERSONNE, CORRESPONDANCES_COMPTOIR)
+      : toucherProduit(lignes, f);
     setLignes(t.lignes);
     setActif(`${t.cle}.${t.champ}`);
     setEclair((e) => ({ cle: t.cle, produitId: f.produit.id, n: (e?.n ?? 0) + 1 }));
     const ligne = t.lignes.find((l) => l.cle === t.cle);
     const fiche = ficheDe(catalogue, f.produit.id);
     setAnnonce(
-      t.champ === 'taille'
+      (photo ? `Photo ${photo.id} — ` : '') +
+      (t.champ === 'taille'
         ? f.prix.minParSymbole !== null && ligne?.nbSymboles == null
           ? `${libelleProduit(f)} au bon : combien de formes ?`
           : `${libelleProduit(f)} au bon : choisissez la taille`
         : ligne?.quantite != null && f.produit.unite !== 'kg'
           ? `${libelleProduit(f)} : ${ligne.quantite} ${uniteDe(fiche)} au bon`
-          : `${libelleProduit(f)} ajouté au bon : saisissez le poids`,
+          : `${libelleProduit(f)} ajouté au bon : saisissez le poids`),
     );
+  };
+
+  /**
+   * Toucher d'une photo de la galerie. La galerie se ferme toujours (retour
+   * visible immédiat : la ligne s'allume dans le bon). Photo d'un produit au
+   * tarif : ajouté comme un toucher de sa carte. Sinon (plusieurs tailles
+   * possibles, ou produit absent du tarif de cette commande) : la grille montre
+   * les produits possibles et la photo attend le prochain produit touché.
+   */
+  const choisirPhoto = (p: PhotoModele) => {
+    setGalerieOuverte(false);
+    const f = ficheDePhoto(catalogue, p);
+    if (f) {
+      setPhotoEnAttente(null);
+      toucher(f, p);
+      return;
+    }
+    const nav = navigationPourPhoto(p);
+    setPhotoEnAttente(p);
+    setRecherche(nav.recherche);
+    setRayon(null);
+    setAnnonce(`Photo ${p.id} retenue. ${nav.consigne}.`);
+    if (etroit) zoneProduits.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else zoneProduits.current?.scrollTo({ top: 0 });
   };
 
   const ajouterLigneLibre = () => {
@@ -498,11 +573,28 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       }
       return;
     }
+    // Photo de modèle refusée (identifiant inconnu) : on retire la photo, jamais la ligne.
+    if (i !== null && ligne && champ === 'photoModele') return setLignes((ls) => retirerPhoto(ls, ligne.cle));
     if (i !== null && ligne && s.code === 'ERR_GOUT_MANQUANT') {
       // R62 : « Au choix du pâtissier » sur chaque goût encore vide (jamais retirer la ligne).
       const f = ficheDe(catalogue, gateauDeLaLigne(ligne));
       const n = f ? goutsAttendus(GOUTS_SUR_COMMANDE[f.produit.id], f) : 0;
       return majLigne(i, { gouts: Array.from({ length: n }, (_, k) => ligne.gouts[k] || GOUT_AU_CHOIX) });
+    }
+    // R63 : forme du gâteau — jamais retirer la ligne. Rond impossible → carré
+    // (les remplaçants ont leurs propres boutons) ; forme illisible → à rechoisir.
+    if (i !== null && ligne && s.code === 'ERR_FORME_ROND_IMPOSSIBLE') return majLigne(i, { forme: 'carre' });
+    if (i !== null && ligne && champ === 'forme') {
+      if (s.code === 'ERR_SAISIE_INVALIDE') majLigne(i, { forme: null });
+      return montrerLigne(i);
+    }
+    // R65 : taille qui ne se fait pas → premier remplaçant ; aucun → retour aux produits.
+    if (i !== null && ligne && s.code === 'ERR_TAILLE_INTERDITE') {
+      const [premier] = remplacementsProposes(v ?? s.valeurProposee);
+      if (premier) return remplacer(i, premier);
+      if (etroit) zoneProduits.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      else zoneProduits.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
     }
     if (i !== null && ligne) {
       // Supplément sans gâteau, ou plus aucune place pour ce supplément : la sortie retire la ligne.
@@ -605,7 +697,15 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         libelleCorrectionPour={(s) => {
           // Taille hors standard : DEUX sorties (dessous / dessus), rendues plus bas.
           // Goût manquant (R62) : sortie « Au choix du pâtissier », rendue plus bas.
-          if (s.code === 'ERR_TAILLE_NON_STANDARD' || s.code === 'ERR_GOUT_MANQUANT') return undefined;
+          // Rond impossible (R63), taille qui ne se fait pas (R65) : UN bouton par sortie, plus bas.
+          if (
+            s.code === 'ERR_TAILLE_NON_STANDARD' ||
+            s.code === 'ERR_GOUT_MANQUANT' ||
+            s.code === 'ERR_FORME_ROND_IMPOSSIBLE' ||
+            s.code === 'ERR_TAILLE_INTERDITE'
+          ) {
+            return undefined;
+          }
           const so = sortieDe(s, unite);
           return so.avecValeur ? so.libelle : undefined;
         }}
@@ -629,6 +729,57 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                 {GOUT_AU_CHOIX}
               </BoutonSortie>,
             );
+          }
+          // R63 : rond au-dessus du seuil → « Passer en carré », puis « Passer en Layer
+          // Cake (20 parts) » (remplaçants du domaine, texte du catalogue des messages).
+          // R65 : « Passer en Matadi chocolat 6P », « Prendre Mousse chocolat 4P ».
+          if ((s.code === 'ERR_FORME_ROND_IMPOSSIBLE' || s.code === 'ERR_TAILLE_INTERDITE') && iLigne !== null) {
+            if (s.code === 'ERR_FORME_ROND_IMPOSSIBLE') {
+              boutons.push(
+                <BoutonSortie key="carre" onClick={() => majLigne(iLigne, { forme: 'carre' })}>
+                  {so.libelle ?? LIBELLES_FORME.carre}
+                </BoutonSortie>,
+              );
+            }
+            const remplacements = remplacementsProposes(s.valeurProposee);
+            for (const r of remplacements) {
+              boutons.push(
+                <BoutonSortie key={`remplacer-${r.produitId}`} onClick={() => remplacer(iLigne, r)}>
+                  {r.bouton}
+                </BoutonSortie>,
+              );
+            }
+            if (s.code === 'ERR_TAILLE_INTERDITE' && remplacements.length === 0 && so.libelle) {
+              boutons.push(
+                <BoutonSortie key="autre-produit" onClick={() => corriger(s, [])}>
+                  {so.libelle}
+                </BoutonSortie>,
+              );
+            }
+            return <>{boutons}</>;
+          }
+          // R64 : Pâte à sucre sur un gâteau qui ne la reçoit pas ENCORE (gâteau du
+          // comptoir à 6 parts, rond, sous le minimum) : en plus de « Supprimer la
+          // ligne », le gâteau passe au minimum de parts de la donnée (carré d'office).
+          if (s.code === 'ERR_SUPPLEMENT_NON_ADMIS' && iLigne !== null) {
+            const cleSupplement = lignes[iLigne]?.produitId ?? '';
+            const regle = SUPPLEMENTS_PAR_PERSONNE[cleSupplement];
+            const g = regle ? lignes.findIndex((l) => { const c = gateauDeLaLigne(l); return c !== null && c !== cleSupplement && regle.gateaux.includes(c); }) : -1;
+            if (regle && g >= 0 && Number.isSafeInteger(regle.partsMin) && regle.partsMin > 0) {
+              const min = regle.partsMin;
+              boutons.push(
+                <BoutonSortie
+                  key="passer-au-minimum"
+                  onClick={() =>
+                    setLignes((ls) =>
+                      ls.map((l, j) => (j === g ? { ...choisirTaille(l, min, catalogue, CORRESPONDANCES_COMPTOIR), forme: null } : l)),
+                    )
+                  }
+                >
+                  {sortieDe({ ...s, code: 'ERR_QUANTITE_MIN', valeurProposee: min }, 'parts').libelle ?? `${min}`}
+                </BoutonSortie>,
+              );
+            }
           }
           // LOI 11 : taille de gâteau hors standard. Les deux tailles standard les
           // plus proches (jamais une seule : on ne pousse pas le vendeur vers le
@@ -721,7 +872,13 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         demandeInhabituelle,
         zoneDessin,
         remarques: remarques || null,
-        lignes: lignes.map((l, i) => ({ ...saisie.lignes[i], precision: l.precision || null, formes: l.formes.trim() || null, decorations: l.decorations })),
+        lignes: lignes.map((l, i) => ({
+          ...saisie.lignes[i],
+          precision: l.precision || null,
+          formes: l.formes.trim() || null,
+          decorations: l.decorations,
+          photoModele: l.photoModele ?? null,
+        })),
       };
       const r = await lireReponse<{ id: number; numero: string }>(
         await fetch('/api/commandes', {
@@ -836,6 +993,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     setLignes((ls) => saisirEcriture(ls, v, catalogue, famillesGateau));
   };
   const photoAuTarif = ficheDe(catalogue, SUPPLEMENT_PHOTO) !== null;
+  // R64 : prix par personne LU au catalogue reçu (date de prise), jamais écrit ici.
+  const ficheSucre = ficheDe(catalogue, SUPPLEMENT_PATE_A_SUCRE);
   const blocGateau = (
     <div
       role="group"
@@ -892,6 +1051,25 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         }}
       >
         Photo à imprimer sur le gâteau
+      </Case>
+      <Case
+        compact
+        coche={aSupplement(lignes, SUPPLEMENT_PATE_A_SUCRE)}
+        desactive={!ficheSucre && !aSupplement(lignes, SUPPLEMENT_PATE_A_SUCRE)}
+        aide={
+          aSupplement(lignes, SUPPLEMENT_PATE_A_SUCRE)
+            ? 'Au bon, autant de parts que le gâteau'
+            : !ficheSucre
+              ? 'Pâte à sucre absente du tarif : prévenez le gérant'
+              : undefined
+        }
+        onChange={(v) =>
+          setLignes((ls) =>
+            basculerSupplementParPersonne(ls, SUPPLEMENT_PATE_A_SUCRE, v, catalogue, famillesGateau, SUPPLEMENTS_PAR_PERSONNE, CORRESPONDANCES_COMPTOIR),
+          )
+        }
+      >
+        {ficheSucre ? `${libelleProduit(ficheSucre)} (${formaterEuros(ficheSucre.prix.prixCentimes)}/pers.)` : 'Pâte à sucre'}
       </Case>
       {rendre(signauxGateau)}
     </div>
@@ -962,6 +1140,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                       )
                     }
                     onAutreForme={() => setZoneDessin(true)}
+                    onRetirerPhoto={() => setLignes((ls) => retirerPhoto(ls, ligne.cle))}
                   />
                   {rendre(signaux, unite, `ligne-${ligne.cle}`)}
                   {i === iPremierGateau ? blocGateau : null}
@@ -1119,10 +1298,32 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         onRayonsOuverts={setRayonsOuverts}
         eclair={eclair}
         sansGateau={sansGateau}
-        onToucher={toucher}
+        onToucher={(f) => toucher(f)}
         onAutreDemande={ajouterLigneLibre}
+        onPhotos={() => setGalerieOuverte(true)}
       />
     ) : null;
+
+  // Photo en attente (bûche, tarte…) : rappel visible tant qu'aucun produit n'est touché.
+  const bandeauPhoto = photoEnAttente ? (
+    <div role="status" className="mb-2 flex items-center gap-3 rounded-xl border-2 border-accent bg-accent-doux p-2">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={photoEnAttente.fichier} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
+      <p className="min-w-0 flex-1 text-base leading-tight text-ink">
+        <b>{navigationPourPhoto(photoEnAttente).consigne}</b>
+        <span className="block text-sm text-ink-2">La photo {photoEnAttente.id} ira sur le produit que vous touchez.</span>
+      </p>
+      <button
+        type="button"
+        onClick={() => setPhotoEnAttente(null)}
+        className="min-h-12 shrink-0 rounded-xl border-2 border-line-fort bg-surface px-3 text-sm font-medium text-ink"
+      >
+        Annuler la photo
+      </button>
+    </div>
+  ) : null;
+
+  const galerie = galerieOuverte ? <GaleriePhotos onChoisir={choisirPhoto} onFermer={fermerGalerie} /> : null;
 
   const accesGerant = demande ? (
     <AccesGerant
@@ -1253,7 +1454,15 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
               <section aria-label="Produits" className="relative flex min-h-0 min-w-0 flex-1 flex-col rounded-2xl border border-line bg-surface">
                 {/* Jour et heure de retrait : bande compacte, toujours visible, jamais par-dessus les produits. */}
                 <div className="flex-none px-3 pt-3">{bande}</div>
-                {grille(true, signauxProduits.length > 0 ? rendre(signauxProduits) : null)}
+                {grille(
+                  true,
+                  bandeauPhoto || signauxProduits.length > 0 ? (
+                    <>
+                      {bandeauPhoto}
+                      {signauxProduits.length > 0 ? rendre(signauxProduits) : null}
+                    </>
+                  ) : null,
+                )}
 
                 {accesGerant ? (
                   <div className="absolute inset-0 z-20 overflow-y-auto overscroll-contain rounded-2xl border-2 border-accent bg-surface p-4 shadow-lg">
@@ -1309,6 +1518,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
           </div>
         ) : null}
       {recap}
+      {galerie}
       </>
     );
   }
@@ -1377,7 +1587,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
             {/* -------------------------------------------------- Produits */}
             <div ref={zoneProduits}>
               <Carte className="p-4">
-                {grille(false)}
+                {grille(false, bandeauPhoto)}
                 {rendre(signauxProduits)}
               </Carte>
             </div>
@@ -1395,6 +1605,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       ) : null}
 
       {recap}
+      {galerie}
 
       {/* Téléphone, pavé fermé : total et validation toujours à portée de pouce. */}
       {cal && catalogue && !blocPave ? (
@@ -1427,6 +1638,11 @@ function accordTaille(l: Commande['lignes'][number]): Deverrouillage | null {
   return t.tailleAutoriseePar && t.tailleAutoriseeLe ? { par: t.tailleAutoriseePar, le: t.tailleAutoriseeLe } : null;
 }
 
+/** Forme enregistrée sur une ligne (colonne `forme`, R63), null si absente ou illisible. */
+function formeEnregistree(l: Commande['lignes'][number]): Forme | null {
+  return estForme(l.forme) ? l.forme : null;
+}
+
 /** Commande enregistrée → lignes de l'écran (prix appliqués et accords conservés). */
 function lignesDepuisCommande(c: Commande): LigneEcran[] {
   return c.lignes.map((l) => {
@@ -1451,6 +1667,10 @@ function lignesDepuisCommande(c: Commande): LigneEcran[] {
       // Taille hors standard déjà accordée (LOI 11) : renvoyée telle quelle, le
       // serveur ne la conserve que pour ce produit à cette quantité exacte.
       deverrouillageTaille: accordTaille(l),
+      // R63 : forme enregistrée (colonne `forme`), relue telle quelle ; autre valeur → à rechoisir.
+      forme: formeEnregistree(l),
+      // Galerie (26/10/2026) : photo de modèle enregistrée, relue telle quelle.
+      photoModele: l.photoModele ?? null,
       // R60 : gâteau du comptoir (1 pièce) qui remplace un gâteau sur commande →
       // les boutons de taille du gâteau d'origine restent affichés à la
       // modification. Plusieurs pièces (achat comptoir) : quantité au pavé, inchangée.
@@ -1556,13 +1776,21 @@ const MOTS_MANQUANTS: Record<string, string> = {
   lignes: 'PRODUITS',
   quantite: 'TAILLE / QUANTITÉ',
   gouts: 'GOÛT',
+  forme: 'FORME (carré ou rond)',
   nbSymboles: 'FORMES',
   prixCentimes: 'PRIX',
   nbObjets: 'NOMBRE DE SANDWICHS',
 };
 
 /** Codes dont le mot-clé suffit (champ vide) : pas besoin de la phrase complète. */
-const MANQUE_SIMPLE = new Set(['ERR_CHAMP_OBLIGATOIRE', 'ERR_QUANTITE_INVALIDE', 'ERR_GOUT_MANQUANT', 'ERR_NB_SYMBOLES_MANQUANT', 'ERR_COMMANDE_VIDE']);
+const MANQUE_SIMPLE = new Set([
+  'ERR_CHAMP_OBLIGATOIRE',
+  'ERR_QUANTITE_INVALIDE',
+  'ERR_GOUT_MANQUANT',
+  'ERR_FORME_MANQUANTE',
+  'ERR_NB_SYMBOLES_MANQUANT',
+  'ERR_COMMANDE_VIDE',
+]);
 
 function libelleManque(
   m: SignalementAffichable,
@@ -1897,6 +2125,7 @@ function LigneDuBon({
   onRetirer,
   onGerantLibre,
   onAutreForme,
+  onRetirerPhoto,
 }: {
   ligne: LigneEcran;
   fiche: FicheTarifee | null;
@@ -1921,6 +2150,8 @@ function LigneDuBon({
   onGerantLibre: () => void;
   /** Number Cake « autre forme » : la zone de dessin s'imprime pour l'atelier. */
   onAutreForme: () => void;
+  /** Retire la photo de modèle de la ligne (la ligne reste). */
+  onRetirerPhoto: () => void;
 }) {
   const id = (champ: string) => `${ligne.cle}.${champ}`;
   const basculer = (champ: string) => setActif(actif === id(champ) ? null : id(champ));
@@ -1945,6 +2176,12 @@ function LigneDuBon({
   // R62 : goût demandé par le gâteau COMMANDÉ (donnée) — y compris quand la
   // ligne est devenue le gâteau du comptoir à cette taille (R60, ficheGateau).
   const choixGout = ficheGateau ? (GOUTS_SUR_COMMANDE[ficheGateau.produit.id] ?? null) : null;
+  // R63 : formes proposées pour CE gâteau à CETTE taille (donnée REGLES_FORME, jugée
+  // par le domaine) — [] non concerné, Carré + Rond jusqu'au seuil, Carré seul au-dessus.
+  const formes: Forme[] =
+    ficheGateau && tailleCourante !== null ? formesPossibles(ficheGateau.produit.id, tailleCourante, REGLES_FORME) : [];
+  // R64 : supplément par personne (Pâte à sucre) — ses parts suivent le gâteau, pas de pavé.
+  const parPersonne = fiche !== null && estSupplementParPersonne({ famille: fiche.produit.famille, basePrix: fiche.prix.basePrix });
 
   const [signalementTarif, setSignalementTarif] = useState<Echec | 'ok' | null>(null);
   const signalerAuGerant = async () => {
@@ -1980,6 +2217,27 @@ function LigneDuBon({
             <p className="text-base font-semibold leading-snug text-ink">{fiche ? libelleProduit(fiche) : 'Produit absent du tarif'}</p>
           )}
           <p className="text-xs text-ink-2">{libelleRegime(fiche, libre)}</p>
+          {ligne.photoModele ? (
+            <div className="mt-1.5 flex items-center gap-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/modeles/${ligne.photoModele}.jpg`}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="h-12 w-12 shrink-0 rounded-lg border border-line object-cover"
+              />
+              <span className="chiffres text-base font-semibold text-ink">Photo {ligne.photoModele}</span>
+              <button
+                type="button"
+                onClick={onRetirerPhoto}
+                aria-label={`Retirer la photo ${ligne.photoModele} (la ligne reste)`}
+                className="min-h-12 rounded-xl px-2 text-sm text-ink-2 underline underline-offset-2"
+              >
+                Retirer la photo
+              </button>
+            </div>
+          ) : null}
         </div>
         <button
           type="button"
@@ -2051,6 +2309,11 @@ function LigneDuBon({
               {!ligne.origineSurCommande && ligne.quantite !== null && !taillesTriees.includes(ligne.quantite) ? ligne.quantite : 'Autre'}
             </button>
           </div>
+        ) : parPersonne ? (
+          <p className="chiffres text-base text-ink">
+            {ligne.quantite === null ? 'Parts du gâteau à choisir' : `${ligne.quantite} parts`}
+            <span className="ml-1 text-sm text-ink-2">— autant que le gâteau</span>
+          </p>
         ) : (
           <ChampPave
             libelle={auKilo ? 'Poids' : unite === 'parts' ? 'Parts' : 'Quantité'}
@@ -2059,6 +2322,30 @@ function LigneDuBon({
             onBasculer={() => basculer('quantite')}
           />
         )}
+        {formes.length > 0 ? (
+          <div role="group" aria-label="Forme du gâteau" className="grid grid-cols-2 gap-1">
+            {formes.map((fo) => {
+              // Au-dessus du seuil, une seule forme : déjà choisie (carré d'office, domaine).
+              const choisie = ligne.forme === fo || (formes.length === 1 && (ligne.forme ?? null) === null);
+              return (
+                <button
+                  key={fo}
+                  type="button"
+                  aria-pressed={choisie}
+                  onClick={() => onChange({ forme: fo })}
+                  className={`min-h-12 rounded-lg border-2 text-lg font-semibold ${
+                    choisie ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
+                  }`}
+                >
+                  {LIBELLES_FORME[fo]}
+                </button>
+              );
+            })}
+            {formes.length === 1 ? (
+              <p className="self-center text-sm text-ink-2">au-dessus de {REGLES_FORME.partsMaxRond} parts</p>
+            ) : null}
+          </div>
+        ) : null}
         {/* Gâteau aux tailles : le prix n'apparaît qu'une fois la taille choisie. */}
         {(plancher || libre) && !(parTailles || aFormes ? ligne.quantite === null : false) ? (
           <ChampPave
@@ -2210,6 +2497,7 @@ function GrilleProduits({
   sansGateau,
   onToucher,
   onAutreDemande,
+  onPhotos,
 }: {
   /** Tablette : familles toujours visibles, grille dense qui défile en interne (la page, jamais). */
   tablette: boolean;
@@ -2229,6 +2517,8 @@ function GrilleProduits({
   sansGateau: boolean;
   onToucher: (f: FicheCatalogue) => void;
   onAutreDemande: () => void;
+  /** Ouvre la galerie des photos de modèles. */
+  onPhotos: () => void;
 }) {
   // Familles : « Salé » et « Gâteau » d'abord, en gros (libellés de bouton,
   // modele.ts) ; les autres rayons ensuite, plus discrets.
@@ -2277,6 +2567,13 @@ function GrilleProduits({
             {autreChoisie?.libelle ?? 'Familles'} {rayonsOuverts ? '▴' : '▾'}
           </button>
         )}
+        <button
+          type="button"
+          onClick={onPhotos}
+          className="min-h-12 shrink-0 rounded-xl border-2 border-accent bg-surface px-4 text-lg font-bold text-accent"
+        >
+          Photos
+        </button>
         <button
           type="button"
           onClick={onAutreDemande}

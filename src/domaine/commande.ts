@@ -19,8 +19,18 @@ import { signaler } from './messages.ts';
 import { multiplier, resteDu, somme } from './argent.ts';
 import { dateProduction, estDateISO, formaterDate, validerDateRetrait, validerDelai } from './calendrier.ts';
 import type { JourFerme } from './calendrier.ts';
-import { FAMILLES_GATEAU } from './constantes.ts';
-import type { DelaisCommande, ReglementCommande } from './constantes.ts';
+import { FAMILLES_GATEAU, SUPPLEMENTS_PAR_PERSONNE } from './constantes.ts';
+import type {
+  DelaisCommande,
+  RegleSupplementParPersonne,
+  ReglementCommande,
+  ReglesForme,
+  TailleInterdite,
+} from './constantes.ts';
+import { validerForme } from './formes.ts';
+import { validerTailleAutorisee } from './taillesInterdites.ts';
+import { controlerSupplementsParPersonne, estSupplementParPersonne } from './supplementsParPersonne.ts';
+import { libelleProduitFiche } from './libelles.ts';
 import { controlerSupplements, gateauxDeLigne } from './supplements.ts';
 import { validerQuantiteMin, validerMaximum, validerTailleGateau } from './minimums.ts';
 import { validerGouts, type ChoixGout } from './gouts.ts';
@@ -51,6 +61,7 @@ import type {
   DateISO,
   Deverrouillage,
   FicheTarifee,
+  Forme,
   PrixRegle,
   ProduitRegle,
   RegimePrix,
@@ -89,6 +100,11 @@ export type LigneSaisie = {
    * correspond au produit du comptoir dans la table R60 : son goût reste exigé.
    */
   origineSurCommande?: string | null;
+  /**
+   * R63 : forme du gâteau (« carre » / « rond »). Exigée de 4 à 8 parts pour les
+   * gâteaux de `ContexteCommande.formes` ; au-dessus, carré d'office.
+   */
+  forme?: string | null;
   /** Accord du gérant : prix sous plancher (C) ou prix d'une ligne libre. */
   deverrouillage?: Deverrouillage | null;
   /**
@@ -118,6 +134,10 @@ export type LigneControlee = {
   /** Prix sous plancher ou ligne libre : qui a autorisé, quand (à tracer en base). */
   autorisation?: Deverrouillage;  /** Taille hors standard : qui a autorisé, quand (à tracer en base). */
   autorisationTaille?: Deverrouillage;
+  /** R63 : forme retenue (carré d'office au-dessus du seuil), seulement pour un gâteau concerné. */
+  forme?: Forme;
+  /** R64 : la ligne est un supplément par personne (Pâte à sucre), pas un gâteau. */
+  supplementParPersonne?: true;
 };
 
 export type CommandeSaisie = {
@@ -174,6 +194,20 @@ export type ContexteCommande = {
   correspondancesComptoir: readonly CorrespondanceComptoir[];
   /** R62 : goût demandé par gâteau sur commande (donnée du catalogue). Absent → non contrôlé. */
   goutsSurCommande?: Readonly<Record<string, ChoixGout>>;
+  /**
+   * R63 : gâteaux qui demandent une forme, seuil du rond, gâteau d'un grand rond
+   * (REGLES_FORME). Absent → non contrôlé, comme R62 : à passer dès que l'écran
+   * propose les boutons Carré / Rond.
+   */
+  formes?: ReglesForme;
+  /**
+   * R64 : suppléments par personne et gâteaux qui les reçoivent. Absent →
+   * SUPPLEMENTS_PAR_PERSONNE (toujours contrôlé : la Pâte à sucre est au tarif
+   * depuis le 26/10/2026 et les sorties fonctionnent avec l'écran actuel).
+   */
+  supplementsParPersonne?: Readonly<Record<string, RegleSupplementParPersonne>>;
+  /** R65 : tailles qui ne se font pas (TAILLES_INTERDITES). Absent → non contrôlé, comme R62. */
+  taillesInterdites?: readonly TailleInterdite[];
 };
 
 export type CommandeControlee = {
@@ -215,8 +249,7 @@ function prefixerSignalement(s: Signalement, prefixe: string): Signalement {
 
 /** Libellé affiché : produit + sous-catégorie, chacun à la lettre (LOI 5) : « Bavarois 6P ». */
 export function libelleProduit(fiche: FicheTarifee): string {
-  const sc = fiche.produit.sousCategorie?.trim();
-  return sc ? `${fiche.produit.produit} ${sc}` : fiche.produit.produit;
+  return libelleProduitFiche(fiche);
 }
 
 /** Délai requis par une fiche : gâteau à étages, sinon selon le régime. */
@@ -235,6 +268,12 @@ function delaiMaximal(delais: DelaisCommande): number {
 // Une ligne
 // ---------------------------------------------------------------------------
 
+/** Ce dont le contrôle d'une ligne a besoin. */
+export type ContexteLigne = Pick<
+  ContexteCommande,
+  'resoudre' | 'delais' | 'reglement' | 'correspondancesComptoir' | 'goutsSurCommande' | 'formes' | 'taillesInterdites'
+>;
+
 /**
  * Contrôle et RECALCULE une ligne : produit, unité, quantité, minimum,
  * prix selon le régime, maximum (pain surprise).
@@ -244,7 +283,7 @@ export function controlerLigne(
   saisie: LigneSaisie,
   index: number,
   datePrise: DateISO,
-  ctx: Pick<ContexteCommande, 'resoudre' | 'delais' | 'reglement' | 'correspondancesComptoir' | 'goutsSurCommande'>,
+  ctx: ContexteLigne,
 ): Resultat<LigneControlee> {
   const p = `lignes[${index}].`;
   const r = controlerLigneSansPrefixe(saisie, index, datePrise, ctx);
@@ -256,7 +295,7 @@ function controlerLigneSansPrefixe(
   saisie: LigneSaisie,
   index: number,
   datePrise: DateISO,
-  ctx: Pick<ContexteCommande, 'resoudre' | 'delais' | 'reglement' | 'correspondancesComptoir' | 'goutsSurCommande'>,
+  ctx: ContexteLigne,
 ): Resultat<LigneControlee> {
   const produitId = saisie.produitId?.trim() || null;
   const libelleLibre = saisie.libelle?.trim() || '';
@@ -273,6 +312,16 @@ function controlerLigneSansPrefixe(
 
   const q = validerQuantite(fiche.produit.unite, saisie.quantite);
   if (!q.ok) return q;
+
+  // R65 : taille qui ne se fait pas (Matadi chocolat 4P) — avant le minimum.
+  if (ctx.taillesInterdites) {
+    const ficheDe = (id: string): FicheTarifee | null => {
+      const r = ctx.resoudre(id, datePrise);
+      return r.ok ? r.donnees : null;
+    };
+    const t = validerTailleAutorisee(fiche, saisie.quantite, ctx.taillesInterdites, ficheDe);
+    if (!t.ok) return t;
+  }
 
   const nbSymboles = saisie.nbSymboles ?? undefined;
   const min = validerQuantiteMin(fiche, saisie.quantite, { nbSymboles });
@@ -293,6 +342,20 @@ function controlerLigneSansPrefixe(
   const cleGout = saisie.origineSurCommande && saisie.origineSurCommande === origine ? origine : fiche.produit.id;
   const gouts = validerGouts(ctx.goutsSurCommande?.[cleGout], fiche, saisie.gouts);
   if (!gouts.ok) return gouts;
+
+  // R63 : forme du gâteau, après le goût. Ligne devenue gâteau du comptoir (R60) :
+  // la forme est celle du gâteau commandé, à ses parts (pas la quantité 1).
+  let forme: Forme | null = null;
+  if (ctx.formes) {
+    const parts = cleGout === fiche.produit.id
+      ? saisie.quantite
+      : (gateauSurCommandeDe(fiche.produit.id, ctx.correspondancesComptoir)?.parts ?? saisie.quantite);
+    const cleRond = ctx.formes.gateauRondGrand;
+    const rond = cleRond ? ctx.resoudre(cleRond, datePrise) : null;
+    const fo = validerForme(cleGout, libelleProduit(fiche), parts, saisie.forme, ctx.formes, rond?.ok ? rond.donnees : null);
+    if (!fo.ok) return fo;
+    forme = fo.donnees;
+  }
 
   const prixFixe = !(fiche.produit.regimePrix === 'C' && fiche.prix.prixEstPlancher);
   if (prixFixe && saisie.prixUnitaireCentimes != null && saisie.prixUnitaireCentimes !== fiche.prix.prixCentimes) {
@@ -339,6 +402,10 @@ function controlerLigneSansPrefixe(
       ctx.reglement.famillesGateau ?? FAMILLES_GATEAU,
     ),
   };
+  if (forme) ligne.forme = forme;
+  if (estSupplementParPersonne({ famille: fiche.produit.famille, basePrix: fiche.prix.basePrix })) {
+    ligne.supplementParPersonne = true;
+  }
   if (fiche.prix.versionCode) ligne.versionCode = fiche.prix.versionCode;
   if (prix.donnees.sousPlancher) ligne.autorisation = prix.donnees.sousPlancher;
   if (taille.signalements.length > 0 && saisie.deverrouillageTaille) {
@@ -447,6 +514,28 @@ function analyser(c: CommandeSaisie, ctx: ContexteCommande): Analyse {
   // R7 : suppléments au forfait, une fois par gâteau. Contrôlé seulement si
   // toutes les lignes passent (un gâteau refusé ferait croire à « sans gâteau »).
   if (lignesOk) blocages.push(...controlerSupplements(lignes));
+  // R64 : supplément par personne (Pâte à sucre) rattaché à un gâteau admis, aux mêmes parts.
+  if (lignesOk) {
+    const libelleDe = (cle: string): string => {
+      const r = ctx.resoudre(cle, c.datePrise);
+      return r.ok ? libelleProduit(r.donnees) : cle;
+    };
+    blocages.push(
+      ...controlerSupplementsParPersonne(
+        lignes.map((l) => ({
+          produitId: l.produitId,
+          libelle: l.libelle,
+          quantite: l.quantite,
+          forme: l.forme ?? null,
+          nbGateaux: l.nbGateaux,
+          supplementParPersonne: l.supplementParPersonne === true,
+        })),
+        ctx.supplementsParPersonne ?? SUPPLEMENTS_PAR_PERSONNE,
+        ctx.formes ?? { produits: [], partsMaxRond: 0, gateauRondGrand: null },
+        libelleDe,
+      ),
+    );
+  }
   signalements.push(...reperesDoublons(lignes.map((l) => ({ produitId: l.produitId, libelle: l.libelle }))));
 
   // Délai (n°17) puis jour même / lendemain (R53b, R53). Délai 0 par défaut
@@ -477,7 +566,7 @@ function analyser(c: CommandeSaisie, ctx: ContexteCommande): Analyse {
   // comptoir qui le remplace (R60) : lu dans les données, jamais dans le libellé.
   const contientGateau = lignes.some(
     (l) =>
-      (l.regimePrix === 'C' && l.basePrix === 'personne') ||
+      (l.regimePrix === 'C' && l.basePrix === 'personne' && l.supplementParPersonne !== true) ||
       gateauSurCommandeDe(l.produitId, ctx.correspondancesComptoir) !== null,
   );
   signalements.push(

@@ -72,16 +72,24 @@ pas optionnelle.*
 
 ### Suppléments
 
-| Supplément | Prix |
-|---|---|
-| Photo | 15,00 € |
-| Écriture simple | 2,00 € |
+| Supplément | Prix | Base |
+|---|---|---|
+| Photo | 15,00 € | une fois par gâteau |
+| Écriture simple | 2,00 € | une fois par gâteau |
+| Pâte à sucre | 6,00 €/pers | **par personne** — décision du propriétaire 26/10/2026 |
 
-Cohérents avec le catalogue CSV (catégorie « Gâteaux et tartes ») — **à revérifier à chaque
-import de tarif**.
+Photo et Écriture : cohérents avec le catalogue CSV (catégorie « Gâteaux et tartes ») —
+**à revérifier à chaque import de tarif**. La Pâte à sucre n'existe pas au comptoir.
 
-Les suppléments s'ajoutent **une fois par gâteau**, jamais par personne.
+Photo et Écriture s'ajoutent **une fois par gâteau**, jamais par personne.
 `40 parts × 5,60 € + photo = 224,00 € + 15,00 € = 239,00 €`, et surtout pas `+ 600,00 €`.
+
+**Pâte à sucre** (décision du propriétaire du 26/10/2026, en vigueur le 26/10/2026) : ce
+n'est pas un gâteau, c'est un supplément qui s'ajoute à un gâteau (Layer Cake ou gâteau
+carré/rectangle), compté **par personne**, comme les parts du gâteau. Prix fixe (pas un
+plancher). Minimum 20 parts. `20 parts × 5,00 € + 20 × 6,00 € = 100,00 € + 120,00 € = 220,00 €`.
+Données : `data/tarifs-sur-commande_2026-10-26.json`, clé
+`gateaux-sur-commande/supplement-pate-a-sucre`.
 
 Pied d'affiche : « En cas de demande plus spécifique, contacter le pâtissier ou le gérant. »
 

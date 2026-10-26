@@ -33,7 +33,7 @@ gâteau simple → **aucun délai** (le jour même passe) · gâteau de mariage 
 | R5 | Régime C — `total = nb_parts × prix_par_personne`, pré-rempli au plancher, modifiable vers le haut | — | — | oui (affiche) |
 | R5b | Prix/personne saisi **sous** le plancher → refus, sauf déverrouillage gérant tracé | 🔴 | `ERR_SOUS_PLANCHER` | **non** |
 | R6 | Produits au kilo : `total = poids × prix_kg`, arrondi half-up au centime | 🔴 | — | oui (catalogue) |
-| R7 | Suppléments photo 15 € / écriture 2 € : **une fois par gâteau**, jamais par personne | 🔴 | — | oui (affiche) |
+| R7 | Suppléments photo 15 € / écriture 2 € : **une fois par gâteau**, jamais par personne. Exception : la **Pâte à sucre** se compte par personne (R64) | 🔴 | — | oui (affiche) |
 | R8 | Arrondi espèces belge à 5 centimes sur le **total payé en liquide** uniquement, jamais sur les prix unitaires — *optionnel, activable plus tard, utile seulement si l'application encaisse* | — | — | **reporté — 15/10/2026** |
 | R9 | TVA 6 % emporter / 12 % sur place — champ par produit, configurable | — | — | **non** |
 | R60 | Gâteau simple commandé dans une taille qui **existe au comptoir** : il se vend **au prix du comptoir**. La ligne devient le gâteau du comptoir (1 pièce, prix exact du tarif en vigueur, **jamais modifiable, même par le gérant**). Correspondances : Bavarois sur commande (toutes variantes) 4 / 6 / 8 / 10 parts → Bavarois 4P / 6P / 8P / 10P du comptoir · Crème fraîche 6 / 8 parts → Crème fraîche 6P / 8P. Autres tailles (Crème fraîche 4 parts, Bavarois 15 parts…) : prix par personne (R5). Sur l'écran, le bouton de taille affiche le prix du comptoir (« 6 · 31,00 € ») et le toucher remplace la ligne ; une ligne au prix par personne dans une de ces tailles est refusée avec le bouton « Prendre le gâteau du comptoir ». Le gâteau du comptoir compte comme un gâteau (photo, écriture) | 🔴 | `ERR_PRIX_COMPTOIR` · `ERR_TARIF_INCOHERENT` | **oui — propriétaire 18/10/2026** |
@@ -135,6 +135,14 @@ Ces règles viennent du règlement de la direction et des décisions du proprié
 | R58 | À la remise de la commande : liste des articles à cocher **devant le client**. Tant qu'un article n'est pas coché, la remise est refusée | 🔴 | `ERR_DECOMPTE_INCOMPLET` | **oui — règlement intérieur 15/10/2026** |
 | R59 | Gâteau simple sur commande : **tailles standard uniquement** — 4, 6, 8, 10, 15, 20, 25, 30 parts (liste réglable). Autre taille refusée à la saisie, avec deux boutons vers les tailles voisines : 13 parts → « Passer à 10 » / « Passer à 15 » ; 1 part → « Passer à 4 » ; 35 parts → « Passer à 30 ». Exception possible par code gérant, nom enregistré | 🔴 (🟠 si gérant) | `ERR_TAILLE_NON_STANDARD` · `AVERT_TAILLE_NON_STANDARD_AUTORISEE` | **oui — propriétaire 15/10/2026** · définition du « gâteau simple » : **non** (q. 61) · liste vide = aucune taille imposée : **non** (q. 62) |
 
+## K. Gâteaux sur commande — décisions du propriétaire du 26/10/2026
+
+| # | Règle | Niveau | Code | Confirmé |
+|---|---|---|---|---|
+| R63 | **Forme du gâteau** (Bavarois — tous ses goûts : forêt noire, framboise, mangue, passion… —, Crème fraîche, Entremet, Cake nature ; liste réglable). **De 4 à 8 parts : carré ou rond**, la forme est **obligatoire** (bouton « Choisir carré ou rond »). **Au-dessus de 8 parts : carré d'office**, rien à demander (le chiffre 8 est réglable). Un client qui veut un **rond au-dessus de 8 parts** : refus, avec deux boutons « **Passer en carré** » et « **Passer en Layer Cake** » — le Layer Cake garde le nombre de parts, relevé à son minimum : un Bavarois rond de 10 parts devient un Layer Cake de **20 parts** (minimum du Layer Cake), un rond de 25 parts un Layer Cake de 25 parts. Un gâteau sur commande devenu gâteau du comptoir (R60, ex. Bavarois 6 parts → Bavarois 6P) garde sa forme (le Bavarois 10P est carré d'office). Layer Cake, Number Cake, pièces montées, minis et gâteaux de vitrine : pas de forme demandée | 🔴 | `ERR_FORME_MANQUANTE` · `ERR_FORME_ROND_IMPOSSIBLE` | **oui — propriétaire 26/10/2026** · libellé « Carré » pour carré **et** rectangle : **non** (q. 65) · Bavarois 10P carré : **non** (q. 66) |
+| R64 | **Pâte à sucre = un supplément, pas un gâteau.** Prix **par personne** (lu au tarif : 6,00 €/pers ; gâteau de 20 parts → +120,00 €), contrairement à la photo et à l'écriture (une fois par gâteau, R7). Se met sur un **Layer Cake** ou un **gâteau carré/rectangle** (Bavarois, Crème fraîche, Entremet, Cake nature). La ligne « Pâte à sucre » porte **autant de parts que le gâteau**. Le gâteau doit faire **au moins 20 parts** (minimum bloquant, réglable) : sinon refus « Minimum 20 parts pour « Entremet » (avec « Pâte à sucre ») » et le bouton « **Passer à 20 parts** » sur le gâteau. Parts différentes de celles du gâteau : bouton « Passer à N parts ». Pâte à sucre sans gâteau, ou sur un gâteau qui ne la reçoit pas (Number Cake, pièce montée) : bouton « Supprimer la ligne ». Deux Pâte à sucre pour un seul gâteau : refus. Elle n'ouvre jamais droit à une photo ou une écriture de plus. **Rond au-dessus de 8 parts → Layer Cake, même en pâte à sucre** : les gâteaux ronds bas en pâte à sucre sont des Layer Cakes (un Bavarois, une Crème fraîche, un Entremet ou un Cake nature reçoit la pâte à sucre seulement s'il est carré) | 🔴 | `ERR_QUANTITE_MIN` · `ERR_SUPPLEMENT_PARTS` · `ERR_SUPPLEMENT_SANS_GATEAU` · `ERR_SUPPLEMENT_NON_ADMIS` · `ERR_SUPPLEMENT_TROP_NOMBREUX` | **oui — propriétaire 26/10/2026** · rond en pâte à sucre = Layer Cake : **oui — propriétaire 26/10/2026** · pas sur Number Cake ni pièce montée : **non** (q. 67) · cumul avec photo / écriture : **non** (q. 68) |
+| R65 | **Matadi chocolat 4P ne se fait pas** (le Matadi chocolat commence à 6P). La ligne reste au tarif du comptoir (on ne touche pas à votre fichier), mais elle est **refusée à la commande** avec deux boutons : « **Passer en Matadi chocolat 6P** » et « **Prendre Mousse chocolat 4P** ». Le nombre de gâteaux est gardé. Pas de dérogation, même par le gérant. Liste des tailles interdites et de leurs remplaçants : réglable | 🔴 | `ERR_TAILLE_INTERDITE` | **oui — propriétaire 26/10/2026** · goût « Matadi » des Bûches 4P : **non** (q. 71) |
+
 Les autres points du règlement (tenue, hygiène, pauses, respect, avantages du personnel) ne
 bloquent jamais une saisie. Ils apparaissent sous forme de **petits rappels sympathiques**,
 pendant un chargement, après une commande validée ou après un inventaire terminé. Jamais
@@ -172,6 +180,12 @@ visibles du client.
   est facultative (R54).
 - **Fermetures** : seul le mardi est fermé, les jours fériés sont ouverts, pas de congés (R1, R1b, R1c).
 - **Gâteau simple commandé dans une taille du comptoir** : prix du comptoir, ligne remplacée par le gâteau du comptoir, prix non modifiable (R60).
+
+## Décisions du propriétaire — 26/10/2026
+
+- **Forme du gâteau** : carré ou rond de 4 à 8 parts, carré d'office au-dessus ; un grand rond = un Layer Cake (R63).
+- **Pâte à sucre** : supplément par personne, sur un Layer Cake ou un gâteau carré, gâteau de 20 parts au moins (R64).
+- **Matadi chocolat 4P** : ne se fait pas ; Matadi chocolat 6P ou Mousse chocolat 4P à la place (R65).
 
 ## Comportements par défaut appliqués en l'absence de réponse
 

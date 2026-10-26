@@ -10,7 +10,7 @@
 // Imports relatifs avec extension : module exécuté tel quel par `node --test`.
 
 import type { Echec, Resultat } from '../../domaine/resultat.ts';
-import type { DateISO, Deverrouillage, FicheTarifee, PrixRegle, ProduitRegle, RegimePrix } from '../../domaine/types.ts';
+import type { DateISO, Deverrouillage, FicheTarifee, Forme, PrixRegle, ProduitRegle, RegimePrix, SortieRemplacement } from '../../domaine/types.ts';
 import type { CommandeSaisie, LigneSaisie, ResoudreProduit } from '../../domaine/commande.ts';
 import { resoudreDepuisCatalogue } from '../../domaine/commande.ts';
 import { signaler } from '../../domaine/messages.ts';
@@ -20,7 +20,9 @@ import { gateauSurCommandeDe, produitComptoirPourTaille, type CorrespondanceComp
 import type { JourFerme } from '../../domaine/calendrier.ts';
 import { decalerJours, estDateISO } from '../../domaine/calendrier.ts';
 import { heureChamp, lireHeure } from '../../domaine/reglement.ts';
-import type { DelaisCommande, PlageOuverture, ReglementCommande } from '../../domaine/constantes.ts';
+import type { DelaisCommande, PlageOuverture, RegleSupplementParPersonne, ReglementCommande } from '../../domaine/constantes.ts';
+import { FAMILLE_SUPPLEMENT } from '../../domaine/constantes.ts';
+import type { ChoixGout } from '../../domaine/gouts.ts';
 
 // ---------------------------------------------------------------------------
 // Données reçues du serveur
@@ -132,11 +134,13 @@ export function toucherProduit(
 }
 
 /**
- * Supplément au forfait (Photo, Écriture…) : défini par la DONNÉE `basePrix =
- * 'forfait'`, comme le domaine (src/domaine/supplements.ts) — jamais par le nom.
+ * Supplément (Photo, Écriture au forfait ; Pâte à sucre par personne, R64) :
+ * défini par la DONNÉE `famille = 'supplement'` du catalogue, comme le domaine
+ * (src/domaine/supplements.ts, supplementsParPersonne.ts) — jamais par le nom
+ * ni par la base de prix (la Pâte à sucre est « par personne », comme un gâteau).
  */
 export function estSupplement(fiche: FicheTarifee): boolean {
-  return fiche.prix.basePrix === 'forfait';
+  return fiche.produit.famille === FAMILLE_SUPPLEMENT;
 }
 
 /**
@@ -219,6 +223,16 @@ export type LigneEcran = {
    * affichés pour revenir à une autre taille). Absent / null sinon.
    */
   origineSurCommande?: string | null;
+  /**
+   * R63 : forme choisie aux boutons « Carré » / « Rond » (null = pas encore
+   * choisie ; au-dessus du seuil, le domaine retient carré d'office).
+   */
+  forme?: Forme | null;
+  /**
+   * Galerie (26/10/2026) : identifiant de la photo de modèle choisie (« G043 »),
+   * imprimé sur le bon. Absent / null : pas de photo. Validé par la route.
+   */
+  photoModele?: string | null;
 };
 
 let compteur = 0;
@@ -242,6 +256,8 @@ export function ligneVide(produitId: string | null): LigneEcran {
     precision: '',
     deverrouillage: null,
     deverrouillageTaille: null,
+    forme: null,
+    photoModele: null,
   };
 }
 
@@ -259,6 +275,7 @@ export function versLigneSaisie(l: LigneEcran, fiche: FicheTarifee | null): Lign
     nbObjets: l.nbObjets,
     gouts: l.gouts,
     origineSurCommande: l.origineSurCommande ?? null,
+    forme: l.forme ?? null,
     deverrouillage: l.deverrouillage,
     deverrouillageTaille: l.deverrouillageTaille,
   };
@@ -512,6 +529,8 @@ export function majLigneEcran(l: LigneEcran, partiel: Partial<LigneEcran>): Lign
  */
 export const SUPPLEMENT_PHOTO = 'gateaux-sur-commande/supplement-photo';
 export const SUPPLEMENT_ECRITURE = 'gateaux-sur-commande/supplement-ecriture-simple';
+/** R64 (26/10/2026) : supplément PAR PERSONNE, autant de parts que le gâteau qui le reçoit. */
+export const SUPPLEMENT_PATE_A_SUCRE = 'gateaux-sur-commande/supplement-pate-a-sucre';
 
 /** Gâteaux apportés par UNE ligne de l'écran (domaine : `gateauxDeLigne`). */
 function gateauxDeLigneEcran(l: LigneEcran, catalogue: CatalogueCommande | null, famillesGateau: readonly string[]): number {
@@ -593,6 +612,130 @@ export type PrecisionsGateau = {
 export function precisionsAEnregistrer(p: PrecisionsGateau, nbGateaux: number): PrecisionsGateau {
   if (nbGateaux > 0) return { ...p, texteGateau: p.sansEcriture ? '' : p.texteGateau };
   return { texteGateau: '', sansEcriture: false, photoWhatsapp: false, photoImprimee: false };
+}
+
+// ---------------------------------------------------------------------------
+// R64 — supplément par personne (Pâte à sucre), décision du 26/10/2026
+// ---------------------------------------------------------------------------
+// La règle (quels gâteaux, à partir de combien de parts) est au domaine
+// (`controlerSupplementsParPersonne`) ; ses DONNÉES (SUPPLEMENTS_PAR_PERSONNE)
+// servent ici seulement à savoir QUELLE ligne suivre : la ligne du supplément
+// porte les parts du gâteau, et les suit quand elles changent. Le domaine juge
+// ensuite (minimum, gâteau admis, forme carrée).
+
+/** Index des gâteaux qui peuvent porter ce supplément (gâteau commandé, y compris devenu gâteau du comptoir, R60). */
+function porteursParPersonne(lignes: readonly LigneEcran[], regle: RegleSupplementParPersonne, supplements: readonly string[]): number[] {
+  return lignes.flatMap((l, i) => {
+    if (l.produitId !== null && supplements.includes(l.produitId)) return [];
+    const g = gateauDeLaLigne(l);
+    return g !== null && regle.gateaux.includes(g) ? [i] : [];
+  });
+}
+
+/**
+ * Chaque ligne de supplément par personne prend les parts du gâteau qu'elle
+ * accompagne : la 1re ligne de supplément suit le 1er gâteau porteur du bon,
+ * la 2e le 2e, etc. Un supplément sans gâteau porteur garde sa quantité (le
+ * domaine le refuse avec sa sortie « Supprimer la ligne »). Taille du gâteau
+ * pas encore choisie → parts du supplément vides aussi.
+ * Retourne le MÊME tableau si rien ne change (aucune boucle de rendu).
+ */
+export function synchroniserSupplementsParPersonne(
+  lignes: LigneEcran[],
+  regles: Readonly<Record<string, RegleSupplementParPersonne>>,
+  table: readonly CorrespondanceComptoir[],
+): LigneEcran[] {
+  const supplements = Object.keys(regles);
+  let suivantes: LigneEcran[] | null = null;
+  for (const cle of supplements) {
+    const porteurs = porteursParPersonne(lignes, regles[cle], supplements);
+    let rang = 0;
+    for (const [i, l] of lignes.entries()) {
+      if (l.produitId !== cle) continue;
+      const g = porteurs[rang];
+      rang += 1;
+      if (g === undefined) continue;
+      const parts = tailleChoisie(lignes[g], table);
+      if (l.quantite === parts) continue;
+      if (suivantes === null) suivantes = [...lignes];
+      suivantes[i] = { ...l, quantite: parts };
+    }
+  }
+  return suivantes ?? lignes;
+}
+
+/**
+ * Case « Pâte à sucre » du bloc gâteau. Coché : UNE ligne, aux parts du premier
+ * gâteau porteur (sinon du premier gâteau du bon : le domaine dira pourquoi il
+ * ne la reçoit pas), seulement s'il y a un gâteau au bon et si le supplément
+ * est au tarif reçu. Décoché : toutes les lignes de ce supplément retirées.
+ */
+export function basculerSupplementParPersonne(
+  lignes: readonly LigneEcran[],
+  produitId: string,
+  voulu: boolean,
+  catalogue: CatalogueCommande | null,
+  famillesGateau: readonly string[],
+  regles: Readonly<Record<string, RegleSupplementParPersonne>>,
+  table: readonly CorrespondanceComptoir[],
+): LigneEcran[] {
+  if (!voulu) return lignes.filter((l) => l.produitId !== produitId);
+  if (aSupplement(lignes, produitId)) return [...lignes];
+  if (!ficheDe(catalogue, produitId)) return [...lignes];
+  if (gateauxAuBon(lignes, catalogue, famillesGateau) === 0) return [...lignes];
+  const regle = regles[produitId];
+  const porteur = regle ? porteursParPersonne(lignes, regle, Object.keys(regles))[0] : undefined;
+  const g = porteur ?? indexPremierGateau(lignes, catalogue, famillesGateau);
+  const parts = g === null || g === undefined ? null : tailleChoisie(lignes[g], table);
+  return [...lignes, { ...ligneVide(produitId), quantite: parts }];
+}
+
+// ---------------------------------------------------------------------------
+// R63 / R65 — sorties « en un geste » qui changent de produit
+// ---------------------------------------------------------------------------
+
+/**
+ * Applique un remplaçant proposé par le domaine (« Passer en Layer Cake (20
+ * parts) », « Prendre Mousse chocolat 4P ») : nouveau produit à la quantité
+ * proposée, forme à rechoisir, prix et accords retirés (ils portaient sur
+ * l'autre produit), plus de gâteau du comptoir d'origine (R60). Les goûts
+ * sont gardés seulement si les deux gâteaux demandent la même liste de goûts
+ * (donnée GOUTS_SUR_COMMANDE, passée en `gouts`), sinon vidés.
+ */
+export function appliquerRemplacement(
+  l: LigneEcran,
+  r: Pick<SortieRemplacement, 'produitId' | 'quantite'>,
+  gouts: Readonly<Record<string, ChoixGout>>,
+): LigneEcran {
+  const avant = gateauDeLaLigne(l);
+  const a = avant ? gouts[avant] : undefined;
+  const b = gouts[r.produitId];
+  const memeListe = !!a && !!b && a.liste === b.liste && a.parEtage === b.parEtage;
+  return {
+    ...l,
+    produitId: r.produitId,
+    origineSurCommande: null,
+    quantite: r.quantite,
+    prixUnitaireCentimes: null,
+    deverrouillage: null,
+    deverrouillageTaille: null,
+    forme: null,
+    gouts: memeListe ? [...l.gouts] : [],
+  };
+}
+
+/** Remplaçants lus dans `valeurProposee` (R63 : `{ forme, remplacements }` ; R65 : le tableau). */
+export function remplacementsProposes(v: unknown): SortieRemplacement[] {
+  const liste = Array.isArray(v) ? v : v && typeof v === 'object' ? (v as { remplacements?: unknown }).remplacements : null;
+  if (!Array.isArray(liste)) return [];
+  return liste.filter(
+    (r): r is SortieRemplacement =>
+      !!r &&
+      typeof r === 'object' &&
+      typeof (r as SortieRemplacement).produitId === 'string' &&
+      typeof (r as SortieRemplacement).bouton === 'string' &&
+      Number.isSafeInteger((r as SortieRemplacement).quantite),
+  );
 }
 
 // ---------------------------------------------------------------------------

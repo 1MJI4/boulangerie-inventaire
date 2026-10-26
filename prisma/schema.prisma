@@ -380,6 +380,25 @@ model LigneCommande {
   // facultatives (Oreo, Kinder...). Mots des listes du gerant ou texte libre.
   gouts        String[] @default([])
   decorations  String[] @default([])
+  // R63 — forme du gateau (Bavarois, Creme fraiche, Entremet, Cake nature),
+  // decision du proprietaire du 26/10/2026 : 'carre' ou 'rond' (type `Forme`
+  // de src/domaine/types.ts, = LigneControlee.forme). NULL pour toute ligne
+  // non concernee et pour l'historique. Contrainte en base :
+  // CHECK "LigneCommande_forme_valide" (forme IS NULL OR IN ('carre','rond')).
+  // Pas de defaut : la forme vient du domaine, jamais devinee par la base.
+  // A ne pas confondre avec `formes` (Number Cake, texte libre).
+  forme        String?
+  // Galerie de photos modeles (decision du proprietaire, 26/10/2026) :
+  // identifiant de la photo touchee par la vendeuse dans l'ecran de commande
+  // (« G043 », « S005 » : une lettre majuscule + 3 chiffres). Le bon imprime
+  // « Photo selectionnee : G043 ». Rattachee a la LIGNE (un gateau), pas a la
+  // commande. NULL si aucune photo choisie, et pour l'historique. Contrainte
+  // en base : CHECK "LigneCommande_photoModele_format" (IS NULL OR
+  // ~ '^[A-Z][0-9]{3}$'). Pas de defaut.
+  // A NE PAS CONFONDRE avec Commande.photoWhatsapp (le CLIENT a envoye sa
+  // propre photo) ni Commande.photoImprimee (photo a imprimer SUR le gateau,
+  // supplement) : ici c'est une photo de la galerie interne de l'app.
+  photoModele  String?
   // R14 — pain surprise : nombre de sandwichs demandes au total (> 0). Le
   // maximum par pain est un avertissement : pas de contrainte.
   nbObjets     Int?

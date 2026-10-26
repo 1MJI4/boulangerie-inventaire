@@ -19,7 +19,8 @@
 //   famille           ← catégorie + nom, par les tables de ./familles.ts
 //                       (« supplement » si listé dans PRODUITS_SUPPLEMENT ;
 //                       même règle qu'à l'import, vérifiée par base.test.ts)
-//   prixEstPlancher   ← régime C ET base « personne » ou « piece »
+//   prixEstPlancher   ← régime C ET base « personne » ou « piece », hors
+//                       supplément (prix fixe, même par personne : Pâte à sucre)
 //                       (même règle que l'import des affiches, vérifiée par test)
 //   typeMin           ← « bloquant » dès qu'un minimum existe (LOI 7)
 //   estFavori (ligne) ← Produit.estFavori (non versionné en base)
@@ -33,7 +34,7 @@
 // porte pas (dépendance `base-donnees`, voir rapport du lot 2).
 
 import { echecDateIllisible, echecProduitInconnu, echecTarifAbsent } from "./catalogue.ts";
-import { familleDuProduit } from "./familles.ts";
+import { estSupplement, familleDuProduit } from "./familles.ts";
 import { signaler } from "../domaine/messages.ts";
 import { estDateISO } from "./normaliser.ts";
 import { succes, type Resultat } from "../domaine/resultat.ts";
@@ -116,9 +117,13 @@ export function grilleDuRegime(regime: RegimePrix): Grille {
   return regime === "A" ? "comptoir" : "sur-commande";
 }
 
-/** Régime C : prix par personne ou par mini-pièce = plancher « à partir de ». */
-export function prixEstPlancherDepuisBase(regime: RegimePrix, basePrix: BasePrix): boolean {
-  return regime === "C" && (basePrix === "personne" || basePrix === "piece");
+/**
+ * Régime C : prix par personne ou par mini-pièce = plancher « à partir de »,
+ * SAUF un supplément (liste de ./familles.ts) : prix fixe, même par personne
+ * (Pâte à sucre). Même règle que l'import des affiches.
+ */
+export function prixEstPlancherDepuisBase(regime: RegimePrix, basePrix: BasePrix, supplement: boolean): boolean {
+  return !supplement && regime === "C" && (basePrix === "personne" || basePrix === "piece");
 }
 
 function tauxTvaDepuisBase(l: LignePrixBase): TauxTva | null {
@@ -161,7 +166,7 @@ export function prixDepuisBase(p: LigneProduitBase & { regimePrix: RegimePrix },
     valideAu: l.valideAu === null ? null : dateBaseVersIso(l.valideAu),
     prixCentimes: l.prixCentimes,
     basePrix: l.basePrix,
-    prixEstPlancher: prixEstPlancherDepuisBase(p.regimePrix, l.basePrix),
+    prixEstPlancher: prixEstPlancherDepuisBase(p.regimePrix, l.basePrix, estSupplement(grilleDuRegime(p.regimePrix), p.categorie, p.nom)),
     estFavori: p.estFavori,
     minQuantite: l.minimum,
     minParSymbole: l.minimumParSymbole,

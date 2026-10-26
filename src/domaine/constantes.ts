@@ -156,6 +156,93 @@ export const REGLEMENT_COMMANDE: ReglementCommande = {
   taillesGateau: [4, 6, 8, 10, 15, 20, 25, 30],
 };
 
+// ---------------------------------------------------------------------------
+// Décisions du propriétaire du 26/10/2026 (R63, R64, R65)
+// ---------------------------------------------------------------------------
+//
+// Ces listes nomment des produits par leur CLÉ du catalogue (jamais par leur
+// nom, LOI 6). Elles sont ici pour que le gérant les voie sur un écran ; les
+// fonctions les reçoivent en paramètre (ContexteCommande), ce fichier n'est
+// lu qu'en valeur par défaut. Leurs clés sont vérifiées sur le vrai catalogue
+// par src/domaine/decisions2610.test.ts.
+
+/** Famille du catalogue des suppléments (src/catalogue/familles.ts, PRODUITS_SUPPLEMENT). */
+export const FAMILLE_SUPPLEMENT = 'supplement';
+
+/** R63 — forme (carré ou rond) d'un gâteau simple sur commande. */
+export type ReglesForme = {
+  /** Gâteaux sur commande qui demandent une forme (clés catalogue). */
+  produits: readonly string[];
+  /** Rond possible jusqu'à ce nombre de parts INCLUS ; au-dessus, carré d'office. */
+  partsMaxRond: number;
+  /** Gâteau proposé quand le client veut un rond plus grand (clé catalogue), ou null. */
+  gateauRondGrand: string | null;
+};
+
+// Décision du propriétaire (26/10/2026) : Bavarois (tous ses goûts : forêt noire,
+// framboise, mangue, passion… — UN produit au catalogue), Crème fraîche,
+// Entremet, Cake nature. 4 à 8 parts : carré ou rond ; au-dessus : carré
+// d'office ; un rond plus grand = un Layer Cake.
+export const REGLES_FORME: ReglesForme = {
+  produits: [
+    'gateaux-sur-commande/bavarois',
+    'gateaux-sur-commande/creme-fraiche',
+    'gateaux-sur-commande/entremet',
+    'gateaux-sur-commande/cake-nature',
+  ],
+  partsMaxRond: 8,
+  gateauRondGrand: 'gateaux-sur-commande/layer-cake',
+};
+
+/** R64 — supplément vendu PAR PERSONNE du gâteau auquel il s'ajoute. */
+export type RegleSupplementParPersonne = {
+  /** Gâteaux qui peuvent le recevoir (clés catalogue). Un gâteau « à forme » doit être carré. */
+  gateaux: readonly string[];
+  /** Le gâteau doit faire au moins ce nombre de parts (LOI 7 : bloquant). */
+  partsMin: number;
+};
+
+// Décision du propriétaire (26/10/2026) : Pâte à sucre, prix PAR PERSONNE (au
+// catalogue, jamais ici), sur un Layer Cake ou un gâteau carré/rectangle, gâteau
+// d'au moins 20 parts. HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°67) : pas sur un
+// Number Cake ni une pièce montée.
+export const SUPPLEMENTS_PAR_PERSONNE: Readonly<Record<string, RegleSupplementParPersonne>> = {
+  'gateaux-sur-commande/supplement-pate-a-sucre': {
+    gateaux: [
+      'gateaux-sur-commande/layer-cake',
+      'gateaux-sur-commande/bavarois',
+      'gateaux-sur-commande/creme-fraiche',
+      'gateaux-sur-commande/entremet',
+      'gateaux-sur-commande/cake-nature',
+    ],
+    partsMin: 20,
+  },
+};
+
+/**
+ * R65 — un produit qui ne se fait pas dans cette taille, et ses remplaçants.
+ * `action` : verbe du bouton — `passer` (« Passer en Matadi chocolat 6P ») pour le
+ * même gâteau dans une autre taille, `prendre` (« Prendre Mousse chocolat 4P »)
+ * pour un autre gâteau.
+ */
+export type TailleInterdite = {
+  produit: string;
+  remplacements: readonly { produitId: string; action: 'passer' | 'prendre' }[];
+};
+
+// Décision du propriétaire (26/10/2026) : « en gâteau chocolat y'a mousse
+// chocolat disponible en 4p ou bien matadi minimum 6p ». Le tarif comptoir
+// garde sa ligne « Matadi chocolat, 4P » (LOI 5) : elle est refusée à la commande.
+export const TAILLES_INTERDITES: readonly TailleInterdite[] = [
+  {
+    produit: 'gateaux-et-tartes/matadi-chocolat/4p',
+    remplacements: [
+      { produitId: 'gateaux-et-tartes/matadi-chocolat/6p', action: 'passer' },
+      { produitId: 'gateaux-et-tartes/mousse-chocolat/4p', action: 'prendre' },
+    ],
+  },
+];
+
 // Règlement intérieur, point 9 : « L'inventaire doit être réalisé à 20h00 et jamais avant ».
 // Côté serveur, l'heure de début d'inventaire est la FERMETURE DU JOUR (heures
 // d'ouverture réglées par le gérant, 18/10/2026). Cette valeur n'est que le repli

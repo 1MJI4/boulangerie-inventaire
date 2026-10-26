@@ -145,3 +145,6 @@ build/
 
 # Fichiers temporaires de Cloudflare (wrangler dev / deploy)
 .wrangler/
+
+# Photos en cours de tri (copie locale des zips Drive, relue par le gérant)
+/photos-tri/
