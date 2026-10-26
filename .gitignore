@@ -148,3 +148,7 @@ build/
 
 # Photos en cours de tri (copie locale des zips Drive, relue par le gérant)
 /photos-tri/
+
+# Photos modèles ajoutées depuis la tablette (dossier de données de dev/recette,
+# variable DOSSIER_PHOTOS_MODELES) : des données, pas du code.
+/donnees/

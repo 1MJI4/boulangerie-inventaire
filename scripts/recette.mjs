@@ -8,6 +8,7 @@
 //              (crée .env.recette avec des codes de test au hasard s'il manque)
 //   migrer     prisma migrate deploy sur la recette
 //   donnees    liste d'inventaire (seed) + catalogue de commande (import)
+//              + dossier des photos modèles (reprise de public/modeles, sans écraser)
 //   demo       quelques commandes de test (le serveur recette:dev doit tourner)
 //   dev        next dev, port 3000, pour le PC (http://localhost:3000)
 //   tablette   next dev sur l’adresse wifi du PC (PC + tablette écrivent)
@@ -25,10 +26,10 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { constants as FS, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createConnection } from 'node:net';
 import { networkInterfaces } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'dotenv';
@@ -41,6 +42,9 @@ const SERVICE = 'base';
 const UTILISATEUR_BASE = 'recette';
 const NOM_BASE = 'pain_recette';
 const PORT_APPLI = 3000;
+// Photos modèles : dossier de DONNÉES (ignoré par git), jamais public/.
+const DOSSIER_PHOTOS_DEFAUT = join(RACINE, 'donnees', 'modeles');
+const SOURCE_PHOTOS = join(RACINE, 'public', 'modeles');
 
 const HOTES_LOCAUX = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 const MARQUE_RECETTE = /recette/i;
@@ -72,6 +76,8 @@ function creerEnvRecette() {
     CLOUDPRNT_CLE: randomBytes(36).toString('base64url'),
   };
   let contenu = modele.replace(/^(SESSION_SECRET|CODE_TABLETTE|CODE_GESTION|CLOUDPRNT_CLE)=.*$/gm, (_l, nom) => `${nom}="${valeurs[nom]}"`);
+  // Chemin absolu propre à ce PC (barres obliques : lisible par dotenv sur Windows).
+  contenu = contenu.replace(/^DOSSIER_PHOTOS_MODELES=.*$/m, `DOSSIER_PHOTOS_MODELES="${DOSSIER_PHOTOS_DEFAUT.replace(/\\/g, '/')}"`);
   contenu = contenu.replace(
     /^# \.env\.recette\.example — modèle.*$/m,
     '# .env.recette — configuration LOCALE de recette (ignorée par git, codes de TEST)',
@@ -87,6 +93,51 @@ function chargerEnvRecette() {
   }
   const valeurs = parse(readFileSync(FICHIER_ENV));
   for (const [cle, valeur] of Object.entries(valeurs)) process.env[cle] = valeur;
+  // .env.recette créé avant l'arrivée des photos modèles : chemin par défaut.
+  const photos = process.env.DOSSIER_PHOTOS_MODELES;
+  if (!photos || photos.startsWith('[')) process.env.DOSSIER_PHOTOS_MODELES = DOSSIER_PHOTOS_DEFAUT;
+}
+
+/** Le dossier des photos doit être absolu et hors de public/ (sinon écrasé, ou servi sans contrôle). */
+function verifierDossierPhotos() {
+  const dossier = process.env.DOSSIER_PHOTOS_MODELES;
+  if (!isAbsolute(dossier)) arreter('DOSSIER_PHOTOS_MODELES doit être un chemin absolu dans .env.recette.');
+  const rel = relative(join(RACINE, 'public'), resolve(dossier));
+  if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) {
+    arreter('DOSSIER_PHOTOS_MODELES ne doit pas être dans public/ : choisissez un dossier de données (par défaut donnees/modeles).');
+  }
+  return resolve(dossier);
+}
+
+/**
+ * Reprise des photos du dépôt dans le dossier de données, UNE fois : copie
+ * sans jamais écraser, puis repère « .reprise-modeles-faite » posé à côté du
+ * dossier (pas dedans). Ensuite : rien — une photo supprimée ne revient pas.
+ * Même règle que deploiement/vps/preparer-photos-modeles.sh en production.
+ */
+function preparerPhotosModeles() {
+  const dossier = verifierDossierPhotos();
+  const repere = join(dirname(dossier), '.reprise-modeles-faite');
+  mkdirSync(dossier, { recursive: true });
+  if (existsSync(repere)) {
+    console.log(`[recette] photos modèles : reprise déjà faite, rien à copier (${readdirSync(dossier).length} fichiers dans ${dossier}).`);
+    return;
+  }
+  let copiees = 0;
+  let gardees = 0;
+  for (const nom of existsSync(SOURCE_PHOTOS) ? readdirSync(SOURCE_PHOTOS) : []) {
+    const source = join(SOURCE_PHOTOS, nom);
+    if (!statSync(source).isFile()) continue;
+    try {
+      copyFileSync(source, join(dossier, nom), FS.COPYFILE_EXCL);
+      copiees++;
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      gardees++;
+    }
+  }
+  writeFileSync(repere, new Date().toISOString() + '\n');
+  console.log(`[recette] photos modèles : reprise faite — ${copiees} copiées, ${gardees} déjà présentes (non écrasées), dans ${dossier}.`);
 }
 
 // ------------------------------------------------------------ garde-fou
@@ -208,9 +259,9 @@ async function donnees() {
   chargerEnvRecette();
   gardeFou();
   await exigerBaseDemarree();
-  console.log('\n[recette] 1/2 — liste d’inventaire (prisma/seed.mjs)');
+  console.log('\n[recette] 1/3 — liste d’inventaire (prisma/seed.mjs)');
   if (lancer(process.execPath, [join(RACINE, 'prisma', 'seed.mjs')]) !== 0) arreter('le seed a échoué.');
-  console.log('\n[recette] 2/2 — catalogue de commande (scripts/importer-catalogue.mjs)');
+  console.log('\n[recette] 2/3 — catalogue de commande (scripts/importer-catalogue.mjs)');
   const { hote } = decrireUrl('DATABASE_URL');
   const code = lancer(process.execPath, [
     join(RACINE, 'scripts', 'importer-catalogue.mjs'),
@@ -218,6 +269,8 @@ async function donnees() {
     `--je-confirme-la-base=${hote}`,
   ]);
   if (code !== 0) arreter('l’import du catalogue a échoué.');
+  console.log('\n[recette] 3/3 — photos modèles (dossier de données)');
+  preparerPhotosModeles();
   console.log('\n[recette] données chargées. Commandes de démonstration : lancez recette:dev, puis npm run recette:demo');
 }
 
@@ -252,6 +305,8 @@ async function dev() {
   const tablette = process.argv[2] === 'tablette';
   const ip = tablette ? adresseWifi() : null;
   if (tablette && !ip) arreter('adresse wifi du PC introuvable. Relancez avec : npm run recette:tablette -- --ip=192.168.x.y');
+  // Sans effet après la première fois (repère) : rattrape une recette déjà installée.
+  preparerPhotosModeles();
   console.log(
     tablette
       ? `[recette] application sur http://${ip}:${PORT_APPLI} — à ouvrir sur le PC ET sur la tablette (même wifi).\n`

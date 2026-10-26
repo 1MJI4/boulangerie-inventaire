@@ -6,7 +6,9 @@
 #
 # Installe : Node.js 24 LTS, PostgreSQL 17, Caddy (HTTPS automatique), pare-feu.
 # Crée : l'utilisateur système « pain », la base « pain » et son rôle, le
-# dossier /opt/pain-patisserie (code) et /etc/pain-patisserie (secrets).
+# dossier /opt/pain-patisserie (code), /etc/pain-patisserie (secrets),
+# /var/lib/pain-patisserie/modeles (photos modèles, données) et la sauvegarde
+# quotidienne vérifiée (/var/backups/pain-patisserie, pain-sauvegarde.timer).
 #
 # Pourquoi un certificat RSA : l'imprimante Star TSP100IV (firmware 3.5) refuse
 # les chaînes ECDSA P-384 (testé avec Cloudflare le 21/10/2026) et accepte les
@@ -97,6 +99,14 @@ if [ ! -d /opt/pain-patisserie/.git ]; then
   sudo -u pain git clone --branch "$BRANCHE" "$DEPOT" /opt/pain-patisserie
 fi
 
+echo "== Photos modèles : dossier de données hors du code"
+# Pas un secret : écrit ici comme DATABASE_URL, seulement s'il manque.
+if ! grep -q '^DOSSIER_PHOTOS_MODELES=' /etc/pain-patisserie/env; then
+  echo "DOSSIER_PHOTOS_MODELES=/var/lib/pain-patisserie/modeles" >> /etc/pain-patisserie/env
+fi
+set -a; . /etc/pain-patisserie/env; set +a
+bash /opt/pain-patisserie/deploiement/vps/preparer-photos-modeles.sh
+
 echo "== Caddy (HTTPS automatique, certificat RSA)"
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' > /etc/apt/sources.list.d/caddy-stable.list
@@ -107,8 +117,13 @@ systemctl reload caddy || systemctl restart caddy
 
 echo "== Service de l'application"
 install -m 644 /opt/pain-patisserie/deploiement/vps/pain-patisserie.service /etc/systemd/system/pain-patisserie.service
+install -m 644 /opt/pain-patisserie/deploiement/vps/pain-sauvegarde.service /etc/systemd/system/pain-sauvegarde.service
+install -m 644 /opt/pain-patisserie/deploiement/vps/pain-sauvegarde.timer /etc/systemd/system/pain-sauvegarde.timer
 systemctl daemon-reload
 systemctl enable pain-patisserie
+
+echo "== Sauvegarde vérifiée chaque soir (base + photos modèles)"
+systemctl enable --now pain-sauvegarde.timer
 
 echo
 echo "Installation terminée."

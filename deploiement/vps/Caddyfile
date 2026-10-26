@@ -7,6 +7,13 @@
 }
 
 {$DOMAINE} {
+	# Taille max d'une requête entrante. Caddy n'en impose aucune par défaut :
+	# on borne à 15 Mo, assez pour une photo de téléphone (~10 Mo, réduite
+	# ensuite par le serveur) plus l'enveloppe multipart, pas plus. Au-delà,
+	# Caddy répond 413 avant que l'application ne lise quoi que ce soit.
+	request_body {
+		max_size 15MB
+	}
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:3000
 }

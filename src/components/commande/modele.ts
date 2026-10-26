@@ -68,9 +68,21 @@ export function rayonsDe(catalogue: CatalogueCommande): string[] {
 }
 
 /**
+ * Rayons du catalogue (noms à la lettre) RETIRÉS de la grille par défaut et des
+ * boutons de famille : on n'y commande presque jamais (propriétaire, 26/10/2026 :
+ * « très très rare qu'on commande quelque chose du frigo… le laisser dans la
+ * recherche produit »). Leurs produits restent trouvables par la RECHERCHE.
+ * Donnée d'affichage de l'écran de commande, pas une règle de vente : un produit
+ * de ces rayons se commande normalement une fois trouvé.
+ */
+export const RAYONS_HORS_LISTE_PAR_DEFAUT: readonly string[] = ['Frigo-Boisson', 'Frigo-S'];
+
+/**
  * Produits affichés dans la grille. Sans recherche ni rayon choisi : tout le
  * sur-commande (B, C) et, du comptoir (A), les seuls favoris — liste d'accès
- * rapide (LOI 4 : un produit = une fiche, un favori n'apparaît jamais deux fois).
+ * rapide (LOI 4 : un produit = une fiche, un favori n'apparaît jamais deux fois) —
+ * hors des rayons RAYONS_HORS_LISTE_PAR_DEFAUT (favoris compris), trouvables
+ * par la recherche.
  * Produit sans régime : jamais proposé (il ne peut pas être vendu).
  */
 export function fichesVisibles(catalogue: CatalogueCommande, recherche: string, rayon: string | null): FicheCatalogue[] {
@@ -78,6 +90,7 @@ export function fichesVisibles(catalogue: CatalogueCommande, recherche: string, 
   return catalogue.fiches.filter((f) => {
     if (f.produit.regimePrix === null) return false;
     if (rayon !== null && f.produit.categorie !== rayon) return false;
+    if (mots.length === 0 && rayon === null && RAYONS_HORS_LISTE_PAR_DEFAUT.includes(f.produit.categorie)) return false;
     if (mots.length === 0 && rayon === null && f.produit.regimePrix === 'A' && !f.produit.estFavori) return false;
     const texte = normaliserRecherche(`${f.produit.produit} ${f.produit.sousCategorie ?? ''} ${f.produit.categorie}`);
     return mots.every((m) => texte.includes(m));
@@ -760,12 +773,14 @@ export type BoutonFamille = { rayon: string; libelle: string; enAvant: boolean }
 
 /**
  * Boutons de famille, dans l'ordre d'affichage : d'abord les familles mises en
- * avant (ordre de FAMILLES_EN_AVANT), puis les autres dans l'ordre du catalogue.
+ * avant (ordre de FAMILLES_EN_AVANT), puis les autres dans l'ordre du catalogue,
+ * sans les rayons RAYONS_HORS_LISTE_PAR_DEFAUT.
  * Si plusieurs rayons ont le même régime unique, ils restent en avant mais
  * gardent leur nom du catalogue (pas deux boutons « Salé » indiscernables).
  */
 export function boutonsFamilles(catalogue: CatalogueCommande): BoutonFamille[] {
-  const rayons = rayonsDe(catalogue);
+  // Rayons du frigo : pas de bouton (recherche seulement, 26/10/2026).
+  const rayons = rayonsDe(catalogue).filter((r) => !RAYONS_HORS_LISTE_PAR_DEFAUT.includes(r));
   const regimeUnique = new Map<string, RegimePrix | null>();
   for (const r of rayons) {
     const regimes = new Set<RegimePrix>();

@@ -25,6 +25,18 @@ export const MATRICE_ACCES: Record<string, Partial<Record<Methode, EntreeMatrice
     // commandes, idempotent. Une tablette installée suffit.
     PUT: { role: 'tablette', action: 'ranger les commandes passées' },
   },
+  // Galerie des photos modèles (26/10/2026) : la vendeuse les voit, le gérant les gère.
+  'src/app/api/modeles/[fichier]/route.ts': {
+    GET: { role: 'tablette', action: 'voir les photos des modèles' },
+  },
+  'src/app/api/photos-modeles/route.ts': {
+    GET: { role: 'tablette', action: 'voir les photos des modèles' },
+  },
+  'src/app/api/photos-modeles/gestion/route.ts': {
+    GET: { role: 'gerant', action: 'gérer les photos des modèles' },
+    POST: { role: 'gerant', action: 'ajouter une photo de modèle' },
+    PATCH: { role: 'gerant', action: 'ranger les photos des modèles' },
+  },
   'src/app/api/calendrier/route.ts': {
     GET: { role: 'tablette', action: 'consulter le calendrier' },
   },

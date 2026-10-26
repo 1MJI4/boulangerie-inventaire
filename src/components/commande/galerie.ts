@@ -6,16 +6,14 @@
 // produit EXACTEMENT comme un toucher de sa carte (`toucherProduit`), et la
 // ligne retient l'identifiant de la photo (« G043 »), imprimé sur le bon.
 //
-// AUCUNE règle de prix ni de minimum ici : la table des photos est une DONNÉE
-// du catalogue (src/catalogue/photosModeles.ts), le domaine juge ensuite la
-// ligne comme n'importe quelle autre (taille, goût, forme, Pâte à sucre…).
+// AUCUNE règle de prix ni de minimum ici : les photos sont une DONNÉE gérée
+// par le gérant (table « PhotoModele », lue par GET /api/photos-modeles) ; le
+// domaine juge ensuite la ligne comme n'importe quelle autre (taille, goût, forme, Pâte à sucre…).
 // Le supplément « Photo » n'est JAMAIS ajouté d'office (note du catalogue :
 // « SUPP PHOTO » décrit le modèle, pas la commande du client).
 //
 // Imports relatifs avec extension : module exécuté tel quel par `node --test`.
 
-import type { Echec } from '../../domaine/resultat.ts';
-import { signaler } from '../../domaine/messages.ts';
 import type { RegleSupplementParPersonne } from '../../domaine/constantes.ts';
 import type { CorrespondanceComptoir } from '../../domaine/prixComptoir.ts';
 import type { PhotoModele } from '../../catalogue/photosModeles.ts';
@@ -27,26 +25,8 @@ import {
   type LigneEcran,
 } from './modele.ts';
 
-/** Format de l'identifiant (même contrainte que la base : CHECK « LigneCommande_photoModele_format »). */
-export const FORMAT_PHOTO_MODELE = /^[A-Z][0-9]{3}$/;
-
-/**
- * Lecture d'un identifiant de photo reçu (route POST / PATCH). Absent, null ou
- * vide → pas de photo. Sinon il doit avoir le bon format ET exister dans la
- * galerie ; jamais corrigé en silence (pas de mise en majuscules) : refusé
- * avec un message humain (LOI 9), jamais l'erreur brute de la base.
- */
-export function lirePhotoModele(
-  v: unknown,
-  table: readonly Pick<PhotoModele, 'id'>[],
-  champ: string,
-): { ok: true; valeur: string | null } | Echec {
-  if (v === undefined || v === null || v === '') return { ok: true, valeur: null };
-  if (typeof v === 'string' && FORMAT_PHOTO_MODELE.test(v) && table.some((p) => p.id === v)) {
-    return { ok: true, valeur: v };
-  }
-  return signaler('ERR_SAISIE_INVALIDE', { champLibelle: 'photo du modèle' }, { champ });
-}
+// Lecture de l'identifiant reçu par la route : ./photosGestion.ts (`lirePhotoDeLigne`,
+// contrôlé contre la base, photo masquée comprise).
 
 export type ToucherPhoto = { lignes: LigneEcran[]; cle: string; champ: 'quantite' | 'symboles' | 'taille' };
 

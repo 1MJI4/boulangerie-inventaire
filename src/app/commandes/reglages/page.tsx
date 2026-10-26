@@ -19,7 +19,7 @@
 // et le code est redemandé dès que l'accès gérant a expiré (403).
 
 import { useCallback, useEffect, useState } from 'react';
-import { Bouton, Carte, Chargement, Entete, Puce } from '@/components/ui';
+import { Bouton, Carte, Chargement, Entete, LienBouton, Puce } from '@/components/ui';
 import { ListeSignalements } from '@/components/signalement';
 import { RappelChargement } from '@/components/rappels';
 import { AccesGerant } from '@/components/commande/AccesGerant';
@@ -206,7 +206,14 @@ export default function ReglagesCommandes() {
       <Entete
         titre="Réglages des commandes"
         sousTitre="Les prix, minimums et formats viennent du tarif importé : ils ne se changent pas ici."
-        actions={message ? <Puce ton="ok">{message}</Puce> : undefined}
+        actions={
+          <>
+            {message ? <Puce ton="ok">{message}</Puce> : null}
+            <LienBouton href="/commandes/reglages/photos" className="min-h-12 px-5 text-base">
+              Photos des modèles
+            </LienBouton>
+          </>
+        }
       />
       <div role="tablist" aria-label="Sujet des réglages" className="mb-3 flex flex-wrap gap-1.5">
         {onglets.map((o) => (

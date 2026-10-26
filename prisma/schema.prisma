@@ -129,8 +129,10 @@ model ProduitCatalogue {
   creeLe        DateTime   @default(now())
   modifieLe     DateTime   @updatedAt
 
-  prix   PrixProduit[]
-  lignes LigneCommande[]
+  prix          PrixProduit[]
+  lignes        LigneCommande[]
+  // Galerie : photos modeles rattachees a ce produit (par cleCatalogue).
+  photosModeles PhotoModele[]
 
   @@index([nom])
   @@index([regimePrix, actif])
@@ -356,7 +358,7 @@ model Commande {
 }
 
 model LigneCommande {
-  id           Int     @id @default(autoincrement())
+  id           Int          @id @default(autoincrement())
   libelle      String
   // LOI 2 — quantite dans l'unite de base de `unite` : pieces / parts, ou
   // GRAMMES si unite = kg. Toujours > 0 (contrainte en base).
@@ -366,10 +368,10 @@ model LigneCommande {
   // = PrixProduit.prixCentimes de la version (ERR_TARIF_INCOHERENT), sauf
   // prix PLANCHER (regime C par personne / a la piece) : >= plancher.
   prixCentimes Int
-  unite        Unite   @default(piece) // = ProduitCatalogue.unite si produitCatalogueId (declencheur)
+  unite        Unite        @default(piece) // = ProduitCatalogue.unite si produitCatalogueId (declencheur)
   poste        String?
   precision    String?
-  ordre        Int     @default(0)
+  ordre        Int          @default(0)
   // Number Cake — nombre de chiffres/lettres (« 25 » = 2), pour rejouer
   // PrixProduit.minimumParSymbole cote serveur. NULL hors Number Cake.
   nbSymboles   Int?
@@ -378,8 +380,8 @@ model LigneCommande {
   formes       String?
   // R62 — gout (ou recette d'entremet) du gateau, un par etage ; decorations
   // facultatives (Oreo, Kinder...). Mots des listes du gerant ou texte libre.
-  gouts        String[] @default([])
-  decorations  String[] @default([])
+  gouts        String[]     @default([])
+  decorations  String[]     @default([])
   // R63 — forme du gateau (Bavarois, Creme fraiche, Entremet, Cake nature),
   // decision du proprietaire du 26/10/2026 : 'carre' ou 'rond' (type `Forme`
   // de src/domaine/types.ts, = LigneControlee.forme). NULL pour toute ligne
@@ -398,7 +400,12 @@ model LigneCommande {
   // A NE PAS CONFONDRE avec Commande.photoWhatsapp (le CLIENT a envoye sa
   // propre photo) ni Commande.photoImprimee (photo a imprimer SUR le gateau,
   // supplement) : ici c'est une photo de la galerie interne de l'app.
+  // Depuis la migration 20261026150000 : cle etrangere vers PhotoModele.id
+  // (ON DELETE / ON UPDATE RESTRICT) -> une photo citee par une commande ne
+  // disparait jamais et ne change jamais d'identifiant. Le CHECK de format
+  // est conserve.
   photoModele  String?
+  photo        PhotoModele? @relation(fields: [photoModele], references: [id], onDelete: Restrict, onUpdate: Restrict)
   // R14 — pain surprise : nombre de sandwichs demandes au total (> 0). Le
   // maximum par pain est un avertissement : pas de contrainte.
   nbObjets     Int?
@@ -447,6 +454,7 @@ model LigneCommande {
   @@index([commandeId])
   @@index([produitCatalogueId])
   @@index([prixProduitId])
+  @@index([photoModele])
 }
 
 // Rien n'est jamais efface : modifier une commande ajoute une ligne ici.
@@ -581,4 +589,62 @@ model TravailImpression {
 
   @@index([statut, id])
   @@index([commandeId])
+}
+
+// ============================================================================
+//  GALERIE DE PHOTOS MODELES (decision du proprietaire, 26/10/2026)
+//  Le gerant gere lui-meme les photos : ajouter, ranger dans un rayon,
+//  rattacher a un produit, modifier la note, masquer. Reprise des 152 photos
+//  de src/catalogue/photosModeles.ts : migration 20261026150000.
+//  JAMAIS supprimee (une ancienne commande cite la photo) : `masquee = true`.
+//  Declencheur PhotoModele_controler : DELETE et changement d'id refuses
+//  (ERR_PHOTO_IMMUABLE). RLS activee, aucun droit anon/authenticated.
+// ============================================================================
+model PhotoModele {
+  // Identifiant imprime sur le bon (« Photo selectionnee : G043 »).
+  // CHECK PhotoModele_id_format : ^[A-Z][0-9]{3}$ (meme format que
+  // LigneCommande_photoModele_format). Reprise : G/S d'origine.
+  // NOUVELLE photo : NE PAS fournir d'id -> la base attribue 'P' + numero
+  // a 3 chiffres par la sequence "PhotoModele_numero_P_seq" (atomique, sans
+  // collision entre tablettes, trous possibles, P999 maximum, jamais
+  // reemploye). Pour connaitre l'id AVANT d'ecrire le fichier image :
+  // `SELECT 'P' || lpad(nextval('"PhotoModele_numero_P_seq"')::text, 3, '0')`
+  // puis creer la ligne avec cet id explicite.
+  id          String            @id @default(dbgenerated("('P'::text || lpad((nextval('\"PhotoModele_numero_P_seq\"'::regclass))::text, 3, '0'::text))"))
+  // Rayon de la galerie, libelle libre du gerant. CHECK
+  // PhotoModele_categorie_non_vide (non vide, <= 60 caracteres).
+  categorie   String
+  // Produit du catalogue de COMMANDE (LOI 10, jamais un produit
+  // d'inventaire), par sa cle stable `ProduitCatalogue.cleCatalogue`
+  // (« gateaux-sur-commande/bavarois ») : c'est la cle qu'utilise
+  // src/catalogue/. NULL = la vendeuse choisit le produit. Cle etrangere
+  // RESTRICT, posee NOT VALID (base neuve : migrations avant import du
+  // catalogue), validee par la migration si le catalogue est deja importe.
+  produitCle  String?
+  produit     ProduitCatalogue? @relation(fields: [produitCle], references: [cleCatalogue], onDelete: Restrict, onUpdate: Restrict)
+  // Supplements faisant partie du modele (cles du catalogue). Pas de cle
+  // etrangere possible sur un tableau : verifies par la requete
+  // d'integrite de la migration. CHECK : aucun element NULL ou vide.
+  supplements String[]          @default([])
+  // Note courte pour la vendeuse. CHECK PhotoModele_note_valide : <= 120
+  // caracteres, non vide, LOI 1 -> ni « € » ni « euro ».
+  note        String?
+  // Photo retiree de la galerie, gardee pour l'historique des commandes.
+  masquee     Boolean           @default(false)
+  // Ordre d'affichage dans le rayon (>= 0). Reprise : rang x 10. Non
+  // unique : deux photos a egalite se departagent par id.
+  ordre       Int
+  // Nom du fichier dans public/modeles/ (« G043.jpg », « P001-3fa9c2.jpg »).
+  // CHECK PhotoModele_fichier_valide : nom simple (pas de chemin), commence
+  // par l'id, extension jpg/jpeg/png/webp. Unique.
+  fichier     String            @unique
+  creeLe      DateTime          @default(now())
+  modifieLe   DateTime          @default(now()) @updatedAt
+  // Prenom declare (pas de comptes par employe) ; NULL pour la reprise.
+  creePar     String?
+
+  lignes LigneCommande[]
+
+  @@index([categorie, masquee, ordre])
+  @@index([produitCle])
 }

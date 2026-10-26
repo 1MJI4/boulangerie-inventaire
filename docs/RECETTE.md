@@ -90,3 +90,8 @@ nouveaux codes.
   « recette » dans le nom de base, pour `DATABASE_URL` et `DIRECT_URL`).
 - `scripts/recette-demo.mjs` : les commandes de démonstration passent par la
   vraie route `POST /api/commandes` (règles rejouées côté serveur).
+- Photos modèles : dossier de données `DOSSIER_PHOTOS_MODELES` (défaut
+  `donnees/modeles/`, ignoré par git, jamais `public/`). Rempli une fois avec
+  les images de `public/modeles/` par `recette:donnees` (étape 3/3), sans
+  écraser ; repère `donnees/.reprise-modeles-faite`. Pour repartir de zéro :
+  supprimer `donnees/` puis relancer `recette:donnees`. Voir docs/MISE-EN-SERVICE.md.

@@ -6,6 +6,9 @@
 //   getPrixServeur(cleCatalogue, date)  → prix en vigueur à cette date
 //   getProduitServeur(cleCatalogue)     → fiche produit (jamais supprimée)
 //   listerParCategorieServeur(date)     → rayons au tarif à cette date
+//   listerPhotosModeles / categoriesPhotosModeles / getPhotoModele,
+//   creerPhotoModele / modifierPhotoModele / masquerPhotoModele /
+//   deplacerPhotoModele                 → galerie de photos (table PhotoModele)
 //
 // RÈGLE DU PROPRIÉTAIRE (15/10/2026) : le catalogue de COMMANDE (CSV +
 // affiches) et les produits d'INVENTAIRE sont deux mondes séparés. Ce module
@@ -27,6 +30,12 @@ import type { OptionsListe } from "./catalogue.ts";
 import type { ChampsProduitModifiables, ClientEcritureCatalogue, DepotEcritureCatalogue, PrixAttendu, ProduitAttendu } from "./ecritureBase.ts";
 import { creerLecteurBase, dateIsoVersBase, type LecteurCatalogueBase, type ProduitAvecPrixBase, type SourceCatalogueBase } from "./lectureBase.ts";
 import type { DateISO, PrixEnVigueurServeur, ProduitServeur, RayonAuTarifServeur } from "./types.ts";
+import { aujourdhuiMagasin } from "./lectureBase.ts";
+import { creerGaleriePhotos, type CreationAvecImage, type DepotPhotosModeles, type GaleriePhotosBase, type OptionsListePhotos } from "./photosModelesBase.ts";
+import type { CatalogueDesPhotos, LignePhotoBase, ModificationPhoto, PhotoModele } from "./photosModeles.ts";
+import { signaler } from "../domaine/messages.ts";
+import type { Echec } from "../domaine/resultat.ts";
+import { journaliser, nouvelleReference } from "../lib/journal.ts";
 
 // ------------------------------------------------------------ Client Prisma
 // Typage volontairement minimal : ce module ne dépend que des méthodes qu'il
@@ -208,4 +217,150 @@ export async function getProduitServeur(cleCatalogue: string): Promise<Resultat<
 /** Rayons au tarif à `date`, dans l'ordre d'import ; favoris dans leur rayon réel (LOI 4). */
 export async function listerParCategorieServeur(date: DateISO, options?: OptionsListe): Promise<Resultat<RayonAuTarifServeur[]>> {
   return (await lecteurPartage()).listerParCategorie(date, options);
+}
+
+// ------------------------------------------------------------ Galerie de photos modèles (table « PhotoModele »)
+// Décision du propriétaire (26/10/2026) : le gérant gère lui-même les photos.
+// Logique et validations : ./photosModelesBase.ts et ./photosModeles.ts (purs).
+// Ici : uniquement le branchement Prisma. Le nom du modèle n'apparaît qu'ici.
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export interface ClientPrismaPhotos {
+  photoModele: { findMany: Methode; findUnique: Methode; create: Methode; update: Methode };
+  $queryRawUnsafe: (sql: string, ...valeurs: unknown[]) => Promise<any>;
+}
+export interface ClientPrismaPhotosAvecTransaction extends ClientPrismaPhotos {
+  $transaction: (travail: (tx: any) => Promise<any>, options?: { timeout?: number; maxWait?: number }) => Promise<any>;
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+/** true si le client connaît le modèle PhotoModele (garde-fou : client Prisma non régénéré). */
+export function connaitPhotoModele(client: unknown): client is ClientPrismaPhotosAvecTransaction {
+  const c = client as Partial<ClientPrismaPhotos> | null;
+  return typeof c?.photoModele?.findMany === "function";
+}
+
+const CHAMPS_PHOTO = {
+  id: true,
+  categorie: true,
+  produitCle: true,
+  supplements: true,
+  note: true,
+  masquee: true,
+  ordre: true,
+  fichier: true,
+  creePar: true,
+} as const;
+
+/** Requête constante (aucune valeur saisie) : identifiant 'P' + 3 chiffres, atomique entre tablettes. */
+const SQL_RESERVER_ID = `SELECT 'P' || lpad(nextval('"PhotoModele_numero_P_seq"')::text, 3, '0') AS id`;
+
+/**
+ * Dépôt Prisma de la galerie. `transaction` absent : on est déjà dans une
+ * transaction (client `tx`), le travail s'exécute directement.
+ */
+export function depotPhotosPrisma(client: ClientPrismaPhotos, transaction?: ClientPrismaPhotosAvecTransaction["$transaction"]): DepotPhotosModeles {
+  const depot: DepotPhotosModeles = {
+    async lirePhotos({ inclureMasquees }) {
+      return (await client.photoModele.findMany({
+        where: inclureMasquees ? {} : { masquee: false },
+        orderBy: [{ ordre: "asc" }, { id: "asc" }],
+        select: CHAMPS_PHOTO,
+      })) as LignePhotoBase[];
+    },
+    async lirePhoto(id) {
+      return (await client.photoModele.findUnique({ where: { id }, select: CHAMPS_PHOTO })) as LignePhotoBase | null;
+    },
+    async reserverId() {
+      const lignes = (await client.$queryRawUnsafe(SQL_RESERVER_ID)) as { id: string }[];
+      return lignes[0].id;
+    },
+    async inserer(ligne) {
+      return (await client.photoModele.create({ data: ligne, select: CHAMPS_PHOTO })) as LignePhotoBase;
+    },
+    async modifier(id, champs) {
+      // `modifieLe` : @updatedAt. Jamais l'id (déclencheur ERR_PHOTO_IMMUABLE).
+      return (await client.photoModele.update({ where: { id }, data: champs, select: CHAMPS_PHOTO })) as LignePhotoBase;
+    },
+    async transaction(travail) {
+      if (!transaction) return travail(depot);
+      return transaction((tx: ClientPrismaPhotos) => travail(depotPhotosPrisma(tx)), { timeout: 20_000, maxWait: 10_000 });
+    },
+  };
+  return depot;
+}
+
+let galerie: GaleriePhotosBase | null = null;
+
+/** Contrôle des produits d'une photo : même lecteur que getPrixServeur (catalogue de commande en base). */
+const CATALOGUE_DES_PHOTOS: CatalogueDesPhotos = {
+  getProduit: async (cle) => (await lecteurPartage()).getProduit(cle),
+  getPrix: async (cle, date) => (await lecteurPartage()).getPrix(cle, date),
+};
+
+async function galeriePartagee(): Promise<GaleriePhotosBase | Echec> {
+  if (galerie) return galerie;
+  const { prisma } = await import("../lib/prisma.ts");
+  if (!connaitPhotoModele(prisma)) {
+    // Client Prisma généré sans PhotoModele (`prisma generate` non relancé) :
+    // panne de configuration. AUCUN repli sur la copie figée. Pas de cache.
+    const reference = nouvelleReference();
+    journaliser({
+      niveau: "erreur",
+      code: "ERR_CONFIGURATION_SERVEUR",
+      route: "catalogue/photos-modeles",
+      reference,
+      piste: "Client Prisma sans le modèle PhotoModele : relancer `prisma generate` puis redémarrer.",
+    });
+    return signaler("ERR_CONFIGURATION_SERVEUR", { reference });
+  }
+  galerie = creerGaleriePhotos(depotPhotosPrisma(prisma, prisma.$transaction.bind(prisma)), CATALOGUE_DES_PHOTOS, {
+    aujourdhui: () => aujourdhuiMagasin(),
+  });
+  return galerie;
+}
+
+async function avecGalerie<T>(travail: (g: GaleriePhotosBase) => Promise<Resultat<T>>): Promise<Resultat<T>> {
+  const g = await galeriePartagee();
+  return "ok" in g ? g : travail(g);
+}
+
+/**
+ * Photos de la galerie, triées par rayon (ordre des rayons = donnée, voir
+ * `rayonsDansLOrdre`), puis ordre, puis identifiant. Par défaut SANS les
+ * photos masquées (galerie de la vendeuse) ; `inclureMasquees: true` pour
+ * l'écran du gérant. `url` = « /api/modeles/<fichier> ».
+ */
+export function listerPhotosModeles(options?: OptionsListePhotos): Promise<Resultat<PhotoModele[]>> {
+  return avecGalerie((g) => g.listerPhotosModeles(options));
+}
+
+/** Rayons dans leur ordre d'affichage (par défaut sans les rayons dont toutes les photos sont masquées). */
+export function categoriesPhotosModeles(options?: { inclureMasquees?: boolean }): Promise<Resultat<string[]>> {
+  return avecGalerie((g) => g.categoriesPhotosModeles(options));
+}
+
+/** Une photo, MÊME MASQUÉE (une ancienne commande peut la citer). Inconnue → ERR_SAISIE_INVALIDE (champ photoModele). */
+export function getPhotoModele(id: string): Promise<Resultat<PhotoModele>> {
+  return avecGalerie((g) => g.getPhotoModele(id));
+}
+
+/** Ajout par le gérant : validation, identifiant 'P…' réservé, image écrite par `enregistrerImage`, puis ligne. */
+export function creerPhotoModele(saisie: CreationAvecImage): Promise<Resultat<PhotoModele>> {
+  return avecGalerie((g) => g.creerPhotoModele(saisie));
+}
+
+/** Rayon, produit, suppléments, note, ordre. Seuls les champs présents changent. */
+export function modifierPhotoModele(id: string, modification: ModificationPhoto): Promise<Resultat<PhotoModele>> {
+  return avecGalerie((g) => g.modifierPhotoModele(id, modification));
+}
+
+/** Masquer (true) ou remettre dans la galerie (false). Jamais de suppression. */
+export function masquerPhotoModele(id: string, masquee: boolean): Promise<Resultat<PhotoModele>> {
+  return avecGalerie((g) => g.masquerPhotoModele(id, masquee));
+}
+
+/** Boutons ◀ ▶ : échange avec la voisine du rayon. Renvoie le rayon entier (masquées comprises), dans le nouvel ordre. */
+export function deplacerPhotoModele(id: string, sens: "avant" | "apres"): Promise<Resultat<PhotoModele[]>> {
+  return avecGalerie((g) => g.deplacerPhotoModele(id, sens));
 }

@@ -136,6 +136,7 @@ import { BandeRetrait } from '@/components/commande/BandeRetrait';
 import { GaleriePhotos } from '@/components/commande/GaleriePhotos';
 import { ajouterAvecPhoto, ficheDePhoto, navigationPourPhoto, retirerPhoto } from '@/components/commande/galerie';
 import type { PhotoModele } from '@/catalogue/photosModeles';
+import { useUrlPhoto } from '@/components/commande/photosClient';
 
 const CHAMP_TEXTE =
   'min-h-12 w-full rounded-xl border-2 border-line-fort bg-surface px-3 text-base text-ink placeholder:text-ink-3';
@@ -809,6 +810,16 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
             );
             return <>{boutons}</>;
           }
+          // Photo de modèle refusée (inconnue, ou retirée de la galerie par le gérant) :
+          // la sortie retire la photo, jamais la ligne (voir `corriger`).
+          if (champLocal(s.champ) === 'photoModele' && iLigne !== null && lignes[iLigne]?.photoModele) {
+            boutons.push(
+              <BoutonSortie key="retirer-photo" onClick={() => corriger(s, null)}>
+                Retirer la photo
+              </BoutonSortie>,
+            );
+            return <>{boutons}</>;
+          }
           if (so.libelle && !so.avecValeur) {
             boutons.push(
               <BoutonSortie key="action" onClick={() => corriger(s, undefined)}>
@@ -1308,7 +1319,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   const bandeauPhoto = photoEnAttente ? (
     <div role="status" className="mb-2 flex items-center gap-3 rounded-xl border-2 border-accent bg-accent-doux p-2">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={photoEnAttente.fichier} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
+      <img src={photoEnAttente.url} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
       <p className="min-w-0 flex-1 text-base leading-tight text-ink">
         <b>{navigationPourPhoto(photoEnAttente).consigne}</b>
         <span className="block text-sm text-ink-2">La photo {photoEnAttente.id} ira sur le produit que vous touchez.</span>
@@ -2214,19 +2225,12 @@ function LigneDuBon({
               className={CHAMP_TEXTE}
             />
           ) : (
-            <p className="text-base font-semibold leading-snug text-ink">{fiche ? libelleProduit(fiche) : 'Produit absent du tarif'}</p>
+            <p className="break-words text-base font-semibold leading-snug text-ink">{fiche ? libelleProduit(fiche) : 'Produit absent du tarif'}</p>
           )}
           <p className="text-xs text-ink-2">{libelleRegime(fiche, libre)}</p>
           {ligne.photoModele ? (
             <div className="mt-1.5 flex items-center gap-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`/modeles/${ligne.photoModele}.jpg`}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                className="h-12 w-12 shrink-0 rounded-lg border border-line object-cover"
-              />
+              <VignettePhotoLigne key={ligne.photoModele} id={ligne.photoModele} />
               <span className="chiffres text-base font-semibold text-ink">Photo {ligne.photoModele}</span>
               <button
                 type="button"
@@ -2406,7 +2410,7 @@ function LigneDuBon({
         type="button"
         onClick={basculerDetail}
         aria-expanded={detail}
-        className="mt-1 min-h-10 max-w-full truncate text-left text-sm text-ink-2 underline underline-offset-2"
+        className="mt-1 min-h-10 max-w-full break-words text-left text-sm text-ink-2 underline underline-offset-2"
       >
         {ligne.precision ? `Précision : ${ligne.precision}` : regime === 'B' ? 'Garnitures, précision…' : goutAPart ? 'Précision (peu sucré, sans gluten…)' : 'Parfum, précision…'}
       </button>
@@ -2475,6 +2479,8 @@ function LigneDuBon({
 /* ========================================================= Choix produits */
 
 const MAX_CARTES = 60;
+/** Au-delà de ce nombre de caractères, le nom d'une carte produit passe en plus petit (jamais coupé, LOI 5). */
+const LONGUEUR_LIBELLE_LONG = 30;
 
 /**
  * UNE grille de produits (plus d'onglets par régime), une recherche, des
@@ -2630,7 +2636,7 @@ function GrilleProduits({
                 onClick={() => onToucher(f)}
                 aria-label={`${libelleProduit(f)}${pastille ? `, ${pastille} au bon` : ''}${indisponible ? ', ajoutez d’abord un gâteau' : ''}`}
                 className={`relative flex w-full flex-col justify-between rounded-xl border-2 text-left transition duration-300 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 ${
-                  tablette ? 'h-full min-h-16 gap-0.5 px-2.5 py-1.5' : 'min-h-20 gap-1 px-3 py-2'
+                  tablette ? 'h-full min-h-16 gap-0.5 px-2.5 py-1.5' : 'h-full min-h-20 gap-1 px-3 py-2'
                 } ${
                   eclaire
                     ? 'border-accent bg-accent-doux ring-4 ring-accent/40'
@@ -2639,8 +2645,18 @@ function GrilleProduits({
                       : 'border-line bg-surface hover:bg-surface-2'
                 }`}
               >
+                {/* LOI 5 : le nom du catalogue se lit EN ENTIER (jamais « … ») ; un nom long
+                    passe à la ligne en plus petit. Les cartes d'une rangée gardent la même hauteur. */}
                 <span
-                  className={`line-clamp-2 pr-6 font-medium text-ink ${tablette ? 'text-[15px] leading-tight' : 'text-base leading-snug'}`}
+                  className={`break-words pr-6 font-medium text-ink ${
+                    libelleProduit(f).length > LONGUEUR_LIBELLE_LONG
+                      ? tablette
+                        ? 'text-[13px] leading-tight'
+                        : 'text-sm leading-snug'
+                      : tablette
+                        ? 'text-[15px] leading-tight'
+                        : 'text-base leading-snug'
+                  }`}
                 >
                   {libelleProduit(f)}
                 </span>
@@ -2780,6 +2796,20 @@ function Confirmation({
 }
 
 /* ================================================================ Morceaux */
+
+/**
+ * Vignette de la photo de modèle d'une ligne (adresse lue en base, photo
+ * masquée comprise : une commande déjà prise la garde). Tant que l'adresse
+ * n'est pas connue, un carré vide de même taille : la ligne ne bouge pas.
+ */
+function VignettePhotoLigne({ id }: { id: string }) {
+  const url = useUrlPhoto(id);
+  const classe = 'h-12 w-12 shrink-0 rounded-lg border border-line object-cover';
+  if (!url) return <span aria-hidden="true" className={`${classe} bg-surface-2`} />;
+  // Images déjà allégées (640 px) : servies telles quelles, sans passage par l'optimiseur.
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={url} alt="" loading="lazy" decoding="async" className={classe} />;
+}
 
 function BoutonSortie({ onClick, children }: { onClick: () => void; children: ReactNode }) {
   return (

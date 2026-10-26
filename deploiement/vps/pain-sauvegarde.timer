@@ -1,0 +1,11 @@
+# deploiement/vps/pain-sauvegarde.timer — chaque soir à 21h30, après l'inventaire de 20h.
+# Persistent : si le serveur était éteint à 21h30, la sauvegarde part au redémarrage.
+[Unit]
+Description=Pain Patisserie - sauvegarde quotidienne
+
+[Timer]
+OnCalendar=*-*-* 21:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

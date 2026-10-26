@@ -1,248 +1,360 @@
 // src/catalogue/photosModeles.ts
 //
-// Galerie de photos de modèles (décision du propriétaire, 26/10/2026) : le
-// client montre une photo, la vendeuse la touche, l'application choisit le
+// Galerie de photos de modèles — règles PURES (types, contrôles, ordre).
+// Propriétaire : agent `catalogue-prix`.
+//
+// Le client montre une photo, la vendeuse la touche, l'application choisit le
 // produit du catalogue de commande ; le bon imprimé indique seulement
 // « Photo sélectionnée : G043 » (aucune image imprimée).
-// Propriétaire de la donnée : agent `catalogue-prix`.
 //
-// DONNÉE EXPLICITE, jamais déduite du nom de fichier au runtime (LOI 6) : les
-// photos ont été triées par le propriétaire dans `photos-tri/` (un dossier =
-// un produit) ; cette table en est la transcription relue. Les images servies
-// sont des copies allégées (640 px, JPEG) dans `public/modeles/<ID>.jpg`.
+// SOURCE DE VÉRITÉ (décision du propriétaire, 26/10/2026 : le gérant gère
+// lui-même les photos) : la table « PhotoModele » en base, reprise des 152
+// photos par la migration 20261026150000_galerie_photos_en_base. Ce fichier
+// ne contient AUCUNE photo : seulement ce qui se vérifie sans base, pour que
+// chaque refus soit dit en français AVANT d'écrire (LOI 9 — jamais d'erreur
+// PostgreSQL brute). Accès base : ./photosModelesBase.ts (logique) et
+// ./serveur.ts (Prisma).
 //
-// AUCUN PRIX ICI (LOI 1). Les notes de prix du propriétaire (« 6,5 », « 5 €
-// pochage »…) sont dans docs/QUESTIONS-GERANT.md, jamais dans ce fichier.
-// Une note « SUPP PHOTO » n'ajoute PAS le supplément photo : c'est le modèle
-// qui avait une photo imprimée, pas forcément la commande du client.
+// Utilisable dans le navigateur (aucun import node:, aucun Prisma).
 //
-// `produit: null` = la photo ne désigne pas un seul produit du catalogue
-// (plusieurs tailles possibles, ou produit absent du tarif) : la vendeuse
-// choisit le produit elle-même.
-// HYPOTHÈSE À VALIDER (docs/QUESTIONS-GERANT.md, questions 72 à 80) :
-//  - Bûches : 4P, 6P, 8P, 10P ou bûchette, impossible à trancher sur photo → null.
-//  - Tartes : tarte aux fraises (Croûte fraises 6P ou 8P ?), tarte banane et
-//    tarte citron meringuée (absentes du tarif) → null ; le moelleux aux
-//    Smarties → « Tarte Moelleux 6P » du comptoir.
-//  - Mini-pâtisseries : G009 et G015 (petits carrés de mousse framboise,
-//    passion/mangue, chocolat) → Mini bavarois ; les autres (éclairs, gros
-//    macarons, pâtisseries individuelles, assortiment mélangé) → null.
-//  - G075 « 2 ETAGE » rangé par le propriétaire dans Entremet → Entremet.
-//  - G042 « Bavarois citron » : le citron n'est pas dans les variantes du
-//    Bavarois sur l'affiche.
-// Non retenus : G161 (copie exacte de G047) et G165 (copie exacte de G101) ;
-// dossiers « Doublons », « À vérifier », « Nouveaux produits (prix à créer) »
-// et « Pâte à sucre/Carré » (gâteau de base inconnu, question 72).
-//
-// Contrôlée par src/catalogue/photosModeles.test.ts : chaque produit et
-// supplément existe au catalogue à la date du jour, chaque fichier existe,
-// identifiants uniques, aucun montant dans les notes.
+// AUCUN PRIX dans une photo (LOI 1) : ni dans la note, ni ailleurs. Une note
+// « SUPP PHOTO » n'ajoute PAS le supplément photo : elle décrit le modèle,
+// pas la commande du client.
 
+import { signaler } from "../domaine/messages.ts";
+import { succes, type Echec, type Resultat } from "../domaine/resultat.ts";
+import type { DateISO, Famille } from "./types.ts";
+
+// ------------------------------------------------------------ Types
+
+/** Une photo de la galerie, telle que la lisent les écrans. */
 export interface PhotoModele {
-  /** Identifiant imprimé sur le bon : « G043 » (gâteau) ou « S005 » (salé). */
+  /** Identifiant imprimé sur le bon : « G043 », « S005 », « P001 » (photo ajoutée par le gérant). */
   id: string;
-  /** Chemin public de l'image allégée. */
-  fichier: string;
-  /** Clé du produit au catalogue de commande ; null = la vendeuse choisit. */
+  /** Adresse de l'image, servie par l'application : `/api/modeles/<fichier>`. */
+  url: string;
+  /** Clé du produit au catalogue de commande ; null = la vendeuse choisit le produit. */
   produit: string | null;
-  /** Rayon de la galerie. */
+  /** Rayon de la galerie (libellé du gérant, à la lettre). */
   categorie: string;
-  /** Suppléments qui font partie du modèle (clés du catalogue). */
+  /**
+   * Suppléments qui font partie du modèle (clés du catalogue). TOUJOURS
+   * présent (éventuellement vide) dans ce que renvoie l'API ; marqué
+   * facultatif seulement pour que galerie.test.ts (`commandes-traiteur`)
+   * compile tel quel. À rendre obligatoire avec le retrait de la copie figée.
+   */
   supplements?: readonly string[];
-  /** Note courte du propriétaire, lisible par la vendeuse. Jamais de prix. */
-  note?: string;
+  /** Note courte pour la vendeuse. Jamais de prix. */
+  note: string | null;
+  /** Retirée de la galerie, gardée pour les commandes qui la citent. */
+  masquee: boolean;
+  /** Rang dans le rayon (croissant ; égalité départagée par l'identifiant). */
+  ordre: number;
+  /**
+   * @deprecated Présent UNIQUEMENT sur la copie figée de ./photosModelesReprise.ts
+   * (ancien chemin `/modeles/G043.jpg`). Utiliser `url`. Sera retiré avec elle.
+   */
+  fichier?: string;
 }
 
-const NOTE_PHOTO = "Modèle avec photo imprimée (+ supplément)";
-const NOTE_WHATSAPP = "Déco à valider sur WhatsApp";
-
-export const PHOTOS_MODELES: readonly PhotoModele[] = [
-  // Bavarois
-  { id: "G001", fichier: "/modeles/G001.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois" },
-  { id: "G002", fichier: "/modeles/G002.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois" },
-  { id: "G005", fichier: "/modeles/G005.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois" },
-  { id: "G008", fichier: "/modeles/G008.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois" },
-  { id: "G017", fichier: "/modeles/G017.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois", note: "Bavarois mousse chocolat" },
-  { id: "G022", fichier: "/modeles/G022.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois" },
-  { id: "G025", fichier: "/modeles/G025.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois", note: "Bavarois framboise" },
-  { id: "G036", fichier: "/modeles/G036.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois" },
-  { id: "G042", fichier: "/modeles/G042.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois", note: "Bavarois citron" },
-  { id: "G058", fichier: "/modeles/G058.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois", note: "Forêt noire" },
-  { id: "G062", fichier: "/modeles/G062.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois" },
-  { id: "G067", fichier: "/modeles/G067.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois" },
-  { id: "G074", fichier: "/modeles/G074.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois" },
-  { id: "G097", fichier: "/modeles/G097.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois" },
-  { id: "G102", fichier: "/modeles/G102.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois", note: NOTE_WHATSAPP },
-  { id: "G106", fichier: "/modeles/G106.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois", note: NOTE_PHOTO },
-  { id: "G121", fichier: "/modeles/G121.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois" },
-  { id: "G129", fichier: "/modeles/G129.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois", note: NOTE_PHOTO },
-  { id: "G136", fichier: "/modeles/G136.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois" },
-  { id: "G143", fichier: "/modeles/G143.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois" },
-  { id: "G189", fichier: "/modeles/G189.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois" },
-  { id: "G194", fichier: "/modeles/G194.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois" },
-  { id: "G195", fichier: "/modeles/G195.jpg", produit: "gateaux-sur-commande/bavarois", categorie: "Bavarois" },
-
-  // Crème fraîche
-  { id: "G007", fichier: "/modeles/G007.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche" },
-  { id: "G028", fichier: "/modeles/G028.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche" },
-  { id: "G034", fichier: "/modeles/G034.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche", note: NOTE_PHOTO },
-  { id: "G039", fichier: "/modeles/G039.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche" },
-  { id: "G044", fichier: "/modeles/G044.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche", note: NOTE_PHOTO },
-  { id: "G049", fichier: "/modeles/G049.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche" },
-  { id: "G050", fichier: "/modeles/G050.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche", note: "Pochage (supplément à confirmer)" },
-  { id: "G051", fichier: "/modeles/G051.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche" },
-  { id: "G052", fichier: "/modeles/G052.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche", note: NOTE_PHOTO },
-  { id: "G056", fichier: "/modeles/G056.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche" },
-  { id: "G057", fichier: "/modeles/G057.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche", note: NOTE_PHOTO },
-  { id: "G066", fichier: "/modeles/G066.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche" },
-  { id: "G070", fichier: "/modeles/G070.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche", note: NOTE_PHOTO },
-  { id: "G084", fichier: "/modeles/G084.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche" },
-  { id: "G085", fichier: "/modeles/G085.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche" },
-  { id: "G087", fichier: "/modeles/G087.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche" },
-  { id: "G091", fichier: "/modeles/G091.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche" },
-  { id: "G092", fichier: "/modeles/G092.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche" },
-  { id: "G093", fichier: "/modeles/G093.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche", note: NOTE_PHOTO },
-  { id: "G109", fichier: "/modeles/G109.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche", note: NOTE_PHOTO },
-  { id: "G125", fichier: "/modeles/G125.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche" },
-  { id: "G127", fichier: "/modeles/G127.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche" },
-  { id: "G133", fichier: "/modeles/G133.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche" },
-  { id: "G135", fichier: "/modeles/G135.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche" },
-  { id: "G152", fichier: "/modeles/G152.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche", note: NOTE_PHOTO },
-  { id: "G174", fichier: "/modeles/G174.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche" },
-  { id: "G190", fichier: "/modeles/G190.jpg", produit: "gateaux-sur-commande/creme-fraiche", categorie: "Crème fraîche" },
-
-  // Entremet
-  { id: "G018", fichier: "/modeles/G018.jpg", produit: "gateaux-sur-commande/entremet", categorie: "Entremet" },
-  { id: "G024", fichier: "/modeles/G024.jpg", produit: "gateaux-sur-commande/entremet", categorie: "Entremet" },
-  { id: "G041", fichier: "/modeles/G041.jpg", produit: "gateaux-sur-commande/entremet", categorie: "Entremet" },
-  { id: "G048", fichier: "/modeles/G048.jpg", produit: "gateaux-sur-commande/entremet", categorie: "Entremet" },
-  { id: "G065", fichier: "/modeles/G065.jpg", produit: "gateaux-sur-commande/entremet", categorie: "Entremet", note: "Forêt noire ronde, au prix de l’entremet" },
-  { id: "G071", fichier: "/modeles/G071.jpg", produit: "gateaux-sur-commande/entremet", categorie: "Entremet", note: `Tiramisu, au prix de l’entremet · ${NOTE_PHOTO}` },
-  { id: "G072", fichier: "/modeles/G072.jpg", produit: "gateaux-sur-commande/entremet", categorie: "Entremet", note: `Noisette chocolat · ${NOTE_WHATSAPP}` },
-  { id: "G075", fichier: "/modeles/G075.jpg", produit: "gateaux-sur-commande/entremet", categorie: "Entremet", note: "Entremet sur deux étages" },
-  { id: "G079", fichier: "/modeles/G079.jpg", produit: "gateaux-sur-commande/entremet", categorie: "Entremet", note: NOTE_PHOTO },
-  { id: "G082", fichier: "/modeles/G082.jpg", produit: "gateaux-sur-commande/entremet", categorie: "Entremet" },
-  { id: "G111", fichier: "/modeles/G111.jpg", produit: "gateaux-sur-commande/entremet", categorie: "Entremet" },
-  { id: "G112", fichier: "/modeles/G112.jpg", produit: "gateaux-sur-commande/entremet", categorie: "Entremet" },
-  { id: "G130", fichier: "/modeles/G130.jpg", produit: "gateaux-sur-commande/entremet", categorie: "Entremet" },
-  { id: "G138", fichier: "/modeles/G138.jpg", produit: "gateaux-sur-commande/entremet", categorie: "Entremet" },
-
-  // Cake nature
-  { id: "G110", fichier: "/modeles/G110.jpg", produit: "gateaux-sur-commande/cake-nature", categorie: "Cake nature", note: `Cake chocolat · ${NOTE_PHOTO}` },
-  { id: "G142", fichier: "/modeles/G142.jpg", produit: "gateaux-sur-commande/cake-nature", categorie: "Cake nature" },
-
-  // Layer Cake
-  { id: "G006", fichier: "/modeles/G006.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G010", fichier: "/modeles/G010.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake", note: "Layer cake triple chocolat" },
-  { id: "G011", fichier: "/modeles/G011.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake", note: `Demi layer cake · ${NOTE_WHATSAPP}` },
-  { id: "G012", fichier: "/modeles/G012.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G016", fichier: "/modeles/G016.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G021", fichier: "/modeles/G021.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G023", fichier: "/modeles/G023.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G026", fichier: "/modeles/G026.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G029", fichier: "/modeles/G029.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G031", fichier: "/modeles/G031.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G037", fichier: "/modeles/G037.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G046", fichier: "/modeles/G046.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G053", fichier: "/modeles/G053.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G060", fichier: "/modeles/G060.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G080", fichier: "/modeles/G080.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake", note: `Layer cake boîte surprise · ${NOTE_WHATSAPP}` },
-  { id: "G086", fichier: "/modeles/G086.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G090", fichier: "/modeles/G090.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G098", fichier: "/modeles/G098.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G099", fichier: "/modeles/G099.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G100", fichier: "/modeles/G100.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G105", fichier: "/modeles/G105.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G108", fichier: "/modeles/G108.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G113", fichier: "/modeles/G113.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G114", fichier: "/modeles/G114.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G116", fichier: "/modeles/G116.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G119", fichier: "/modeles/G119.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G123", fichier: "/modeles/G123.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G128", fichier: "/modeles/G128.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G140", fichier: "/modeles/G140.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G146", fichier: "/modeles/G146.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G191", fichier: "/modeles/G191.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G192", fichier: "/modeles/G192.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-  { id: "G199", fichier: "/modeles/G199.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Layer Cake" },
-
-  // Pâte à sucre (dossier « Pâte à sucre/Layer Cake »)
-  { id: "G019", fichier: "/modeles/G019.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Pâte à sucre", supplements: ["gateaux-sur-commande/supplement-pate-a-sucre"], note: "Layer cake en forme de cœur" },
-  { id: "G027", fichier: "/modeles/G027.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Pâte à sucre", supplements: ["gateaux-sur-commande/supplement-pate-a-sucre"], note: NOTE_PHOTO },
-  { id: "G040", fichier: "/modeles/G040.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Pâte à sucre", supplements: ["gateaux-sur-commande/supplement-pate-a-sucre"] },
-  { id: "G043", fichier: "/modeles/G043.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Pâte à sucre", supplements: ["gateaux-sur-commande/supplement-pate-a-sucre"] },
-  { id: "G076", fichier: "/modeles/G076.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Pâte à sucre", supplements: ["gateaux-sur-commande/supplement-pate-a-sucre"] },
-  { id: "G077", fichier: "/modeles/G077.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Pâte à sucre", supplements: ["gateaux-sur-commande/supplement-pate-a-sucre"] },
-  { id: "G089", fichier: "/modeles/G089.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Pâte à sucre", supplements: ["gateaux-sur-commande/supplement-pate-a-sucre"] },
-  { id: "G132", fichier: "/modeles/G132.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Pâte à sucre", supplements: ["gateaux-sur-commande/supplement-pate-a-sucre"] },
-  { id: "G188", fichier: "/modeles/G188.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Pâte à sucre", supplements: ["gateaux-sur-commande/supplement-pate-a-sucre"] },
-  { id: "G197", fichier: "/modeles/G197.jpg", produit: "gateaux-sur-commande/layer-cake", categorie: "Pâte à sucre", supplements: ["gateaux-sur-commande/supplement-pate-a-sucre"] },
-
-  // Number Cake
-  { id: "G004", fichier: "/modeles/G004.jpg", produit: "gateaux-sur-commande/number-cake", categorie: "Number Cake" },
-  { id: "G035", fichier: "/modeles/G035.jpg", produit: "gateaux-sur-commande/number-cake", categorie: "Number Cake" },
-  { id: "G095", fichier: "/modeles/G095.jpg", produit: "gateaux-sur-commande/number-cake", categorie: "Number Cake" },
-  { id: "G137", fichier: "/modeles/G137.jpg", produit: "gateaux-sur-commande/number-cake", categorie: "Number Cake" },
-  { id: "G147", fichier: "/modeles/G147.jpg", produit: "gateaux-sur-commande/number-cake", categorie: "Number Cake" },
-  { id: "G148", fichier: "/modeles/G148.jpg", produit: "gateaux-sur-commande/number-cake", categorie: "Number Cake" },
-  { id: "G198", fichier: "/modeles/G198.jpg", produit: "gateaux-sur-commande/number-cake", categorie: "Number Cake" },
-
-  // Pièce montée 2 étages
-  { id: "G013", fichier: "/modeles/G013.jpg", produit: "gateaux-sur-commande/gateau-de-mariage", categorie: "Pièce montée 2 étages" },
-  { id: "G020", fichier: "/modeles/G020.jpg", produit: "gateaux-sur-commande/gateau-de-mariage", categorie: "Pièce montée 2 étages" },
-  { id: "G094", fichier: "/modeles/G094.jpg", produit: "gateaux-sur-commande/gateau-de-mariage", categorie: "Pièce montée 2 étages" },
-  { id: "G096", fichier: "/modeles/G096.jpg", produit: "gateaux-sur-commande/gateau-de-mariage", categorie: "Pièce montée 2 étages" },
-  { id: "G118", fichier: "/modeles/G118.jpg", produit: "gateaux-sur-commande/gateau-de-mariage", categorie: "Pièce montée 2 étages" },
-  { id: "G126", fichier: "/modeles/G126.jpg", produit: "gateaux-sur-commande/gateau-de-mariage", categorie: "Pièce montée 2 étages" },
-  { id: "G145", fichier: "/modeles/G145.jpg", produit: "gateaux-sur-commande/gateau-de-mariage", categorie: "Pièce montée 2 étages" },
-  { id: "G154", fichier: "/modeles/G154.jpg", produit: "gateaux-sur-commande/gateau-de-mariage", categorie: "Pièce montée 2 étages" },
-  { id: "G155", fichier: "/modeles/G155.jpg", produit: "gateaux-sur-commande/gateau-de-mariage", categorie: "Pièce montée 2 étages" },
-
-  // Pièce montée 3 étages
-  { id: "G045", fichier: "/modeles/G045.jpg", produit: "gateaux-sur-commande/piece-montee", categorie: "Pièce montée 3 étages" },
-  { id: "G103", fichier: "/modeles/G103.jpg", produit: "gateaux-sur-commande/piece-montee", categorie: "Pièce montée 3 étages" },
-
-  // Mini-pâtisseries
-  { id: "G009", fichier: "/modeles/G009.jpg", produit: "gateaux-sur-commande/mini-bavarois", categorie: "Mini-pâtisseries" },
-  { id: "G015", fichier: "/modeles/G015.jpg", produit: "gateaux-sur-commande/mini-bavarois", categorie: "Mini-pâtisseries" },
-  { id: "G083", fichier: "/modeles/G083.jpg", produit: null, categorie: "Mini-pâtisseries" },
-  { id: "G101", fichier: "/modeles/G101.jpg", produit: null, categorie: "Mini-pâtisseries" },
-  { id: "G115", fichier: "/modeles/G115.jpg", produit: null, categorie: "Mini-pâtisseries" },
-  { id: "G139", fichier: "/modeles/G139.jpg", produit: null, categorie: "Mini-pâtisseries" },
-  { id: "G144", fichier: "/modeles/G144.jpg", produit: null, categorie: "Mini-pâtisseries" },
-  // G165 : doublon exact, non retenu (voir en-tête).
-
-  // Tartes
-  { id: "G047", fichier: "/modeles/G047.jpg", produit: null, categorie: "Tartes" },
-  { id: "G081", fichier: "/modeles/G081.jpg", produit: null, categorie: "Tartes" },
-  { id: "G104", fichier: "/modeles/G104.jpg", produit: "gateaux-et-tartes/tarte/moelleux-6p", categorie: "Tartes", note: "Smarties et Maltesers (supplément à confirmer)" },
-  { id: "G107", fichier: "/modeles/G107.jpg", produit: null, categorie: "Tartes" },
-  // G161 : doublon exact, non retenu (voir en-tête).
-
-  // Bûches
-  { id: "G003", fichier: "/modeles/G003.jpg", produit: null, categorie: "Bûches" },
-  { id: "G030", fichier: "/modeles/G030.jpg", produit: null, categorie: "Bûches" },
-  { id: "G055", fichier: "/modeles/G055.jpg", produit: null, categorie: "Bûches" },
-  { id: "G063", fichier: "/modeles/G063.jpg", produit: null, categorie: "Bûches" },
-  { id: "G078", fichier: "/modeles/G078.jpg", produit: null, categorie: "Bûches" },
-  { id: "G117", fichier: "/modeles/G117.jpg", produit: null, categorie: "Bûches" },
-
-  // Mini pizza / quiche (dossier « Mini pizza - quiche »)
-  { id: "S002", fichier: "/modeles/S002.jpg", produit: "sur-commande/mini-pizza-quiche", categorie: "Mini pizza / quiche" },
-  { id: "S003", fichier: "/modeles/S003.jpg", produit: "sur-commande/mini-pizza-quiche", categorie: "Mini pizza / quiche" },
-
-  // Mini-sandwichs garnis
-  { id: "S001", fichier: "/modeles/S001.jpg", produit: "sur-commande/mini-sandwichs-garnis", categorie: "Mini-sandwichs garnis" },
-  { id: "S004", fichier: "/modeles/S004.jpg", produit: "sur-commande/mini-sandwichs-garnis", categorie: "Mini-sandwichs garnis" },
-
-  // Grand pain surprise
-  { id: "S005", fichier: "/modeles/S005.jpg", produit: "sur-commande/grand-pain-surprise", categorie: "Grand pain surprise" },
-  { id: "S006", fichier: "/modeles/S006.jpg", produit: "sur-commande/grand-pain-surprise", categorie: "Grand pain surprise" },
-  { id: "S007", fichier: "/modeles/S007.jpg", produit: "sur-commande/grand-pain-surprise", categorie: "Grand pain surprise" },
-  { id: "S008", fichier: "/modeles/S008.jpg", produit: "sur-commande/grand-pain-surprise", categorie: "Grand pain surprise" },
-];
-
-/** Rayons de la galerie, dans l'ordre de la table. */
-export function categoriesPhotosModeles(table: readonly PhotoModele[] = PHOTOS_MODELES): string[] {
-  return [...new Set(table.map((p) => p.categorie))];
+/** Ligne de la table « PhotoModele » (colonnes lues). */
+export interface LignePhotoBase {
+  id: string;
+  categorie: string;
+  produitCle: string | null;
+  supplements: string[];
+  note: string | null;
+  masquee: boolean;
+  ordre: number;
+  fichier: string;
+  creePar: string | null;
 }
+
+/** Ajout d'une photo par le gérant. */
+export interface SaisieCreationPhoto {
+  categorie: string;
+  produit: string | null;
+  supplements?: readonly string[];
+  note?: string | null;
+  /** Extension de l'image reçue : jpg, jpeg, png ou webp. Le nom du fichier est `<id>.<extension>`. */
+  extension: string;
+  /** Prénom déclaré de la personne qui ajoute la photo (pas de comptes par employé). */
+  creePar: string;
+}
+
+/** Modification d'une photo existante : seuls les champs présents changent. */
+export interface ModificationPhoto {
+  categorie?: string;
+  produit?: string | null;
+  supplements?: readonly string[];
+  note?: string | null;
+  ordre?: number;
+}
+
+// ------------------------------------------------------------ Données de forme (alignées sur les CHECK de la migration)
+
+/** CHECK PhotoModele_id_format (et LigneCommande_photoModele_format). */
+export const FORMAT_ID_PHOTO = /^[A-Z][0-9]{3}$/;
+/** CHECK PhotoModele_fichier_valide (+ `left(fichier, 4) = id`). */
+export const FORMAT_FICHIER_PHOTO = /^[A-Z][0-9]{3}([-_][A-Za-z0-9]+)*\.(jpg|jpeg|png|webp)$/i;
+export const EXTENSIONS_PHOTO = ["jpg", "jpeg", "png", "webp"] as const;
+export const LONGUEUR_MAX_RAYON = 60;
+export const LONGUEUR_MAX_NOTE = 120;
+export const LONGUEUR_MAX_PRENOM = 60;
+/** Garde-fou : un modèle ne porte que quelques suppléments. */
+export const SUPPLEMENTS_MAX = 10;
+/** Ordre explicite maximal (colonne integer ; largement au-dessus de ×10 par photo). */
+export const ORDRE_MAX = 1_000_000;
+/** Écart entre deux rangs (comme la reprise : rang × 10). */
+export const PAS_ORDRE = 10;
+
+/** Préfixe de l'adresse servie par l'application (route écrite par `commandes-traiteur`). */
+export const PREFIXE_URL_PHOTO = "/api/modeles/";
+
+const CARACTERE_DE_CONTROLE = /[\u0000-\u001f\u007f]/;
+
+// ------------------------------------------------------------ Conversions
+
+export function urlDeFichier(fichier: string): string {
+  return PREFIXE_URL_PHOTO + fichier;
+}
+
+export function photoDepuisBase(l: LignePhotoBase): PhotoModele {
+  return {
+    id: l.id,
+    url: urlDeFichier(l.fichier),
+    produit: l.produitCle,
+    categorie: l.categorie,
+    supplements: [...l.supplements],
+    note: l.note,
+    masquee: l.masquee,
+    ordre: l.ordre,
+  };
+}
+
+// ------------------------------------------------------------ Contrôles de champ
+
+function invalide(champLibelle: string, champ: string, valeurProposee?: unknown): Echec {
+  return signaler("ERR_SAISIE_INVALIDE", { champLibelle }, valeurProposee === undefined ? { champ } : { champ, valeurProposee });
+}
+
+/** Identifiant de photo reçu (format seulement ; l'existence se vérifie en base). */
+export function validerIdPhoto(v: unknown, champ = "photoModele"): Resultat<string> {
+  if (typeof v === "string" && FORMAT_ID_PHOTO.test(v)) return succes(v);
+  return invalide("photo du modèle", champ);
+}
+
+/**
+ * La note contient-elle un prix ? (LOI 1 : jamais de prix dans une photo.)
+ *
+ * RÈGLE RETENUE (la plus sûre qui laisse passer « 2 étages ») :
+ *  - refusé : « € », « euro » (même au milieu d'un mot, comme la base :
+ *    CHECK PhotoModele_note_valide `!~* 'euro'`) ;
+ *  - refusé : un nombre suivi d'une unité monétaire — « eur », « ct », « cts »,
+ *    « cent(s) », « centime(s) » (« 5 eur », « 50cts ») ;
+ *  - refusé : un nombre à virgule ou à point (« 6,5 », « 3.90 ») : les notes
+ *    de prix du propriétaire s'écrivent ainsi (« 6,5 » sur une photo du tri) ;
+ *  - accepté : tout autre chiffre (« 2 étages », « 20 parts », « chiffre 18 »).
+ * HYPOTHÈSE À VALIDER (docs/QUESTIONS-GERANT.md, question 81) : un nombre décimal
+ * légitime dans une note (« 1,5 kg ») est refusé.
+ */
+export function noteContientUnPrix(note: string): boolean {
+  if (/€|euro/i.test(note)) return true;
+  if (/\d\s*(?:eur|cts?\b|cents?\b|centimes?\b)/i.test(note)) return true;
+  if (/\d\s*[.,]\s*\d/.test(note)) return true;
+  return false;
+}
+
+/** Note : vide → aucune note (null) ; sinon ≤ 120 caractères, sans prix. Espaces de bord retirés. */
+export function validerNotePhoto(v: unknown): Resultat<string | null> {
+  if (v === undefined || v === null) return succes(null);
+  if (typeof v !== "string") return invalide("note", "note");
+  const note = v.trim();
+  if (note === "") return succes(null);
+  if (CARACTERE_DE_CONTROLE.test(note)) return invalide("note", "note");
+  if (note.length > LONGUEUR_MAX_NOTE) return invalide("note", "note", note.slice(0, LONGUEUR_MAX_NOTE).trim());
+  if (noteContientUnPrix(note)) return invalide("note", "note");
+  return succes(note);
+}
+
+/**
+ * Rayon : non vide, ≤ 60 caractères. Si un rayon existant ne diffère que par
+ * les majuscules ou les espaces (« bavarois » / « Bavarois »), refus avec le
+ * rayon existant en sortie en un geste : on ne crée pas un doublon de rayon,
+ * et on ne corrige pas en silence (LOI 5).
+ */
+export function validerRayonPhoto(v: unknown, rayonsExistants: readonly string[] = []): Resultat<string> {
+  if (typeof v !== "string" || v.trim() === "") return signaler("ERR_CHAMP_OBLIGATOIRE", { champLibelle: "rayon" }, { champ: "categorie" });
+  const rayon = v.trim();
+  if (CARACTERE_DE_CONTROLE.test(rayon) || rayon.length > LONGUEUR_MAX_RAYON) return invalide("rayon", "categorie");
+  if (!rayonsExistants.includes(rayon)) {
+    const cle = cleRayon(rayon);
+    const proche = rayonsExistants.find((r) => cleRayon(r) === cle);
+    if (proche !== undefined) return invalide("rayon", "categorie", proche);
+  }
+  return succes(rayon);
+}
+
+function cleRayon(r: string): string {
+  return r.trim().replace(/\s+/g, " ").toLocaleLowerCase("fr");
+}
+
+/** Prénom déclaré : obligatoire pour une photo ajoutée (traçabilité), ≤ 60 caractères. */
+export function validerPrenomPhoto(v: unknown): Resultat<string> {
+  if (typeof v !== "string" || v.trim() === "") return signaler("ERR_CHAMP_OBLIGATOIRE", { champLibelle: "prénom" }, { champ: "creePar" });
+  const prenom = v.trim();
+  if (CARACTERE_DE_CONTROLE.test(prenom) || prenom.length > LONGUEUR_MAX_PRENOM) return invalide("prénom", "creePar");
+  return succes(prenom);
+}
+
+/** Extension de l'image reçue → nom de fichier `<id>.<extension>` (minuscules). */
+export function nomFichierPhoto(id: string, extension: unknown): Resultat<string> {
+  const ext = typeof extension === "string" ? extension.trim().replace(/^\./, "").toLowerCase() : "";
+  if (!(EXTENSIONS_PHOTO as readonly string[]).includes(ext)) return invalide("image (JPEG, PNG ou WebP)", "fichier");
+  const fichier = `${id}.${ext}`;
+  if (!validerFichierPhoto(id, fichier)) return invalide("image (JPEG, PNG ou WebP)", "fichier");
+  return succes(fichier);
+}
+
+/** Nom de fichier conforme au CHECK de la base (nom simple, commence par l'id). */
+export function validerFichierPhoto(id: string, fichier: string): boolean {
+  return FORMAT_ID_PHOTO.test(id) && FORMAT_FICHIER_PHOTO.test(fichier) && fichier.slice(0, 4) === id;
+}
+
+/** Ordre explicite : entier entre 0 et ORDRE_MAX. */
+export function validerOrdrePhoto(v: unknown): Resultat<number> {
+  if (typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= ORDRE_MAX) return succes(v);
+  return invalide("ordre", "ordre");
+}
+
+// ------------------------------------------------------------ Rattachement au catalogue
+
+/**
+ * Ce que le contrôle du rattachement lit au catalogue de commande. Le lecteur
+ * serveur (./lectureBase.ts) s'y conforme ; les tests branchent le catalogue
+ * des fichiers de data/.
+ */
+export interface CatalogueDesPhotos {
+  getProduit(cle: string): Promise<Resultat<{ produit: string; famille: Famille; actif?: boolean }>> | Resultat<{ produit: string; famille: Famille; actif?: boolean }>;
+  getPrix(cle: string, date: DateISO): Promise<Resultat<unknown>> | Resultat<unknown>;
+}
+
+/** Produit vendable aujourd'hui : présent, non archivé, avec un prix à `date`. */
+async function verifierAuTarif(catalogue: CatalogueDesPhotos, cle: string, date: DateISO, champ: string): Promise<Resultat<Famille>> {
+  const p = await catalogue.getProduit(cle);
+  if (!p.ok) return { ...p, champ };
+  if (p.donnees.actif === false) return signaler("ERR_PRODUIT_INCONNU", {}, { champ });
+  const prix = await catalogue.getPrix(cle, date);
+  if (!prix.ok) return { ...prix, champ };
+  return succes(p.donnees.famille);
+}
+
+/**
+ * Produit et suppléments d'une photo, contrôlés au catalogue de commande à
+ * `date` (jour du magasin). LOI 10 : seul le catalogue de commande est lu,
+ * jamais la liste d'inventaire.
+ *  - produit : null (la vendeuse choisit) ou produit au tarif, qui n'est PAS un supplément ;
+ *  - suppléments : produits au tarif de la famille « supplement », sans doublon.
+ * Refus : celui du catalogue (ERR_PRODUIT_INCONNU, ERR_TARIF_ABSENT,
+ * ERR_CATALOGUE_ABSENT, ERR_PRODUIT_SANS_REGIME), pointé sur le champ ;
+ * ERR_SAISIE_INVALIDE si un supplément est cité comme produit, ou l'inverse.
+ */
+export async function validerRattachementPhoto(
+  catalogue: CatalogueDesPhotos,
+  produit: unknown,
+  supplements: unknown,
+  date: DateISO,
+): Promise<Resultat<{ produit: string | null; supplements: string[] }>> {
+  let cleProduit: string | null = null;
+  if (produit !== null && produit !== undefined && produit !== "") {
+    if (typeof produit !== "string") return invalide("produit du modèle", "produit");
+    const r = await verifierAuTarif(catalogue, produit, date, "produit");
+    if (!r.ok) return r;
+    if (r.donnees === "supplement") return invalide("produit du modèle", "produit");
+    cleProduit = produit;
+  }
+  const liste = supplements === undefined || supplements === null ? [] : supplements;
+  if (!Array.isArray(liste) || liste.length > SUPPLEMENTS_MAX || liste.some((s) => typeof s !== "string" || s === "")) {
+    return invalide("suppléments", "supplements");
+  }
+  const uniques = [...new Set(liste as string[])];
+  if (uniques.length !== liste.length) return invalide("suppléments", "supplements", uniques);
+  for (const s of uniques) {
+    const r = await verifierAuTarif(catalogue, s, date, "supplements");
+    if (!r.ok) return r;
+    if (r.donnees !== "supplement") return invalide("suppléments", "supplements", uniques.filter((x) => x !== s));
+  }
+  return succes({ produit: cleProduit, supplements: uniques });
+}
+
+// ------------------------------------------------------------ Ordre d'affichage
+
+type Ordonnable = { id: string; categorie: string; ordre: number };
+
+function parOrdre(a: Ordonnable, b: Ordonnable): number {
+  return a.ordre - b.ordre || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
+/**
+ * Rayons dans leur ordre d'affichage. DONNÉE : un rayon se place au plus petit
+ * `ordre` de ses photos. La reprise numérote toute la galerie d'un seul tenant
+ * (rang × 10, dans l'ordre du tri du propriétaire), ce qui redonne exactement
+ * l'ordre actuel des rayons (Bavarois, Crème fraîche, Entremet…). Un rayon
+ * créé par le gérant se place à la fin. Égalité : ordre alphabétique (fr).
+ */
+export function rayonsDansLOrdre(photos: readonly Ordonnable[]): string[] {
+  const premier = new Map<string, number>();
+  for (const p of photos) {
+    const o = premier.get(p.categorie);
+    if (o === undefined || p.ordre < o) premier.set(p.categorie, p.ordre);
+  }
+  return [...premier].sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0], "fr")).map(([r]) => r);
+}
+
+/** Photos triées : rayon (ordre ci-dessus), puis ordre, puis identifiant. */
+export function trierPhotos<T extends Ordonnable>(photos: readonly T[]): T[] {
+  const rang = new Map(rayonsDansLOrdre(photos).map((r, i) => [r, i]));
+  return [...photos].sort((a, b) => rang.get(a.categorie)! - rang.get(b.categorie)! || parOrdre(a, b));
+}
+
+/**
+ * Ordre d'une photo posée en FIN de rayon. Rayon nouveau : après toute la
+ * galerie (le rayon apparaît en dernier).
+ */
+export function ordreEnFinDeRayon(photos: readonly Ordonnable[], categorie: string, exclure?: string): number {
+  const autres = photos.filter((p) => p.id !== exclure);
+  const duRayon = autres.filter((p) => p.categorie === categorie);
+  const base = duRayon.length > 0 ? duRayon : autres;
+  const max = base.reduce((m, p) => Math.max(m, p.ordre), -PAS_ORDRE);
+  return Math.min(max + PAS_ORDRE, ORDRE_MAX);
+}
+
+/**
+ * Boutons ◀ ▶ de l'écran du gérant : la photo échange sa place avec sa
+ * voisine du rayon (photos masquées comprises, pour que l'ordre reste le même
+ * qu'on les affiche ou non). Le rayon est renuméroté à partir de son plus
+ * petit ordre, de 10 en 10 : la place du rayon dans la galerie ne bouge pas,
+ * et deux photos à égalité ne bloquent jamais le déplacement.
+ * Renvoie seulement les photos dont l'ordre change ([] : déjà au bout).
+ */
+export function planDeplacement(
+  photosDuRayon: readonly Ordonnable[],
+  id: string,
+  sens: "avant" | "apres",
+): { id: string; ordre: number }[] {
+  const triees = [...photosDuRayon].sort(parOrdre);
+  const i = triees.findIndex((p) => p.id === id);
+  const j = sens === "avant" ? i - 1 : i + 1;
+  if (i < 0 || j < 0 || j >= triees.length) return [];
+  [triees[i], triees[j]] = [triees[j], triees[i]];
+  const base = Math.min(...photosDuRayon.map((p) => p.ordre));
+  return triees.flatMap((p, k) => {
+    const ordre = base + k * PAS_ORDRE;
+    return ordre === p.ordre ? [] : [{ id: p.id, ordre }];
+  });
+}
+
+// ------------------------------------------------------------ Compatibilité (temporaire)
+// @deprecated — copie figée, voir ./photosModelesReprise.ts.
+export { PHOTOS_MODELES, categoriesPhotosModeles } from "./photosModelesReprise.ts";
+export type { PhotoModeleReprise } from "./photosModelesReprise.ts";

@@ -6,6 +6,10 @@
 // 26/10/2026 ; propriétaire : `commandes-traiteur`). Le client montre une
 // photo, la vendeuse la touche : `onChoisir` ajoute le produit au bon.
 //
+// Photos et rayons : gérés par le gérant (table « PhotoModele »,
+// écran /commandes/reglages/photos), lus par GET /api/photos-modeles à la
+// première ouverture (./photosClient.ts) ; les photos masquées n'y sont pas.
+//
 // Tablette, mains occupées, réseau faible :
 // - montée SEULEMENT quand la galerie est ouverte : aucune image chargée avant ;
 // - un rayon à la fois (le premier par défaut), images en `loading="lazy"` :
@@ -13,15 +17,40 @@
 // - rayons en gros boutons en haut (152 photos : il faut un filtre — c'est la
 //   seule exception aux « pas d'onglets catégorie », limitée à la galerie) ;
 // - fermeture d'un geste : « Fermer » (grand bouton), ou la touche Échap.
-// Aucun prix ici : les photos sont une donnée du catalogue (photosModeles.ts).
+// Aucun prix ici : une photo ne porte jamais de prix (src/catalogue/photosModeles.ts).
 
-import { useEffect, useState } from 'react';
-import { categoriesPhotosModeles, PHOTOS_MODELES, type PhotoModele } from '@/catalogue/photosModeles';
+import { useCallback, useEffect, useState } from 'react';
+import type { PhotoModele } from '@/catalogue/photosModeles';
+import type { Echec } from '@/domaine/resultat';
+import { Chargement } from '@/components/ui';
+import { ListeSignalements } from '@/components/signalement';
+import { galerieEnCache, lireGalerie, type Galerie } from './photosClient';
 
 export function GaleriePhotos({ onChoisir, onFermer }: { onChoisir: (p: PhotoModele) => void; onFermer: () => void }) {
-  const rayons = categoriesPhotosModeles();
-  const [rayon, setRayon] = useState<string>(rayons[0] ?? '');
-  const photos = PHOTOS_MODELES.filter((p) => p.categorie === rayon);
+  const [donnees, setDonnees] = useState<Galerie | null>(() => galerieEnCache());
+  const [refus, setRefus] = useState<Echec | null>(null);
+  const [choix, setChoix] = useState<string | null>(null);
+  const rayons = donnees?.rayons ?? [];
+  // Rayon choisi, ou le premier (aussi quand le rayon choisi n'a plus de photo visible).
+  const rayon = choix !== null && rayons.includes(choix) ? choix : (rayons[0] ?? '');
+  const photos = (donnees?.photos ?? []).filter((p) => p.categorie === rayon && !p.masquee);
+
+  const charger = useCallback(() => {
+    lireGalerie().then((r) => {
+      if (r.ok) {
+        setDonnees(r.donnees);
+        setRefus(null);
+      } else if (!galerieEnCache()) {
+        // Déjà affichée depuis le cache : une relecture manquée ne gêne pas la vendeuse.
+        setRefus(r);
+      }
+    });
+  }, []);
+
+  // Lecture à l'ouverture (et relecture en arrière-plan si déjà en cache).
+  useEffect(() => {
+    charger();
+  }, [charger]);
 
   useEffect(() => {
     const touche = (e: KeyboardEvent) => {
@@ -66,7 +95,7 @@ export function GaleriePhotos({ onChoisir, onFermer }: { onChoisir: (p: PhotoMod
               key={r}
               type="button"
               aria-pressed={actif}
-              onClick={() => setRayon(r)}
+              onClick={() => setChoix(r)}
               className={`min-h-12 rounded-xl border-2 px-4 text-base font-semibold ${
                 actif ? 'border-accent bg-accent text-white shadow' : 'border-line-fort bg-surface text-ink'
               }`}
@@ -78,6 +107,27 @@ export function GaleriePhotos({ onChoisir, onFermer }: { onChoisir: (p: PhotoMod
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
+        {refus ? (
+          <ListeSignalements
+            signalements={[refus]}
+            autreSortiePour={() => (
+              <button
+                type="button"
+                onClick={() => {
+                  setRefus(null);
+                  charger();
+                }}
+                className="min-h-12 rounded-xl border-2 border-line-fort bg-surface px-4 text-base font-semibold text-ink"
+              >
+                Réessayer
+              </button>
+            )}
+          />
+        ) : donnees === null ? (
+          <Chargement libelle="Chargement des photos…" />
+        ) : photos.length === 0 ? (
+          <p className="py-10 text-center text-lg text-ink-2">Aucune photo pour l’instant : le gérant les ajoute dans Réglages des commandes.</p>
+        ) : null}
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {photos.map((p) => (
             <li key={p.id}>
@@ -90,7 +140,7 @@ export function GaleriePhotos({ onChoisir, onFermer }: { onChoisir: (p: PhotoMod
                 {/* Images déjà allégées (640 px) : servies telles quelles, sans passage par l'optimiseur. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={p.fichier}
+                  src={p.url}
                   alt=""
                   loading="lazy"
                   decoding="async"
@@ -98,7 +148,7 @@ export function GaleriePhotos({ onChoisir, onFermer }: { onChoisir: (p: PhotoMod
                 />
                 <span className="flex items-baseline gap-2 px-2 py-1.5">
                   <span className="chiffres shrink-0 text-xs text-ink-2">{p.id}</span>
-                  {p.note ? <span className="min-w-0 text-sm leading-tight text-ink">{p.note}</span> : null}
+                  {p.note ? <span className="min-w-0 break-words text-sm leading-tight text-ink">{p.note}</span> : null}
                 </span>
               </button>
             </li>

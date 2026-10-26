@@ -23,12 +23,15 @@ export { comparerVersions, formaterRapportDiff } from "./diff.ts";
 export type { DiffTarif } from "./diff.ts";
 export { controlerAffichesContreComptoir } from "./ecarts.ts";
 export { identifiantProduit } from "./normaliser.ts";
-export { PHOTOS_MODELES, categoriesPhotosModeles } from "./photosModeles.ts";
-export type { PhotoModele } from "./photosModeles.ts";
-import { PHOTOS_MODELES } from "./photosModeles.ts";
-import type { PhotoModele } from "./photosModeles.ts";
-
-/** Galerie des photos de modèles (écran de commande). `categorie` facultative. */
-export function listerPhotosModeles(categorie?: string): readonly PhotoModele[] {
-  return categorie === undefined ? PHOTOS_MODELES : PHOTOS_MODELES.filter((p) => p.categorie === categorie);
-}
+// Galerie de photos modèles : règles pures (contrôles, ordre d'affichage).
+// Les photos elles-mêmes sont EN BASE (table « PhotoModele ») : lecture et
+// écriture par src/catalogue/serveur.ts (listerPhotosModeles, getPhotoModele…).
+export {
+  noteContientUnPrix,
+  rayonsDansLOrdre,
+  trierPhotos,
+  validerIdPhoto,
+  validerNotePhoto,
+  validerRayonPhoto,
+} from "./photosModeles.ts";
+export type { ModificationPhoto, PhotoModele, SaisieCreationPhoto } from "./photosModeles.ts";

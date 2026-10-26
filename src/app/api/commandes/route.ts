@@ -65,8 +65,9 @@ import type { Echec } from '@/domaine/resultat';
 import type { Deverrouillage } from '@/domaine/types';
 import { chargerContexte, correspondancesServeur, priseBruxelles, resoudreServeur } from './contexteServeur';
 import { GOUTS_SUR_COMMANDE } from '@/catalogue/goutsSurCommande';
-import { PHOTOS_MODELES } from '@/catalogue/photosModeles';
-import { lirePhotoModele } from '@/components/commande/galerie';
+import { getPhotoModele } from '@/catalogue/serveur';
+import type { PhotoModele } from '@/catalogue/photosModeles';
+import { idsPhotosCites, lirePhotoDeLigne } from '@/components/commande/photosGestion';
 
 const inclusions = {
   lignes: { orderBy: { ordre: 'asc' } as const, include: { produitCatalogue: { select: { cleCatalogue: true, categorie: true, nom: true, regimePrix: true } } } },
@@ -93,6 +94,29 @@ function entierOuNull(v: unknown): number | null {
 
 function jourIso(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+/** Photos de modèle citées par les lignes, lues en base (masquées comprises). */
+type PhotosCitees = { connues: Map<string, Pick<PhotoModele, 'id' | 'masquee'>>; dejaSurLaCommande: ReadonlySet<string> };
+
+/**
+ * Lit en base les photos citées par les lignes reçues (une lecture par photo
+ * distincte, aucune s'il n'y en a pas). Photo inconnue : absente de la carte,
+ * refusée ensuite par `lirePhotoDeLigne` ; panne : échec technique typé.
+ * `dejaSurLaCommande` : photos que la commande portait déjà (modification) —
+ * elles restent permises même masquées depuis.
+ */
+async function chargerPhotosCitees(
+  lignes: unknown,
+  dejaSurLaCommande: ReadonlySet<string> = new Set(),
+): Promise<{ ok: true; photos: PhotosCitees } | { ok: false; echec: Echec }> {
+  const connues: PhotosCitees['connues'] = new Map();
+  for (const id of idsPhotosCites(lignes)) {
+    const r = await getPhotoModele(id);
+    if (r.ok) connues.set(id, r.donnees);
+    else if (r.code !== 'ERR_SAISIE_INVALIDE') return { ok: false, echec: r };
+  }
+  return { ok: true, photos: { connues, dejaSurLaCommande } };
 }
 
 /* -------------------------------------------------------------------- GET */
@@ -178,7 +202,7 @@ type Preparation =
       formes: (string | null)[];
       /** R62 : décorations facultatives, par ligne. */
       decorations: string[][];
-      /** Galerie (26/10/2026) : photo de modèle, par ligne (format et existence vérifiés). */
+      /** Galerie (26/10/2026) : photo de modèle, par ligne (format et existence en base vérifiés). */
       photos: (string | null)[];
       /** Accords confirmés : date serveur, ou date d'origine d'un accord conservé. */
       quand: Map<object, Date>;
@@ -206,6 +230,7 @@ function preparer(
   gerant: boolean,
   maintenant: Date,
   accordsExistants: AccordEnregistre[],
+  photosCitees: PhotosCitees,
 ): Preparation {
   const quand = new Map<object, Date>();
   const lignesBrutes = Array.isArray(corps.lignes) ? (corps.lignes as LigneEntrante[]) : [];
@@ -242,9 +267,16 @@ function preparer(
   const photos: (string | null)[] = [];
   const nonConfirmes: AccordsNonConfirmes = { lignes: [], remise: false };
   for (const [i, l] of lignesBrutes.entries()) {
-    // Photo de modèle : format ET présence dans la galerie, refusée avec un message
-    // humain AVANT la base (sa contrainte CHECK n'est que le filet, LOI 9).
-    const photo = lirePhotoModele(l.photoModele, PHOTOS_MODELES, `lignes[${i}].photoModele`);
+    // Photo de modèle : format ET présence en base (table PhotoModele), refusée avec
+    // un message humain AVANT l'écriture (la clé étrangère n'est que le filet, LOI 9).
+    // Masquée par le gérant : refusée sur une nouvelle ligne, gardée si la commande l'avait.
+    const v = l.photoModele;
+    const photo = lirePhotoDeLigne(
+      v,
+      typeof v === 'string' ? (photosCitees.connues.get(v) ?? null) : null,
+      typeof v === 'string' && photosCitees.dejaSurLaCommande.has(v),
+      `lignes[${i}].photoModele`,
+    );
     if (!photo.ok) return { ok: false, echec: photo };
     photos.push(photo.valeur);
     const produitId = texte(l.produitId, 200) || null;
@@ -440,7 +472,9 @@ export async function POST(request: Request) {
 
     const maintenant = new Date();
     const prise = priseBruxelles(maintenant);
-    const prep = preparer(corps, prise, gerantActif(request, garde.tablette), maintenant, []);
+    const photos = await chargerPhotosCitees(corps.lignes);
+    if (!photos.ok) return refus(photos.echec, route);
+    const prep = preparer(corps, prise, gerantActif(request, garde.tablette), maintenant, [], photos.photos);
     if (!prep.ok) return refus(prep.echec, route);
 
     const { resultat, fiches } = await controler(prep.saisie, route, prise.datePrise, null);
@@ -743,7 +777,12 @@ export async function PATCH(request: Request) {
               : []),
           ];
 
-          const prep = preparer(corps, prise, gerant, maintenant, accords);
+          const photos = await chargerPhotosCitees(
+            corps.lignes,
+            new Set(existante.lignes.flatMap((l) => (l.photoModele ? [l.photoModele] : []))),
+          );
+          if (!photos.ok) return refus(photos.echec, route);
+          const prep = preparer(corps, prise, gerant, maintenant, accords, photos.photos);
           if (!prep.ok) return refus(prep.echec, route);
           const { resultat, fiches } = await controler(prep.saisie, route, aujourdhui, etatExistant);
           if (!resultat.ok) return refus(resultat, route);

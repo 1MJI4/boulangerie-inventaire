@@ -1,16 +1,17 @@
 // src/components/commande/galerie.test.ts
 //
 // Galerie de photos de modèles (décision du propriétaire, 26/10/2026) : ce que
-// l'ÉCRAN fait d'un toucher sur une photo, et la lecture de l'identifiant par
-// la route. Prix des fiches : valeur de test arbitraire (aucun prix du
+// l'ÉCRAN fait d'un toucher sur une photo. (Lecture de l'identifiant par la
+// route : photosGestion.test.ts.) Photos de TEST, jamais la galerie réelle :
+// elle vit en base et change quand le gérant la range. Prix des fiches : valeur de test arbitraire (aucun prix du
 // catalogue ici, LOI 1).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ajouterAvecPhoto, ficheDePhoto, lirePhotoModele, navigationPourPhoto, retirerPhoto } from './galerie.ts';
+import { ajouterAvecPhoto, ficheDePhoto, navigationPourPhoto, retirerPhoto } from './galerie.ts';
 import { ligneVide, toucherProduit, SUPPLEMENT_PATE_A_SUCRE, SUPPLEMENT_PHOTO, type CatalogueCommande, type FicheCatalogue, type LigneEcran } from './modele.ts';
 import { SUPPLEMENTS_PAR_PERSONNE } from '../../domaine/constantes.ts';
-import { PHOTOS_MODELES } from '../../catalogue/photosModeles.ts';
+import type { PhotoModele } from '../../catalogue/photosModeles.ts';
 
 const DATE = '2026-10-28';
 const PRIX = 123;
@@ -36,6 +37,19 @@ const pate = fiche(SUPPLEMENT_PATE_A_SUCRE, 'supplement', 'personne');
 const supPhoto = fiche(SUPPLEMENT_PHOTO, 'supplement', 'forfait');
 const cat: CatalogueCommande = { date: DATE, fiches: [layer, mini, pate, supPhoto] };
 const FAMILLES = ['patisserie'];
+
+/** Photos de test (forme de GET /api/photos-modeles), sans produit unique : bûches, tartes, mini-pâtisseries. */
+const photo = (id: string, categorie: string, produit: string | null): PhotoModele => ({
+  id,
+  url: `/api/modeles/${id}.jpg`,
+  produit,
+  categorie,
+  supplements: [],
+  note: null,
+  masquee: false,
+  ordre: 10,
+});
+const PHOTOS_SANS_PRODUIT = [photo('B001', 'Bûches', null), photo('T001', 'Tartes', null), photo('M001', 'Mini-pâtisseries', null)];
 
 const ajouter = (lignes: LigneEcran[], f: FicheCatalogue, id: string, supplements?: string[]) =>
   ajouterAvecPhoto(lignes, f, { id, supplements }, cat, FAMILLES, SUPPLEMENTS_PAR_PERSONNE, []);
@@ -106,28 +120,10 @@ test('photo sans produit : recherche et consigne du rayon (« Choisissez la tail
   const autre = navigationPourPhoto({ categorie: 'Rayon inconnu', produit: null });
   assert.equal(autre.recherche, 'Rayon inconnu');
   assert.match(autre.consigne, /Choisissez/);
-  // Chaque rayon de la galerie qui a des photos sans produit a sa navigation (pas de grille vide).
-  for (const p of PHOTOS_MODELES.filter((x) => x.produit === null)) {
+  // Les rayons de photos sans produit ont leur navigation (pas de grille vide).
+  for (const p of PHOTOS_SANS_PRODUIT) {
     assert.notEqual(navigationPourPhoto(p).recherche, p.categorie, `rayon sans navigation : ${p.categorie}`);
   }
-});
-
-test('route : identifiant de photo lu au format ET dans la galerie, sinon refus humain (jamais l’erreur de la base)', () => {
-  const table = [{ id: 'G043' }];
-  assert.deepEqual(lirePhotoModele(undefined, table, 'lignes[0].photoModele'), { ok: true, valeur: null });
-  assert.deepEqual(lirePhotoModele(null, table, 'lignes[0].photoModele'), { ok: true, valeur: null });
-  assert.deepEqual(lirePhotoModele('', table, 'lignes[0].photoModele'), { ok: true, valeur: null });
-  assert.deepEqual(lirePhotoModele('G043', table, 'lignes[0].photoModele'), { ok: true, valeur: 'G043' });
-  for (const mauvais of ['g043', 'G43', 'G0433', 'G999', 42, { id: 'G043' }, ' G043']) {
-    const r = lirePhotoModele(mauvais, table, 'lignes[2].photoModele');
-    assert.equal(r.ok, false, `refusé : ${JSON.stringify(mauvais)}`);
-    if (!r.ok) {
-      assert.equal(r.code, 'ERR_SAISIE_INVALIDE');
-      assert.equal(r.champ, 'lignes[2].photoModele');
-      assert.match(r.message, /photo du modèle/);
-      assert.doesNotMatch(r.message, /CHECK|constraint|Prisma|violates/i);
-    }
-  }
-  // La vraie galerie : tous ses identifiants passent.
-  for (const p of PHOTOS_MODELES) assert.equal(lirePhotoModele(p.id, PHOTOS_MODELES, 'x').ok, true, p.id);
+  // Rayon créé par le gérant, photo avec produit : la recherche est le nom du rayon.
+  assert.equal(navigationPourPhoto(photo('P001', 'Anniversaire', LAYER)).recherche, 'Anniversaire');
 });

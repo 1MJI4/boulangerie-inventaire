@@ -414,3 +414,11 @@ l'avez pas confirmé ici.
     *(en attendant, l'application fait : ces photos restent dans la galerie, sans produit
     choisi d'office ; les « nouveaux produits » ne sont pas dans la galerie.)*
     Les petits carrés G009 et G015 sont rangés en **Mini bavarois** : est-ce juste ?
+
+81. **Note d'une photo : les chiffres à virgule sont refusés** (« 6,5 », « 3.90 »).
+    Quand vous ajoutez ou modifiez une photo, la note ne peut contenir aucun prix : ni « € »,
+    ni « euro », ni un nombre suivi de « eur » ou « cts », ni un nombre à virgule.
+    « 2 étages » ou « 20 parts » restent acceptés. Avez-vous besoin d'écrire un nombre à
+    virgule qui n'est pas un prix (par exemple « 1,5 kg ») dans une note ?
+    *(en attendant, l'application fait : elle refuse le nombre à virgule — écrivez le prix
+    dans le tarif, jamais sur la photo.)*
