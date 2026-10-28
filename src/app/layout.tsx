@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import { BarreNavigation } from '@/components/BarreNavigation';
 import { GardienProfil } from '@/components/GardienProfil';
 import { FournisseurProfil } from '@/components/ProfilAppareil';
+import { SuiviImpression } from '@/components/SuiviImpression';
 import './globals.css';
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <main className="mx-auto max-w-5xl px-4 py-4 sm:py-8">
             <GardienProfil>{children}</GardienProfil>
           </main>
+          <SuiviImpression />
         </FournisseurProfil>
       </body>
     </html>

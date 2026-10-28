@@ -31,7 +31,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { confirmationReussie } from '../cloudprnt.ts';
 import { MEDIA_STARPRNT, pngVersStarPrnt } from './starprnt.ts';
 
-export type TravailEnFile = { id: number; media: string; contenu: Uint8Array };
+export type TravailEnFile = { id: number; commandeId: number | null; media: string; contenu: Uint8Array };
 export type TravailRemis = { id: number; commandeId: number | null };
 
 /** Tout ce dont le dialogue a besoin dans la base, et rien de plus. */
@@ -42,6 +42,10 @@ export interface DepotImprimante {
   mediaEnAttente(): Promise<string | null>;
   /** Premier travail en attente, contenu compris. */
   travailEnAttente(): Promise<TravailEnFile | null>;
+  /** Les autres exemplaires en attente de la même commande, dans l'ordre, contenu compris. */
+  suiteEnAttente(commandeId: number, apresId: number): Promise<TravailEnFile[]>;
+  /** Exemplaires de la commande remis à l'imprimante et pas encore confirmés. */
+  remisDeCommande(commandeId: number): Promise<number[]>;
   marquerRemis(id: number): Promise<void>;
   premierRemis(): Promise<TravailRemis | null>;
   marquerImprime(id: number): Promise<void>;
@@ -144,29 +148,68 @@ async function sondage(requete: Request, depot: DepotImprimante): Promise<Respon
 
 /* --------------------------------------- GET : elle vient chercher */
 
+/**
+ * Les exemplaires d'une même commande partent ensemble (28/10/2026).
+ *
+ * Servis un par un, chaque exemplaire attendait le sondage suivant de
+ * l'imprimante : ~4 s par ticket, ~15 s pour les quatre. En StarPRNT, chaque
+ * ticket se termine déjà par sa coupe (ESC d 3) : mis bout à bout, ils sortent
+ * en une seule fois, coupés entre eux. En PNG (format de secours), une image
+ * par travail : on reste à un exemplaire par passage.
+ */
+async function natifsDeLaSuite(
+  travail: TravailEnFile,
+  depot: DepotImprimante,
+): Promise<{ ids: number[]; octets: Uint8Array } | null> {
+  const premier = pngVersStarPrnt(travail.contenu);
+  if (!premier) return null;
+  const ids = [travail.id];
+  const parties = [premier];
+  if (travail.commandeId !== null) {
+    for (const suivant of await depot.suiteEnAttente(travail.commandeId, travail.id)) {
+      if (suivant.media !== 'image/png') break;
+      const natif = pngVersStarPrnt(suivant.contenu);
+      // Un exemplaire qui ne se convertit pas partira seul, au passage suivant.
+      if (!natif) break;
+      ids.push(suivant.id);
+      parties.push(natif);
+    }
+  }
+  const octets = new Uint8Array(parties.reduce((n, p) => n + p.length, 0));
+  let p = 0;
+  for (const partie of parties) {
+    octets.set(partie, p);
+    p += partie.length;
+  }
+  return { ids, octets };
+}
+
 async function remise(url: URL, depot: DepotImprimante): Promise<Response> {
   const travail = await depot.travailEnAttente();
   if (!travail) return vide(404);
   // Format choisi par l'imprimante parmi ceux proposés au sondage.
   const demande = url.searchParams.get('type');
 
+  let media = travail.media;
+  let octets = Buffer.from(travail.contenu);
+  let ids = [travail.id];
+  if (demande === MEDIA_STARPRNT && media === 'image/png') {
+    const natifs = await natifsDeLaSuite(travail, depot);
+    // PNG inattendu : on sert le PNG plutôt que rien.
+    if (natifs) {
+      media = MEDIA_STARPRNT;
+      octets = Buffer.from(natifs.octets);
+      ids = natifs.ids;
+    }
+  }
+
   // « remis » et pas « imprimé » : le papier n'est pas encore sorti. Si
   // l'imprimante tombe entre les deux, le travail reste visible comme non
   // terminé au lieu de disparaître en silence.
-  await depot.marquerRemis(travail.id);
+  for (const id of ids) await depot.marquerRemis(id);
 
-  let media = travail.media;
-  let octets = Buffer.from(travail.contenu);
-  if (demande === MEDIA_STARPRNT && media === 'image/png') {
-    const natif = pngVersStarPrnt(travail.contenu);
-    // PNG inattendu : on sert le PNG plutôt que rien.
-    if (natif) {
-      media = MEDIA_STARPRNT;
-      octets = Buffer.from(natif);
-    }
-  }
-  // Une ligne par ticket servi, pour mesurer (journal du serveur, jamais la clé).
-  console.info(`[imprimante] ticket ${travail.id} servi en ${media} (${octets.length} octets)`);
+  // Une ligne par envoi, pour mesurer (journal du serveur, jamais la clé).
+  console.info(`[imprimante] ticket(s) ${ids.join(', ')} servi(s) en ${media} (${octets.length} octets)`);
   return new Response(octets, {
     status: 200,
     headers: { ...SANS_CACHE, 'Content-Type': media, 'Content-Length': String(octets.length) },
@@ -181,15 +224,18 @@ async function confirmation(url: URL, depot: DepotImprimante): Promise<Response>
 
   const travail = await depot.premierRemis();
   if (!travail) return vide(200);
+  // Les exemplaires servis ensemble se confirment ensemble.
+  const ids = travail.commandeId !== null ? await depot.remisDeCommande(travail.commandeId) : [travail.id];
+  if (!ids.includes(travail.id)) ids.unshift(travail.id);
 
   if (!reussi) {
     // Un échec repart en file : le vendeur remet du papier, l'imprimante
     // reprend toute seule là où elle s'était arrêtée.
-    await depot.remettreEnFile(travail.id, code);
+    for (const id of ids) await depot.remettreEnFile(id, code);
     return vide(200);
   }
 
-  await depot.marquerImprime(travail.id);
+  for (const id of ids) await depot.marquerImprime(id);
   // Tous les exemplaires sortis : c'est maintenant, et seulement maintenant,
   // que la commande est vraiment imprimée.
   if (travail.commandeId && (await depot.resteAImprimer(travail.commandeId)) === 0) {

@@ -325,6 +325,11 @@ export default function ImprimerCommande() {
         <ApercuReseau
           commande={commande}
           onImprime={() => void charger()}
+          pendantImpression={
+            <Bouton onClick={() => void copierConfirmation()}>
+              {copie ? 'Copié — collez dans WhatsApp' : 'Copier la confirmation WhatsApp'}
+            </Bouton>
+          }
           apresImpression={
             <>
               <LienBouton href="/commandes/nouvelle" variante="principal" className="min-h-14 px-6 text-base">

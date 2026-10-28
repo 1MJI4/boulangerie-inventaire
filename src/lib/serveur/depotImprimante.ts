@@ -28,8 +28,23 @@ export function depotPrisma(prisma: PrismaClient): DepotImprimante {
       return prisma.travailImpression.findFirst({
         where: { statut: 'en_attente' },
         orderBy: { id: 'asc' },
-        select: { id: true, media: true, contenu: true },
+        select: { id: true, commandeId: true, media: true, contenu: true },
       });
+    },
+    async suiteEnAttente(commandeId, apresId) {
+      return prisma.travailImpression.findMany({
+        where: { commandeId, statut: 'en_attente', id: { gt: apresId } },
+        orderBy: { id: 'asc' },
+        select: { id: true, commandeId: true, media: true, contenu: true },
+      });
+    },
+    async remisDeCommande(commandeId) {
+      const remis = await prisma.travailImpression.findMany({
+        where: { commandeId, statut: 'remis' },
+        orderBy: { id: 'asc' },
+        select: { id: true },
+      });
+      return remis.map((t) => t.id);
     },
     async marquerRemis(id) {
       await prisma.travailImpression.update({ where: { id }, data: { statut: 'remis', remisLe: new Date() } });
@@ -72,8 +87,18 @@ export function depotPostgres(sql: Sql): DepotImprimante {
     },
     async travailEnAttente() {
       const [t] = await sql<TravailEnFile[]>`
-        SELECT "id", "media", "contenu" FROM "TravailImpression" WHERE "statut" = 'en_attente' ORDER BY "id" LIMIT 1`;
+        SELECT "id", "commandeId", "media", "contenu" FROM "TravailImpression" WHERE "statut" = 'en_attente' ORDER BY "id" LIMIT 1`;
       return t ?? null;
+    },
+    async suiteEnAttente(commandeId, apresId) {
+      return sql<TravailEnFile[]>`
+        SELECT "id", "commandeId", "media", "contenu" FROM "TravailImpression"
+        WHERE "commandeId" = ${commandeId} AND "statut" = 'en_attente' AND "id" > ${apresId} ORDER BY "id"`;
+    },
+    async remisDeCommande(commandeId) {
+      const remis = await sql<{ id: number }[]>`
+        SELECT "id" FROM "TravailImpression" WHERE "commandeId" = ${commandeId} AND "statut" = 'remis' ORDER BY "id"`;
+      return remis.map((t) => t.id);
     },
     async marquerRemis(id) {
       await sql`UPDATE "TravailImpression" SET "statut" = 'remis', "remisLe" = now() WHERE "id" = ${id}`;

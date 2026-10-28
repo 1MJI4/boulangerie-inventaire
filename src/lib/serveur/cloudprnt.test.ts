@@ -32,7 +32,19 @@ function depot(travaux: Travail[], statutCommande = 'a_imprimer') {
     },
     async travailEnAttente() {
       const t = premier('en_attente');
-      return t ? { id: t.id, media: t.media, contenu: t.contenu } : null;
+      return t ? { id: t.id, commandeId: t.commandeId, media: t.media, contenu: t.contenu } : null;
+    },
+    async suiteEnAttente(commandeId, apresId) {
+      return travaux
+        .filter((t) => t.commandeId === commandeId && t.statut === 'en_attente' && t.id > apresId)
+        .sort((a, b) => a.id - b.id)
+        .map((t) => ({ id: t.id, commandeId: t.commandeId, media: t.media, contenu: t.contenu }));
+    },
+    async remisDeCommande(commandeId) {
+      return travaux
+        .filter((t) => t.commandeId === commandeId && t.statut === 'remis')
+        .sort((a, b) => a.id - b.id)
+        .map((t) => t.id);
     },
     async marquerRemis(id) {
       trouver(id).statut = 'remis';
@@ -145,4 +157,39 @@ test('état de l’imprimante : réécrit s’il change, pas à chaque sondage',
   assert.equal(ecritures, 1, 'même état, moins de 30 s : une seule écriture');
   await sonder('410 Paper Empty');
   assert.equal(ecritures, 2, 'changement d’état : écrit tout de suite');
+});
+
+test('en StarPRNT, les 4 exemplaires partent en un seul envoi, coupés entre eux, et se confirment ensemble', async () => {
+  const { deflateSync } = await import('node:zlib');
+  const { pngMonochrome } = await import('../pngMonochrome.ts');
+  const points = new Uint8ClampedArray(10 * 2 * 4).fill(255);
+  const png = await pngMonochrome(points, 10, 2, async (d) => new Uint8Array(deflateSync(d)));
+  const vrai = (id: number): Travail => ({ ...ticket(id), contenu: png });
+  // Un exemplaire d'une autre commande attend derrière : il ne doit pas partir avec.
+  const { d, etat, travaux } = depot([vrai(1), vrai(2), vrai(3), vrai(4), { ...vrai(5), commandeId: 13 }]);
+
+  const natif = await repondreImprimante(appel('GET', '?type=application%2Fvnd.star.starprnt'), CLE, d, CLE);
+  assert.equal(natif.headers.get('Content-Type'), 'application/vnd.star.starprnt');
+  const octets = new Uint8Array(await natif.arrayBuffer());
+  // Chaque ticket fait 18 octets et finit par sa coupe (ESC d 3).
+  assert.equal(octets.length, 4 * 18);
+  for (let n = 1; n <= 4; n++) assert.deepEqual([...octets.subarray(n * 18 - 3, n * 18)], [0x1b, 0x64, 0x03]);
+  assert.deepEqual(travaux.map((t) => t.statut), ['remis', 'remis', 'remis', 'remis', 'en_attente']);
+
+  assert.equal((await repondreImprimante(appel('DELETE', '?code=200+OK'), CLE, d, CLE)).status, 200);
+  assert.deepEqual(travaux.map((t) => t.statut), ['imprime', 'imprime', 'imprime', 'imprime', 'en_attente']);
+  assert.equal(etat.commande, 'imprimee');
+  assert.equal(etat.evenements, 1);
+});
+
+test('envoi groupé en échec : les 4 exemplaires repartent en file ensemble', async () => {
+  const { deflateSync } = await import('node:zlib');
+  const { pngMonochrome } = await import('../pngMonochrome.ts');
+  const points = new Uint8ClampedArray(10 * 2 * 4).fill(255);
+  const png = await pngMonochrome(points, 10, 2, async (d) => new Uint8Array(deflateSync(d)));
+  const { d, etat, travaux } = depot([1, 2, 3, 4].map((id) => ({ ...ticket(id), contenu: png })));
+  await repondreImprimante(appel('GET', '?type=application%2Fvnd.star.starprnt'), CLE, d, CLE);
+  await repondreImprimante(appel('DELETE', '?code=520+Download+failed'), CLE, d, CLE);
+  assert.ok(travaux.every((t) => t.statut === 'en_attente' && t.erreur === '520 Download failed'));
+  assert.equal(etat.commande, 'a_imprimer');
 });

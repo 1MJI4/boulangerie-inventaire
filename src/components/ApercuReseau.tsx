@@ -14,6 +14,8 @@ import { Alerte, Bouton, Puce } from '@/components/ui';
 import { DESTINATIONS, dessinerTicket, type Destination } from '@/lib/ticketCanvas';
 import { enBase64, pngMonochrome, zlibNavigateur } from '@/lib/pngMonochrome';
 import type { Commande } from '@/lib/commandes';
+import { suivreImpression } from '@/lib/suiviImpression';
+import { ImprimanteTicket, SORTIE_TICKET_MS } from '@/components/ImprimanteTicket';
 
 type Travail = {
   id: number;
@@ -34,22 +36,6 @@ const LIBELLE_STATUT: Record<string, string> = {
 /** Sans progrès pendant ce délai, on rend la main au vendeur pour relancer. */
 const BLOQUE_APRES_MS = 45_000;
 
-/** Petite imprimante dont le papier sort en boucle pendant l'impression. */
-function ImprimanteAnimee({ active }: { active: boolean }) {
-  return (
-    <svg aria-hidden viewBox="0 0 48 48" className={`imprimante-animee h-12 w-12 shrink-0 ${active ? 'active' : ''}`}>
-      {/* Le papier est dessiné d'abord : caché derrière le corps, il sort par le bas. */}
-      <g className="papier">
-        <rect x="14" y="26" width="20" height="18" fill="#fff" stroke="currentColor" strokeWidth="2" />
-        <path d="M18 35h12M18 39h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      </g>
-      <rect x="13" y="6" width="22" height="9" rx="1.5" fill="none" stroke="currentColor" strokeWidth="2.5" />
-      <rect x="6" y="14" width="36" height="16" rx="3" fill="currentColor" />
-      <circle cx="36" cy="20" r="1.8" fill="#fff" className="voyant" />
-    </svg>
-  );
-}
-
 function Rouet() {
   return (
     <span
@@ -63,13 +49,17 @@ export function ApercuReseau({
   commande,
   onImprime,
   apresImpression,
+  pendantImpression,
 }: {
   commande: Commande;
   onImprime?: () => void;
-  /** Boutons de la suite (« Nouvelle commande », « Accueil »…), montrés une fois tout sorti. */
+  /** Boutons de la suite (« Nouvelle commande », « Accueil »…), montrés dès le dépôt dans la file. */
   apresImpression?: ReactNode;
+  /** Une chose utile à faire pendant que ça sort (copier la confirmation…). */
+  pendantImpression?: ReactNode;
 }) {
   const conteneur = useRef<HTMLDivElement>(null);
+  const ticketsPrets = useRef<Promise<TicketEncode[]> | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [travaux, setTravaux] = useState<Travail[]>([]);
@@ -77,10 +67,13 @@ export function ApercuReseau({
   const [suivi, setSuivi] = useState(false);
   // Dernier moment où l'impression a avancé : sert à détecter un blocage.
   const [dernierProgres, setDernierProgres] = useState(0);
-  const [, setHorloge] = useState(0);
+  const [horloge, setHorloge] = useState(0);
   // Le bandeau « ✓ sortis » ne s'affiche qu'après une impression suivie ici,
   // pas pour une commande imprimée hier qu'on rouvre.
   const [vuEnDirect, setVuEnDirect] = useState(false);
+  // Les PNG noir et blanc qui partent à l'imprimante, montrés tels quels dans
+  // l'imprimante animée : le papier à l'écran est le papier du rouleau.
+  const [papiers, setPapiers] = useState<Partial<Record<string, string>>>({});
 
   // Le dessin se fait une fois, à l'affichage. Les canvas sont insérés tels
   // quels dans la page : aucune conversion, donc aucune occasion de diverger.
@@ -96,6 +89,16 @@ export function ApercuReseau({
       canvas.style.height = 'auto';
       hote.appendChild(canvas);
     }
+    // Les images partent prêtes : on les encode dès l'affichage, pendant que le
+    // vendeur relit l'aperçu, pour que le toucher « Envoyer » parte aussitôt.
+    const canvases = Array.from(hote.querySelectorAll('canvas'));
+    const preparation = encoderTickets(canvases);
+    preparation
+      .then((tickets) =>
+        setPapiers(Object.fromEntries(tickets.map((t) => [t.destination, `data:image/png;base64,${t.png}`]))),
+      )
+      .catch(() => undefined);
+    ticketsPrets.current = preparation;
   }, [commande]);
 
   const rafraichir = useCallback(async () => {
@@ -154,19 +157,14 @@ export function ApercuReseau({
     envoiEnVol.current = true;
     setEnvoi(true);
     setErreur(null);
+    // Le retour est immédiat : les 4 tickets apparaissent « en file » dès le
+    // toucher, pendant que les images se préparent et partent.
+    setTravaux(enFile());
+    setVuEnDirect(true);
     try {
-      const canvases = Array.from(hote.querySelectorAll('canvas'));
-      // PNG noir et blanc 1 bit, pas toDataURL (couleur 32 bits) : décodé,
-      // un long ticket en couleur dépasse la mémoire de l'imprimante
-      // (« 511 Media Decoding Error », voir src/lib/pngMonochrome.ts).
-      const tickets = await Promise.all(
-        canvases.map(async (canvas, index) => {
-          const ctx = canvas.getContext('2d');
-          if (!ctx) throw new Error('Ticket illisible : rechargez la page.');
-          const points = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-          const png = await pngMonochrome(points, canvas.width, canvas.height, zlibNavigateur);
-          return { destination: DESTINATIONS[index] as Destination, png: enBase64(png) };
-        }),
+      // Déjà prêtes le plus souvent ; sinon (préparation échouée) on refait.
+      const tickets = await (ticketsPrets.current ?? Promise.reject(new Error())).catch(() =>
+        encoderTickets(Array.from(hote.querySelectorAll('canvas'))),
       );
       const reponse = await fetch('/api/impression', {
         method: 'POST',
@@ -177,22 +175,17 @@ export function ApercuReseau({
         const donnees = await reponse.json().catch(() => ({}));
         throw new Error(donnees.erreur ?? 'Envoi refusé.');
       }
-      // Affichage immédiat des 4 tickets « en file », sans attendre le premier tour.
-      setTravaux(
-        DESTINATIONS.map((destination, index) => ({
-          id: -1 - index,
-          destination,
-          statut: 'en_attente',
-          erreur: null,
-          imprimeLe: null,
-        })),
-      );
+      // Déposés : le vendeur peut partir, le voyant en bas d'écran prend le relais.
+      suivreImpression(commande.id, commande.numero);
+      setTravaux(enFile());
       setDernierProgres(Date.now());
       setVuEnDirect(true);
       setSuivi(true);
       void rafraichir();
     } catch (e) {
       setErreur(e instanceof Error ? e.message : 'Envoi impossible.');
+      setVuEnDirect(false);
+      void rafraichir();
     } finally {
       envoiEnVol.current = false;
       setEnvoi(false);
@@ -207,13 +200,19 @@ export function ApercuReseau({
   // Bloqué : rien n'a bougé depuis un moment. On rend le bouton pour relancer.
   const bloque = enCours && dernierProgres > 0 && Date.now() - dernierProgres > BLOQUE_APRES_MS;
   const verrouille = envoi || (enCours && !bloque);
+  // Dès que les tickets sont dans la file, la suite est proposée : rien à
+  // attendre devant l'écran, ils sortent tout seuls.
+  const deposes = vuEnDirect && travaux.length > 0 && !envoi && !bloque;
+  const clientSorti = travaux.some((t) => t.destination === 'CLIENT' && t.statut === 'imprime');
+  const remplissage = envoi ? 0.04 : progression(travaux, dernierProgres, horloge);
+  const papier = papierSousLaFente(travaux, papiers, tousSortis, dernierProgres, horloge);
 
   return (
     // Centré (22/10/2026) : bouton, état d'impression et tickets dans une colonne au milieu.
     <div className="ecran-seulement mx-auto flex max-w-xl flex-col items-center">
       <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
         <Bouton
-          variante={tousSortis && !envoi ? 'secondaire' : 'principal'}
+          variante={(tousSortis || enCours) && !envoi && !bloque ? 'secondaire' : 'principal'}
           disabled={verrouille}
           aria-busy={verrouille}
           className="min-h-14 px-6 text-base"
@@ -252,20 +251,53 @@ export function ApercuReseau({
           aria-live="polite"
           className={`mb-4 w-full max-w-md rounded-xl border p-4 ${tousSortis ? 'border-ok/40 bg-ok-doux' : 'border-accent/40 bg-accent-doux'}`}
         >
-          <div className="flex items-center gap-3">
-            <span className={tousSortis ? 'text-ok' : 'text-accent'}>
-              <ImprimanteAnimee active={enCours && !bloque} />
-            </span>
+          <ImprimanteTicket
+            etat={envoi ? 'envoi' : tousSortis ? 'fini' : bloque ? 'bloque' : 'impression'}
+            libelle={
+              envoi
+                ? 'Préparation…'
+                : tousSortis
+                  ? 'Tout est sorti'
+                  : bloque
+                    ? 'Vérifiez le papier'
+                    : travaux.find((t) => t.statut === 'remis')
+                      ? `Imprime : ${travaux.find((t) => t.statut === 'remis')?.destination}`
+                      : 'En file'
+            }
+            sortis={sortis}
+            total={travaux.length}
+            ticket={papier}
+          />
+          {/* Une barre qui ne s'arrête jamais : entre deux étapes réelles, elle
+              avance doucement vers la suivante sans jamais la dépasser. */}
+          {!bloque ? (
+            <div className="mx-auto mt-3 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-black/10">
+              <div
+                className={`h-full rounded-full transition-[width] duration-1000 ease-linear ${tousSortis ? 'bg-ok' : 'bg-accent'}`}
+                style={{ width: `${Math.round(remplissage * 100)}%` }}
+              />
+            </div>
+          ) : null}
+          <div className="mt-3 text-center">
             <div>
               <p className="text-base font-semibold text-ink">
                 {tousSortis
                   ? `✓ Les ${travaux.length} tickets sont sortis`
                   : bloque
                     ? 'L’impression n’avance plus'
-                    : `Ça imprime — ${sortis} sur ${travaux.length} sortis`}
+                    : envoi || sortis === 0
+                      ? '✓ Envoyé à l’imprimante'
+                      : clientSorti
+                        ? '✓ Ticket client sorti — vous pouvez le donner'
+                        : `Ça imprime — ${sortis} sur ${travaux.length} sortis`}
               </p>
-              {!tousSortis && !bloque ? (
-                <p className="mt-0.5 text-sm text-ink-2">Pas besoin de recliquer : les tickets sortent l’un après l’autre.</p>
+              {envoi ? (
+                <p className="mt-0.5 text-sm text-ink-2">Préparation des tickets…</p>
+              ) : !tousSortis && !bloque ? (
+                <p className="mt-0.5 text-sm text-ink-2">
+                  Vous pouvez passer à la suite : les tickets sortent tout seuls, un voyant en bas de
+                  l’écran suit l’impression.
+                </p>
               ) : null}
             </div>
           </div>
@@ -274,7 +306,15 @@ export function ApercuReseau({
               Vérifiez le papier et le capot de l’imprimante, puis touchez « Relancer l’impression ».
             </p>
           ) : null}
-          {tousSortis && apresImpression ? <div className="mt-3 flex flex-wrap gap-2">{apresImpression}</div> : null}
+          {deposes && !tousSortis && pendantImpression ? (
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2 text-sm text-ink-2">
+              <span>Pendant ce temps :</span>
+              {pendantImpression}
+            </div>
+          ) : null}
+          {deposes && apresImpression ? (
+            <div className="mt-3 flex flex-wrap justify-center gap-2">{apresImpression}</div>
+          ) : null}
           <ul className="mt-3 space-y-1.5 text-sm">
             {travaux.map((travail) => (
               <li key={travail.id} className="flex items-center gap-2">
@@ -321,16 +361,81 @@ export function ApercuReseau({
       <style>{`
         .rouleau-apercu { display: flex; flex-direction: column; align-items: center; gap: 18px; }
         .ticket-apercu { background: #fff; box-shadow: 0 2px 18px rgba(0,0,0,.25); image-rendering: auto; }
-        .imprimante-animee .papier { transform: translateY(-8px); }
-        .imprimante-animee .voyant { opacity: .4; }
-        .imprimante-animee.active .papier { animation: papier-sort 1.6s ease-in-out infinite; }
-        .imprimante-animee.active .voyant { animation: voyant 0.8s steps(2) infinite; }
-        @keyframes papier-sort { 0% { transform: translateY(-14px); opacity: 1; } 70% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(3px); opacity: 0; } }
-        @keyframes voyant { 0% { opacity: .2; } 100% { opacity: 1; } }
-        @media (prefers-reduced-motion: reduce) { .imprimante-animee.active .papier, .imprimante-animee.active .voyant { animation: none; } }
       `}</style>
     </div>
   );
+}
+
+type TicketEncode = { destination: Destination; png: string };
+
+/**
+ * PNG noir et blanc 1 bit, pas toDataURL (couleur 32 bits) : décodé, un long
+ * ticket en couleur dépasse la mémoire de l'imprimante (« 511 Media Decoding
+ * Error », voir src/lib/pngMonochrome.ts).
+ */
+function encoderTickets(canvases: HTMLCanvasElement[]): Promise<TicketEncode[]> {
+  return Promise.all(
+    canvases.map(async (canvas, index) => {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Ticket illisible : rechargez la page.');
+      const points = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      const png = await pngMonochrome(points, canvas.width, canvas.height, zlibNavigateur);
+      return { destination: DESTINATIONS[index] as Destination, png: enBase64(png) };
+    }),
+  );
+}
+
+/**
+ * Remplissage de la barre, de 0 à 1. Chaque ticket compte deux étapes réelles
+ * (pris par l'imprimante, puis sorti). Entre deux étapes, la barre glisse vers
+ * la suivante (jusqu'à 85 % de l'écart, en ralentissant) : elle ne reste
+ * jamais figée, et ne promet jamais plus que ce qui est vraiment sorti.
+ */
+function progression(travaux: Travail[], dernierProgres: number, maintenant: number): number {
+  if (!travaux.length) return 0;
+  const etapes = travaux.length * 2;
+  const faites = travaux.reduce((n, t) => n + (t.statut === 'imprime' ? 2 : t.statut === 'remis' ? 1 : 0), 0);
+  if (faites >= etapes) return 1;
+  const ecoule = dernierProgres > 0 && maintenant > dernierProgres ? maintenant - dernierProgres : 0;
+  const glisse = 0.85 * (1 - Math.exp(-ecoule / 3000));
+  return Math.max(0.04, (faites + glisse) / etapes);
+}
+
+/**
+ * Le ticket qui dépasse de la fente. Celui que l'imprimante a pris sort en
+ * s'animant ; pris à plusieurs (envoi groupé), ils sortent l'un après l'autre
+ * au rythme de l'animation. Entre deux, le dernier sorti reste posé ; à la
+ * fin, c'est le ticket client qui reste visible.
+ */
+function papierSousLaFente(
+  travaux: Travail[],
+  papiers: Partial<Record<string, string>>,
+  tousSortis: boolean,
+  dernierProgres: number,
+  maintenant: number,
+): { cle: string; image: string; sort: boolean } | null {
+  const montrer = (t: Travail | undefined, sort: boolean) => {
+    const image = t ? papiers[t.destination] : undefined;
+    return t && image ? { cle: `${t.destination}-${sort ? 'sort' : 'pose'}`, image, sort } : null;
+  };
+  if (tousSortis) return montrer(travaux.find((t) => t.destination === 'CLIENT') ?? travaux[0], false);
+  const remis = travaux.filter((t) => t.statut === 'remis');
+  if (remis.length) {
+    const ecoule = dernierProgres > 0 && maintenant > dernierProgres ? maintenant - dernierProgres : 0;
+    return montrer(remis[Math.min(remis.length - 1, Math.floor(ecoule / SORTIE_TICKET_MS))], true);
+  }
+  return montrer([...travaux].reverse().find((t) => t.statut === 'imprime'), false);
+}
+
+/** Les 4 exemplaires « en file », affichés sans attendre le premier tour de suivi. */
+function enFile(): Travail[] {
+  return DESTINATIONS.map((destination, index) => ({
+    id: -1 - index,
+    destination,
+    statut: 'en_attente',
+    erreur: null,
+    imprimeLe: null,
+  }));
 }
 
 function depuis(iso: string): string {
@@ -338,5 +443,7 @@ function depuis(iso: string): string {
   if (secondes < 120) return `${secondes} s`;
   const minutes = Math.round(secondes / 60);
   if (minutes < 120) return `${minutes} min`;
-  return `${Math.round(minutes / 60)} h`;
+  const heures = Math.round(minutes / 60);
+  if (heures < 48) return `${heures} h`;
+  return `${Math.round(heures / 24)} jours`;
 }
