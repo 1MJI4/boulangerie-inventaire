@@ -136,7 +136,7 @@ test('Bavarois goût Fraisier se dit « Fraisier », sans répéter le goût', (
 
 test('écriture par gâteau (ligne) prioritaire sur celle de la commande', () => {
   const parLigne = { ...layer, texteGateau: 'Joyeux anniversaire Léa' } as LigneCommande;
-  assert.deepEqual(ligneAffichee(parLigne).details.at(-2), '« Joyeux anniversaire Léa »');
+  assert.deepEqual(ligneAffichee(parLigne).details.at(-2), 'Écriture : « Joyeux anniversaire Léa »');
   const c = commande({ texteGateau: 'Ancienne', lignes: [parLigne] });
   assert.equal(ecritureDeCommande(c), null);
   assert.equal(ecritureDeCommande(commande({ texteGateau: ' Bravo ', lignes: [layer] })), 'Bravo');
@@ -146,7 +146,7 @@ test('résumé : gâteaux avant suppléments, écriture de commande sur le gâte
   const c = commande({ texteGateau: 'Bravo', lignes: [ecritureSupp, layer, pistolets, miniPizza] });
   const r = resumeCommande(c, 2);
   assert.deepEqual(r.lignes.map((l) => l.libelle), ['Layer Cake', 'Pistolet']);
-  assert.ok(r.lignes[0].details.includes('« Bravo »'));
+  assert.ok(r.lignes[0].details.includes('Écriture : « Bravo »'));
   assert.equal(r.autres, 2);
   assert.equal(texteAutres(r.autres), 'et 2 autres articles');
   assert.equal(texteAutres(1), 'et 1 autre article');

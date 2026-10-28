@@ -101,7 +101,8 @@ export function ligneAffichee(ligne: LigneCommande): LigneAffichee {
   const decorations = (ligne.decorations ?? []).map((d) => d.trim()).filter(Boolean);
   if (decorations.length) details.push(`Déco : ${decorations.join(', ')}`);
   const ecriture = ecritureDeLigne(ligne);
-  if (ecriture) details.push(`« ${ecriture} »`);
+  // « Écriture : » devant le texte : sans étiquette, on ne sait pas que c'est à écrire (28/10/2026).
+  if (ecriture) details.push(`Écriture : « ${ecriture} »`);
   if ((ligne as { photoImprimee?: unknown }).photoImprimee === true) details.push('Photo à imprimer');
   if (texte(ligne.precision)) details.push(texte(ligne.precision));
   return { quantite, libelle: nomSelonGout ?? ligne.libelle, details, ecriture, supplement: estSupplement(ligne) };
@@ -146,7 +147,7 @@ export function resumeCommande(c: Pick<Commande, 'texteGateau' | 'lignes'>, max 
   if (ecriture) {
     const k = ordonnees.findIndex((l) => !l.supplement);
     const cible = k >= 0 ? k : 0;
-    if (ordonnees[cible]) ordonnees[cible] = { ...ordonnees[cible], details: [...ordonnees[cible].details, `« ${ecriture} »`] };
+    if (ordonnees[cible]) ordonnees[cible] = { ...ordonnees[cible], details: [...ordonnees[cible].details, `Écriture : « ${ecriture} »`] };
   }
   const n = Math.max(0, max);
   return { lignes: ordonnees.slice(0, n), autres: Math.max(0, ordonnees.length - n) };
