@@ -76,24 +76,18 @@ export function Signalement({
       data-niveau={niveau}
       data-code={code}
       data-champ={signalement.champ ?? undefined}
-      className={`flex rounded-xl ${compact ? 'gap-2 px-3 py-2' : 'gap-3 p-4'} ${style.cadre} ${
+      className={`flex rounded-2xl ${compact ? 'gap-2 px-3 py-2' : 'gap-3 px-4 py-3'} ${style.cadre} ${
         EN_DEV && refusSansSortie ? 'outline-2 outline-offset-2 outline-dashed outline-bloquant' : ''
       } ${className}`}
     >
-      <IconeNiveau niveau={niveau} className={`${compact ? 'h-5 w-5' : 'h-8 w-8'} shrink-0 ${style.icone}`} />
+      <IconeNiveau niveau={niveau} className={`${compact ? 'mt-px h-5 w-5' : 'mt-0.5 h-6 w-6'} shrink-0 ${style.icone}`} />
 
       <div className="min-w-0 flex-1">
-        <p className={compact ? 'sr-only' : 'mb-1'}>
-          <span
-            className={`inline-block rounded-md text-sm font-bold uppercase tracking-wide ${
-              niveau === 'information' ? '' : 'px-2 py-0.5'
-            } ${style.pastille}`}
-          >
-            {style.libelle}
-          </span>
+        <p className={compact ? 'sr-only' : 'mb-0.5'}>
+          <span className={`text-sm font-semibold ${style.pastille}`}>{style.libelle}</span>
         </p>
 
-        <p className={`leading-snug text-ink text-pretty ${compact ? 'text-sm' : 'text-base sm:text-lg'}`}>{message}</p>
+        <p className={`leading-snug text-ink text-pretty ${compact ? 'text-sm' : 'text-base'}`}>{message}</p>
 
         {correctionPossible || autreSortie ? (
           <div className={`${compact ? 'mt-1.5' : 'mt-3'} flex flex-wrap gap-2`}>

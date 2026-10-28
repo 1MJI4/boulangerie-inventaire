@@ -7,14 +7,15 @@
 // reconnaissable en un quart de seconde, sans lecture, au soleil derrière une
 // vitrine ou pour un employé daltonien :
 //
-//   | Niveau        | Forme d'icône        | Libellé    | Poids visuel                           |
-//   |---------------|----------------------|------------|----------------------------------------|
-//   | bloquant      | octogone (stop) + ✕  | « À corriger » | cadre épais 2 px + barre 8 px, pastille pleine |
-//   | avertissement | triangle + !         | « Attention » | cadre 2 px + barre 8 px, pastille ambre |
-//   | information   | cercle + i           | « Info »   | cadre fin 1 px, pas de pastille         |
+//   | Niveau        | Forme d'icône     | Libellé        | Couleur              |
+//   |---------------|-------------------|----------------|----------------------|
+//   | bloquant      | cercle plein + !  | « À corriger » | rouge système iOS    |
+//   | avertissement | triangle + !      | « Attention »  | orange système iOS   |
+//   | information   | cercle vide + i   | « Info »       | bleu                 |
 //
-// Le bloquant est cramoisi (`--bloquant`), jamais le rouge-orangé de l'accent :
-// le rouge de l'enseigne est réservé aux prix (fiche design-ux).
+// Style Apple (propriétaire, 28/10/2026) : plus de cadres épais ni de barre
+// latérale ; un fond à peine teinté, l'icône et le libellé en couleur, le
+// message en encre.
 
 import type { Niveau } from '@/domaine/resultat';
 
@@ -32,21 +33,21 @@ export const NIVEAUX: Record<Niveau, Style> = {
   bloquant: {
     libelle: 'À corriger',
     role: 'alert',
-    cadre: 'border-2 border-l-8 border-bloquant bg-bloquant-doux',
+    cadre: 'bg-bloquant-doux',
     icone: 'text-bloquant',
-    pastille: 'bg-bloquant-plein text-bloquant-plein-texte',
+    pastille: 'text-bloquant',
   },
   avertissement: {
     libelle: 'Attention',
     role: 'status',
-    cadre: 'border-2 border-l-8 border-avertissement-trait bg-avertissement-doux',
+    cadre: 'bg-avertissement-doux',
     icone: 'text-avertissement',
-    pastille: 'bg-avertissement-plein text-ink',
+    pastille: 'text-avertissement',
   },
   information: {
     libelle: 'Info',
     role: 'status',
-    cadre: 'border border-information-trait bg-information-doux',
+    cadre: 'bg-information-doux',
     icone: 'text-information',
     pastille: 'text-information',
   },
@@ -64,16 +65,9 @@ export function IconeNiveau({ niveau, className = '' }: { niveau: Niveau; classN
   if (niveau === 'bloquant') {
     return (
       <svg {...commun}>
-        <path
-          d="M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86z"
-          fill="currentColor"
-        />
-        <path
-          d="M8.5 8.5l7 7m0-7l-7 7"
-          stroke="var(--bloquant-doux)"
-          strokeWidth="2.6"
-          strokeLinecap="round"
-        />
+        <circle cx="12" cy="12" r="10.5" fill="currentColor" />
+        <path d="M12 6.8v6.4" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" />
+        <circle cx="12" cy="17" r="1.5" fill="#fff" />
       </svg>
     );
   }
@@ -81,8 +75,8 @@ export function IconeNiveau({ niveau, className = '' }: { niveau: Niveau; classN
     return (
       <svg {...commun}>
         <path d="M12 2.5L23 21.5H1z" fill="currentColor" strokeLinejoin="round" />
-        <path d="M12 9v6" stroke="var(--avertissement-doux)" strokeWidth="2.6" strokeLinecap="round" />
-        <circle cx="12" cy="18.2" r="1.5" fill="var(--avertissement-doux)" />
+        <path d="M12 9v6" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" />
+        <circle cx="12" cy="18.2" r="1.5" fill="#fff" />
       </svg>
     );
   }

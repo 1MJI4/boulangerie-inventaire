@@ -6,8 +6,8 @@
 // « Prendre le prochain jour ouvert ». Il doit être AU MOINS aussi visible
 // que le message d'erreur : c'est lui qui sauve la vente (LOI 7 et 8).
 //
-// Vert d'action (`--sortie`) : distinct du cramoisi du refus ET du
-// rouge-orangé des prix. Cible 56 px (action répétée, au pouce).
+// Vert d'action (`--sortie`) : distinct du rouge du refus ET de l'accent des
+// prix. Bouton en pilule, sobre (style Apple, 28/10/2026), cible 44 px au doigt.
 
 import type { ButtonHTMLAttributes } from 'react';
 
@@ -20,20 +20,17 @@ type Props = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children' | 'type'> 
 
 const VARIANTES = {
   plein: 'bg-sortie text-sortie-texte hover:bg-sortie-fort active:bg-sortie-fort',
-  contour: 'border-2 border-sortie bg-surface text-sortie hover:bg-sortie-doux active:bg-sortie-doux',
+  contour: 'bg-sortie-doux text-sortie hover:brightness-95 active:brightness-95',
 } as const;
 
 export function BoutonCorrection({ libelle, variante = 'plein', className = '', ...props }: Props) {
   return (
     <button
       type="button"
-      className={`inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-xl px-5 text-lg font-semibold disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${VARIANTES[variante]} ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 text-base font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${VARIANTES[variante]} ${className}`}
       {...props}
     >
-      <span>{libelle}</span>
-      <span aria-hidden className="text-xl leading-none">
-        →
-      </span>
+      {libelle}
     </button>
   );
 }

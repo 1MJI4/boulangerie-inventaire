@@ -25,23 +25,25 @@
   --ok-doux: #e6f0e9;
   --attention: #8a6413;
   --attention-doux: #f7efdc;
-  --alerte: #a33a2f;
-  --alerte-doux: #f8e7e4;
+  /* Rouge d'erreur = rouge système d'iOS, version contrastée (propriétaire,
+     28/10/2026 : « un vrai rouge, pas ce rouge pastel »). 5,6:1 sur blanc. */
+  --alerte: #d70015;
+  --alerte-doux: #fff0f0;
 
   /* --- Signalements (LOI 8) — propriétaire : design-ux ----------------
      Trois niveaux, jamais distingués par la couleur seule : chacun a aussi
-     sa forme d'icône (octogone / triangle / cercle) et son libellé texte.
-     Le bloquant est cramoisi, PAS le rouge-orangé de l'accent : le rouge
-     de l'enseigne est réservé aux prix, un refus ne doit pas s'y confondre.
-     Ratios vérifiés (WCAG) : texte sur fond doux >= 7:1 (AAA). */
-  --bloquant: #8a1736;          /* texte, icône, trait — 8,0:1 sur doux */
-  --bloquant-doux: #fbe9ee;
-  --bloquant-plein: #8a1736;    /* pastille pleine, texte blanc 9,3:1 */
+     sa forme d'icône (cercle plein ! / triangle ! / cercle i) et son libellé.
+     Couleurs du système d'Apple (28/10/2026) : un vrai rouge pour ce qui
+     est à corriger, l'orange pour l'attention. Le texte des messages reste
+     en encre ; seuls l'icône, le libellé et le trait du champ sont colorés. */
+  --bloquant: #d70015;          /* rouge iOS contrasté — 5,6:1 sur blanc */
+  --bloquant-doux: #fff0f0;
+  --bloquant-plein: #d70015;
   --bloquant-plein-texte: #ffffff;
-  --avertissement: #6b4300;     /* 7,8:1 sur doux */
-  --avertissement-doux: #fff3d6;
-  --avertissement-plein: #ffd76a; /* pastille pleine, texte encre 12,7:1 */
-  --avertissement-trait: #b07a00;
+  --avertissement: #c93400;     /* orange iOS contrasté — 5,0:1 sur blanc */
+  --avertissement-doux: #fff5eb;
+  --avertissement-plein: #ff9500;
+  --avertissement-trait: #ff9500;
   --information: #1f4e8c;       /* 7,2:1 sur doux */
   --information-doux: #e8f0fb;
   --information-trait: #8fb0dc;
@@ -78,17 +80,17 @@
     --ok-doux: #16281f;
     --attention: #d3ab5c;
     --attention-doux: #2c2415;
-    --alerte: #e58275;
-    --alerte-doux: #2f1c19;
+    --alerte: #ff453a;
+    --alerte-doux: #2b1615;
 
-    --bloquant: #ff8fa8;
-    --bloquant-doux: #2f1520;
-    --bloquant-plein: #ff8fa8;
-    --bloquant-plein-texte: #1a1917;
-    --avertissement: #f2c46b;
-    --avertissement-doux: #2c2415;
-    --avertissement-plein: #f2c46b;
-    --avertissement-trait: #a07a2c;
+    --bloquant: #ff453a;          /* rouge iOS sombre */
+    --bloquant-doux: #2b1615;
+    --bloquant-plein: #ff453a;
+    --bloquant-plein-texte: #ffffff;
+    --avertissement: #ff9f0a;     /* orange iOS sombre */
+    --avertissement-doux: #2b2012;
+    --avertissement-plein: #ff9f0a;
+    --avertissement-trait: #ff9f0a;
     --information: #8fb8f0;
     --information-doux: #162232;
     --information-trait: #3d5f8f;
