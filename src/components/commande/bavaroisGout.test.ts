@@ -24,12 +24,12 @@ import {
   choisirTaille,
   ficheComptoirPourTaille,
   libelleLigneEcran,
-  precisionsAEnregistrer,
   resoudreLocal,
   suivreGout,
   tailleChoisie,
   toucherProduit,
   versLigneSaisie,
+  ligneVide,
   ficheDe,
   type CatalogueCommande,
   type FicheCatalogue,
@@ -206,8 +206,8 @@ test('domaine / serveur : Bavarois sur commande 6 parts goût Framboise → « B
   );
   assert.equal(croise.ok, false);
   if (!croise.ok) assert.equal(croise.valeurProposee, 'gateaux-et-tartes/bavarois-mangue/6p');
-  // N'interdit pas : achat du Bavarois framboise 6P en vitrine (sans origine), en 2 exemplaires.
-  const vitrine = controlerLigne({ produitId: 'gateaux-et-tartes/bavarois-framboise/6p', quantite: 2 }, 0, DATE, ctx);
+  // N'interdit pas : achat du Bavarois framboise 6P en vitrine (sans origine) — un gâteau par ligne (28/10/2026).
+  const vitrine = controlerLigne({ produitId: 'gateaux-et-tartes/bavarois-framboise/6p', quantite: 1 }, 0, DATE, ctx);
   assert.ok(vitrine.ok);
 });
 
@@ -269,9 +269,9 @@ test('Fraisier : « Bavarois goût Fraisier » s’écrit « Fraisier », à l�
   assert.equal(autre.gouts?.length, 1);
 });
 
-test('commande salée : « Photo d’exemple envoyée sur WhatsApp » enregistrée sans gâteau', () => {
-  const coche = { texteGateau: 'BRAVO', sansEcriture: false, photoWhatsapp: true, photoImprimee: true };
-  assert.deepEqual(precisionsAEnregistrer(coche, 0), { texteGateau: '', sansEcriture: false, photoWhatsapp: true, photoImprimee: false });
-  assert.equal(precisionsAEnregistrer({ ...coche, photoWhatsapp: false }, 0).photoWhatsapp, false);
-  assert.equal(precisionsAEnregistrer(coche, 1).photoWhatsapp, true);
+test('commande salée : la « Photo d’exemple envoyée sur WhatsApp » est de la COMMANDE, hors des lignes (lot 2)', () => {
+  // Lot 2 (28/10/2026) : écriture et photo à imprimer sont sur les lignes ; la
+  // photo WhatsApp n'y est pas — elle part telle quelle, gâteau ou non.
+  const s = versLigneSaisie({ ...ligneVide(null), libelleLibre: 'Plateau', quantite: 1 }, null);
+  assert.ok(!('photoWhatsapp' in s));
 });

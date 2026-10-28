@@ -178,11 +178,11 @@ export default function ReglagesCommandes() {
   if (acces === 'ferme') {
     return (
       <>
-        <Entete titre="Réglages des commandes" sousTitre="Réservé au gérant." />
+        <Entete titre="Réglages des commandes" sousTitre="Réservé au manager." />
         {refusAffiche}
         <div className="max-w-xl">
           <AccesGerant
-            raison="Saisissez le code gérant pour ouvrir les réglages."
+            raison="Saisissez le code du manager pour ouvrir les réglages."
             onAccorde={() => {
               setRefus(null);
               setAcces('ouvert');
@@ -466,7 +466,7 @@ function TaillesGateau({ tailles, enregistrer }: { tailles: number[]; enregistre
     <section className="min-w-0">
       <h2 className="text-base font-semibold text-ink">Tailles standard des gâteaux (parts)</h2>
       <p className="mb-2 mt-0.5 text-sm text-ink-2">
-        Proposées en boutons à la commande d’un gâteau simple. Une autre taille demande le code gérant.
+        Proposées en boutons à la commande d’un gâteau simple. Une autre taille demande le code du manager.
       </p>
       <Carte className="grid gap-3 p-3 md:grid-cols-[1fr_auto]">
         <div>

@@ -161,7 +161,7 @@ test('3. date vide : champ à remplir (ERR_CHAMP_OBLIGATOIRE, discret), pas « i
   assert.equal(r.champ, 'dateRetrait');
   assert.equal(r.message, 'Choisissez le jour de retrait.');
   assert.ok(MANQUE_SIMPLE.has(r.code), 'mot-clé seul dans « Il manque »');
-  assert.deepEqual(libelleManque(r, [], catalogue), { titre: 'DATE de retrait', detail: null });
+  assert.deepEqual(libelleManque(r, [], catalogue), { titre: 'Date de retrait', detail: null });
   assert.equal(texteChampVide(r), 'Choisissez le jour de retrait.');
   // Les vrais refus restent, avec leur sortie.
   const passee = validerDateRetrait('2026-10-14', [], DATE);
@@ -171,7 +171,7 @@ test('3. date vide : champ à remplir (ERR_CHAMP_OBLIGATOIRE, discret), pas « i
 
 test('3. commande sans date ni client : phrases courtes sous chaque champ', () => {
   const saisie = versCommandeSaisie(
-    { client: '', telephone: '', dateRetrait: null, heureRetrait: '', lignes: [], acompteCentimes: null, totalConvenuCentimes: null, remise: null, texteGateau: '', sansEcriture: false, demandeInhabituelle: false },
+    { client: '', telephone: '', dateRetrait: null, heureRetrait: '', lignes: [], acompteCentimes: null, totalConvenuCentimes: null, remise: null, demandeInhabituelle: false },
     catalogue,
     { datePrise: DATE, heurePrise: '10:00' },
   );
@@ -193,7 +193,7 @@ test('4. « Autre demande » pas encore décrite : à remplir (pas « n’a pas 
   assert.equal(t.complet, false);
   const r = blocagesCommande(
     versCommandeSaisie(
-      { client: 'A', telephone: '0470123456', dateRetrait: '2026-10-16', heureRetrait: '10:00', lignes: [libre], acompteCentimes: null, totalConvenuCentimes: null, remise: null, texteGateau: '', sansEcriture: false, demandeInhabituelle: false },
+      { client: 'A', telephone: '0470123456', dateRetrait: '2026-10-16', heureRetrait: '10:00', lignes: [libre], acompteCentimes: null, totalConvenuCentimes: null, remise: null, demandeInhabituelle: false },
       catalogue,
       { datePrise: DATE, heurePrise: '09:00' },
     ),
@@ -202,7 +202,7 @@ test('4. « Autre demande » pas encore décrite : à remplir (pas « n’a pas 
   assert.ok(r, 'refus sur la description');
   assert.equal(r.code, 'ERR_CHAMP_OBLIGATOIRE');
   assert.equal(r.message, 'Décrivez ce que veut le client.');
-  assert.equal(texteChampVide(r), 'À remplir : décrivez la demande');
+  assert.equal(texteChampVide(r), 'À remplir\u00a0: décrivez la demande');
   assert.deepEqual(libelleManque(r, [libre], catalogue), { titre: 'Décrivez ce que veut le client.', detail: null });
 });
 

@@ -14,7 +14,7 @@ import type { DateISO, Deverrouillage, FicheTarifee, Forme, PrixRegle, ProduitRe
 import type { CommandeSaisie, LigneSaisie, ResoudreProduit } from '../../domaine/commande.ts';
 import { gateauxDeLigneLibre, resoudreDepuisCatalogue } from '../../domaine/commande.ts';
 import { signaler } from '../../domaine/messages.ts';
-import { gateauxDeLigne } from '../../domaine/supplements.ts';
+import { estGateauDuComptoir, gateauxDeLigne, porteUneEcriture, porteUnePhoto } from '../../domaine/supplements.ts';
 import { estGateauSimpleSurCommande, symbolesDuTexte } from '../../domaine/minimums.ts';
 import { gateauSurCommandeDe, goutDeLaLigne, produitComptoirPourTaille, type CorrespondanceComptoir } from '../../domaine/prixComptoir.ts';
 import { libelleProduitFiche, libelleSelonGout, type LibelleSelonGout } from '../../domaine/libelles.ts';
@@ -22,7 +22,7 @@ import type { JourFerme } from '../../domaine/calendrier.ts';
 import { decalerJours, estDateISO } from '../../domaine/calendrier.ts';
 import { heureChamp, lireHeure } from '../../domaine/reglement.ts';
 import type { DelaisCommande, PlageOuverture, RegleSupplementParPersonne, ReglementCommande } from '../../domaine/constantes.ts';
-import { FAMILLE_SUPPLEMENT, SUPPLEMENT_ECRITURE } from '../../domaine/constantes.ts';
+import { FAMILLE_SUPPLEMENT, FAMILLES_GATEAU, SUPPLEMENT_ECRITURE, SUPPLEMENT_PHOTO } from '../../domaine/constantes.ts';
 import type { ChoixGout } from '../../domaine/gouts.ts';
 
 // ---------------------------------------------------------------------------
@@ -134,12 +134,22 @@ export function ordonnerResultatsRecherche(fiches: readonly FicheCatalogue[], re
  * Gâteau simple sur commande (tailles standard, LOI 11 — données de la fiche,
  * jugées par le domaine) : pas de « +1 » non plus, la taille se choisit aux
  * boutons des tailles standard (champ « taille », sans pavé).
- * Retourne les lignes, la clé de la ligne touchée et le champ à ouvrir au pavé.
+ * UNE LIGNE PAR GÂTEAU (propriétaire, 28/10/2026 : « 2 Bavarois comptent pour
+ * 2 gâteaux différents ») : un gâteau déjà au bon ne passe jamais à « 2 ».
+ *  - gâteau du comptoir (Bavarois 6P…) : chaque toucher ajoute un NOUVEAU
+ *    gâteau, ligne de 1, sans pavé (champ « gateau ») ;
+ *  - gâteau par personne (Layer, Bavarois sur commande…) : nouveau gâteau dès
+ *    que le précédent a sa taille ; tant qu'elle n'est pas choisie, le toucher
+ *    rouvre ce gâteau (un double toucher ne crée pas un gâteau vide de plus).
+ * Les autres produits (viennoiserie, salé, minis) : un toucher = +1.
+ * Retourne les lignes, la clé de la ligne touchée et le champ à ouvrir au pavé
+ * (« gateau » / « taille » : aucun pavé).
  */
 export function toucherProduit(
   lignes: readonly LigneEcran[],
   fiche: FicheCatalogue,
-): { lignes: LigneEcran[]; cle: string; champ: 'quantite' | 'symboles' | 'taille' } {
+  famillesGateau: readonly string[] = FAMILLES_GATEAU,
+): { lignes: LigneEcran[]; cle: string; champ: ChampTouche } {
   // Gâteau par personne à minimum (R61) : tailles proposées à partir du
   // minimum, pas de « +1 » (1 part de Layer Cake n'a pas de sens). Number
   // Cake : le nombre de symboles d'abord, il fixe le minimum.
@@ -152,9 +162,15 @@ export function toucherProduit(
     // ligne demande « Combien de formes ? » en gros boutons, puis la taille.
     let deja: LigneEcran | undefined;
     for (const l of lignes) if (l.produitId === fiche.produit.id || l.origineSurCommande === fiche.produit.id) deja = l;
-    if (deja) return { lignes: [...lignes], cle: deja.cle, champ: 'taille' };
+    // Dernier gâteau de ce produit encore sans taille : on le rouvre (pas un 2e gâteau vide).
+    if (deja && gateauSansTaille(deja)) return { lignes: [...lignes], cle: deja.cle, champ: 'taille' };
     const ligne = ligneVide(fiche.produit.id);
     return { lignes: [...lignes, ligne], cle: ligne.cle, champ: 'taille' };
+  }
+  // Gâteau du comptoir : un toucher = un gâteau de plus, sur SA ligne (quantité 1, sans pavé).
+  if (estFicheGateauDuComptoir(fiche, famillesGateau)) {
+    const ligne: LigneEcran = { ...ligneVide(fiche.produit.id), quantite: 1 };
+    return { lignes: [...lignes, ligne], cle: ligne.cle, champ: 'gateau' };
   }
   const auKilo = fiche.produit.unite === 'kg';
   const symboles = fiche.prix.minParSymbole !== null;
@@ -171,6 +187,64 @@ export function toucherProduit(
   const ligne: LigneEcran = { ...ligneVide(fiche.produit.id), quantite: auKilo ? null : 1 };
   // Number Cake : le nombre de symboles d'abord (il fixe le minimum de parts).
   return { lignes: [...lignes, ligne], cle: ligne.cle, champ: symboles ? 'symboles' : 'quantite' };
+}
+
+/** Champ ouvert après un toucher : pavé de quantité / des formes, boutons de taille, ou rien (« gateau »). */
+export type ChampTouche = 'quantite' | 'symboles' | 'taille' | 'gateau';
+
+/** Gâteau par personne dont la taille (parts) n'est pas encore choisie. */
+export function gateauSansTaille(l: LigneEcran): boolean {
+  return l.quantite === null && !l.origineSurCommande;
+}
+
+/** Gâteau du comptoir (Bavarois 6P…) : une ligne = un gâteau, quantité 1 (domaine : `estGateauDuComptoir`). */
+export function estFicheGateauDuComptoir(fiche: FicheTarifee, famillesGateau: readonly string[]): boolean {
+  return estGateauDuComptoir(
+    { regimePrix: fiche.produit.regimePrix, basePrix: fiche.prix.basePrix, famille: fiche.produit.famille },
+    famillesGateau,
+  );
+}
+
+/** Le produit de la fiche est un gâteau (une ligne = un gâteau) : même définition que le domaine (`gateauxDeLigne`). */
+export function estFicheGateau(fiche: FicheTarifee, famillesGateau: readonly string[]): boolean {
+  return (
+    gateauxDeLigne(
+      { regimePrix: fiche.produit.regimePrix, basePrix: fiche.prix.basePrix, quantite: 1, famille: fiche.produit.famille },
+      famillesGateau,
+    ) > 0
+  );
+}
+
+/**
+ * Sortie « Séparer en N gâteaux » (ligne ancienne « 2 × Bavarois 6P », refusée
+ * par le domaine, `controlerUnGateauParLigne`) : la ligne devient N lignes de
+ * 1 gâteau, à sa place dans le bon.
+ *  - chaque gâteau reprend : produit, goût, forme, décorations, photo de
+ *    modèle, précision (ce qui décrit le gâteau commandé) ;
+ *  - l'écriture, « Pas d'écriture » et la photo à imprimer restent sur le
+ *    PREMIER seulement : ce sont des choix par gâteau, à demander pour chacun
+ *    (le domaine le rappelle : « écriture non précisée »). Rien n'est facturé
+ *    en plus en silence : si le bon portait déjà un supplément par gâteau, le
+ *    domaine propose « Passer à 1 », ou la vendeuse écrit le texte du 2e.
+ * Ligne inconnue ou déjà à 1 : rien ne change.
+ */
+export function separerLigneGateau(lignes: readonly LigneEcran[], cle: string): LigneEcran[] {
+  const i = lignes.findIndex((l) => l.cle === cle);
+  const l = lignes[i];
+  const n = l?.quantite ?? 0;
+  if (!l || !Number.isSafeInteger(n) || n <= 1) return [...lignes];
+  const premier: LigneEcran = { ...l, quantite: 1 };
+  const copies: LigneEcran[] = Array.from({ length: n - 1 }, () => ({
+    ...l,
+    cle: nouvelleCle(),
+    quantite: 1,
+    gouts: [...l.gouts],
+    decorations: [...l.decorations],
+    texteGateau: '',
+    sansEcriture: false,
+    photoImprimee: false,
+  }));
+  return [...lignes.slice(0, i), premier, ...copies, ...lignes.slice(i + 1)];
 }
 
 /**
@@ -281,6 +355,23 @@ export type LigneEcran = {
    * imprimé sur le bon. Absent / null : pas de photo. Validé par la route.
    */
   photoModele?: string | null;
+  /**
+   * Lot 2 (propriétaire, 28/10/2026 : « une écriture par gâteau ») : écriture
+   * de CE gâteau, saisie dans son bloc « Sur le gâteau ». Envoyée au domaine,
+   * qui ne la garde que sur une ligne gâteau.
+   */
+  texteGateau?: string;
+  /** Lot 2 : « Pas d'écriture » coché pour ce gâteau. */
+  sansEcriture?: boolean;
+  /** Lot 2 : « Photo à imprimer sur le gâteau » cochée pour ce gâteau. */
+  photoImprimee?: boolean;
+  /**
+   * Ligne de supplément Écriture / Photo posée par l'écran (automatique) : elle
+   * suit le nombre de gâteaux qui portent une écriture / une photo, et part
+   * quand il n'y en a plus. Une ligne ajoutée à la main n'est jamais retirée
+   * en silence (le domaine dit quoi faire).
+   */
+  supplementAuto?: boolean;
 };
 
 let compteur = 0;
@@ -308,6 +399,9 @@ export function ligneVide(produitId: string | null): LigneEcran {
     forme: null,
     photoModele: null,
     gateauLibre: null,
+    texteGateau: '',
+    sansEcriture: false,
+    photoImprimee: false,
   };
 }
 
@@ -331,6 +425,11 @@ export function versLigneSaisie(l: LigneEcran, fiche: FicheTarifee | null): Lign
     forme: l.forme ?? null,
     deverrouillage: l.deverrouillage,
     deverrouillageTaille: l.deverrouillageTaille,
+    // Lot 2 : toujours transmis (format « une écriture par gâteau ») ; le domaine
+    // ne les garde que sur un gâteau. « Pas d'écriture » l'emporte sur le texte.
+    texteGateau: l.sansEcriture === true ? null : (l.texteGateau ?? '').trim() || null,
+    sansEcriture: l.sansEcriture === true,
+    photoImprimee: l.photoImprimee === true,
   };
   if (!l.produitId) {
     return {
@@ -355,8 +454,6 @@ export type EtatFormulaire = {
   acompteCentimes: number | null;
   totalConvenuCentimes: number | null;
   remise: Deverrouillage | null;
-  texteGateau: string;
-  sansEcriture: boolean;
   demandeInhabituelle: boolean;
 };
 
@@ -377,8 +474,7 @@ export function versCommandeSaisie(
     acompteCentimes: e.acompteCentimes ?? 0,
     totalConvenuCentimes: e.totalConvenuCentimes,
     remise: e.remise,
-    texteGateau: e.texteGateau || null,
-    sansEcriture: e.sansEcriture,
+    // Écriture et photo à imprimer : sur chaque ligne gâteau (lot 2, 28/10/2026).
     demandeInhabituelle: e.demandeInhabituelle,
   };
 }
@@ -496,7 +592,7 @@ export function lignesIdentiques(
 export function refusAncienTarif(): Echec {
   return signaler(
     'ERR_DROIT_INSUFFISANT',
-    { action: 'modifier les produits, la date ou les montants d’une commande prise avec l’ancien tarif', role: 'gérant' },
+    { action: 'modifier les produits, la date ou les montants d’une commande prise avec l’ancien tarif', role: 'manager' },
     { champ: 'lignes' },
   );
 }
@@ -645,23 +741,23 @@ export function formesLibresEnregistrees(formes: string | null | undefined): boo
 }
 
 // ---------------------------------------------------------------------------
-// Bloc « Gâteau » et suppléments automatiques (demande du propriétaire, 18/10/2026)
+// Bloc « Sur le gâteau » et suppléments automatiques (18/10 et 28/10/2026)
 // ---------------------------------------------------------------------------
-// Écriture, photo WhatsApp et photo à imprimer s'affichent SOUS LA LIGNE du
-// premier gâteau du bon (champs au niveau de la commande en base : un seul
-// bloc, même avec plusieurs gâteaux). « Gâteau » = notion du domaine
-// (`gateauxDeLigne`, R7), y compris le gâteau du comptoir qui remplace un
-// gâteau sur commande (R60). Cocher « photo à imprimer » / écrire un texte
-// ajoute le supplément correspondant au bon ; le décocher / vider le texte le
-// retire. Le domaine reste juge (R7 : une fois par gâteau, jamais sans gâteau).
+// Lot 2 (propriétaire, 28/10/2026 : « une écriture par gâteau, ça doit être
+// clair quelle écriture pour quel gâteau ») : SOUS CHAQUE ligne gâteau, son
+// bloc — écriture, « Pas d'écriture », photo à imprimer. « Gâteau » = notion
+// du domaine (`gateauxDeLigne`, R7), y compris le gâteau du comptoir qui
+// remplace un gâteau sur commande (R60). Les suppléments Écriture et Photo
+// suivent : un par gâteau qui porte une écriture / une photo, posés et
+// retirés par l'écran, jamais à la main (`synchroniserSupplementsGateau`).
+// Le domaine reste juge (rejoué au serveur).
 
 /**
- * Identifiants catalogue des suppléments ajoutés automatiquement. Clés de
- * produit (pas de prix : le prix est lu au catalogue reçu, LOI 1).
+ * Identifiants catalogue des suppléments ajoutés automatiquement : clés du
+ * DOMAINE (constantes.ts, exigées par `controlerSupplementEcriture` /
+ * `controlerSupplementPhoto`). Pas de prix : lu au catalogue reçu (LOI 1).
  */
-export const SUPPLEMENT_PHOTO = 'gateaux-sur-commande/supplement-photo';
-/** Clé du domaine (constantes.ts) : le domaine l'exige dès qu'il y a une écriture (28/10/2026). */
-export { SUPPLEMENT_ECRITURE };
+export { SUPPLEMENT_ECRITURE, SUPPLEMENT_PHOTO };
 /** R64 (26/10/2026) : supplément PAR PERSONNE, autant de parts que le gâteau qui le reçoit. */
 export const SUPPLEMENT_PATE_A_SUCRE = 'gateaux-sur-commande/supplement-pate-a-sucre';
 
@@ -692,22 +788,6 @@ export function estLigneGateau(l: LigneEcran, catalogue: CatalogueCommande | nul
   return gateauxDeLigneEcran(l, catalogue, famillesGateau) > 0;
 }
 
-/**
- * Ligne sous laquelle s'affiche le bloc « Sur le gâteau » (écriture, photos).
- * Le gâteau choisi sur PHOTO d'abord : c'est sur lui que le client montre ce
- * qu'il veut, et un Cake nature ajouté avant ne doit pas lui voler l'écriture
- * (bug du 28/10/2026 : bloc invisible sous la photo G106). Sinon le premier
- * gâteau. null : aucun gâteau au bon.
- */
-export function indexBlocGateau(
-  lignes: readonly LigneEcran[],
-  catalogue: CatalogueCommande | null,
-  famillesGateau: readonly string[],
-): number | null {
-  const i = lignes.findIndex((l) => l.photoModele && gateauxDeLigneEcran(l, catalogue, famillesGateau) > 0);
-  return i < 0 ? indexPremierGateau(lignes, catalogue, famillesGateau) : i;
-}
-
 /** true si le bon porte une ligne de ce supplément. */
 export function aSupplement(lignes: readonly LigneEcran[], produitId: string): boolean {
   return lignes.some((l) => l.produitId === produitId);
@@ -735,65 +815,140 @@ export function basculerSupplement(
   return [...lignes, { ...ligneVide(produitId), quantite: 1 }];
 }
 
+/** Suppléments posés par l'écran, et ce qui les appelle sur un gâteau (règle : domaine, supplements.ts). */
+const SUPPLEMENTS_AUTOMATIQUES: readonly { cle: string; porte: (l: LigneEcran) => boolean }[] = [
+  { cle: SUPPLEMENT_ECRITURE, porte: (l) => porteUneEcriture(l) },
+  { cle: SUPPLEMENT_PHOTO, porte: (l) => porteUnePhoto(l) },
+];
+
 /**
- * Saisie du texte d'écriture. Texte non vide → supplément « Écriture » au bon ;
- * texte vidé → supplément retiré. Le supplément ne se retire pas à la main
- * (propriétaire, 28/10/2026) : `synchroniserSupplementEcriture` le remet.
+ * Suppléments dus pour ce que portent les gâteaux : un par GÂTEAU qui porte
+ * une écriture (Écriture) / une photo à imprimer (Photo) — même compte que le
+ * domaine (`ecrituresAttendues`, `photosAttendues`). Une ligne qui n'est pas
+ * (ou plus) un gâteau ne compte pas : sa saisie reste en mémoire, sans effet.
  */
-export function saisirEcriture(
+export function supplementsDus(
   lignes: readonly LigneEcran[],
-  texte: string,
+  cle: string,
   catalogue: CatalogueCommande | null,
   famillesGateau: readonly string[],
-): LigneEcran[] {
-  return basculerSupplement(lignes, SUPPLEMENT_ECRITURE, texte.trim() !== '', catalogue, famillesGateau);
+): number {
+  const s = SUPPLEMENTS_AUTOMATIQUES.find((x) => x.cle === cle);
+  if (!s) return 0;
+  return lignes.reduce((n, l) => n + (s.porte(l) ? gateauxDeLigneEcran(l, catalogue, famillesGateau) : 0), 0);
 }
 
 /**
- * Décision du propriétaire (28/10/2026) : une écriture sur un gâteau = le
- * supplément « Écriture » au bon, TOUJOURS. Texte présent (et « Pas
- * d'écriture » non coché) + au moins un gâteau + supplément absent → il est
- * remis (gâteau retiré puis remis, ligne retirée au ×…). Le domaine le refuse
- * de toute façon (ERR_ECRITURE_SANS_SUPPLEMENT) : ceci évite d'y arriver.
- * Retourne le MÊME tableau si rien ne change (aucune boucle de rendu).
+ * Décision du propriétaire (28/10/2026, lot 2) : les suppléments Écriture et
+ * Photo sont AUTOMATIQUES, un par gâteau qui porte une écriture / une photo à
+ * imprimer, et ne se retirent pas à la main.
+ *  - toujours : il en manque (gâteau remis, ligne retirée…) → UNE ligne du
+ *    supplément, quantité = dû (ajoutée si absente, sinon montée ; les autres
+ *    lignes du même supplément y sont fondues) ;
+ *  - `reduire` (saisie DANS le bloc « Sur le gâteau » : texte vidé, « Pas
+ *    d'écriture », photo décochée) : quantité ramenée à dû, et les lignes
+ *    posées par l'écran partent à 0. Sinon (gâteau retiré du bon…) rien ne
+ *    descend en silence : le domaine refuse le surplus avec sa sortie
+ *    (ERR_SUPPLEMENT_EN_TROP « Passer à N », ERR_SUPPLEMENT_SANS_GATEAU). Une
+ *    ligne ajoutée à la main n'est jamais retirée par l'écran.
+ * Supplément absent du tarif reçu : rien n'est ajouté (le domaine refuse,
+ * ERR_ECRITURE_SANS_SUPPLEMENT). Retourne le MÊME tableau si rien ne change
+ * (aucune boucle de rendu).
  */
-export function synchroniserSupplementEcriture(
+export function synchroniserSupplementsGateau(
   lignes: LigneEcran[],
-  texte: string,
-  sansEcriture: boolean,
+  catalogue: CatalogueCommande | null,
+  famillesGateau: readonly string[],
+  reduire = false,
+): LigneEcran[] {
+  let suivantes = lignes;
+  for (const { cle } of SUPPLEMENTS_AUTOMATIQUES) {
+    const du = supplementsDus(suivantes, cle, catalogue, famillesGateau);
+    const lignesSup = suivantes.filter((l) => l.produitId === cle);
+    const present = lignesSup.reduce((n, l) => n + (l.quantite ?? 0), 0);
+    if (du === 0) {
+      if (reduire && lignesSup.some((l) => l.supplementAuto === true)) {
+        suivantes = suivantes.filter((l) => !(l.produitId === cle && l.supplementAuto === true));
+      }
+      continue;
+    }
+    const [premiere] = lignesSup;
+    if (!premiere) {
+      if (!ficheDe(catalogue, cle)) continue;
+      suivantes = [...suivantes, { ...ligneVide(cle), quantite: du, supplementAuto: true }];
+      continue;
+    }
+    if (present === du && (lignesSup.length === 1 || !reduire)) continue;
+    if (present > du && !reduire) continue;
+    suivantes = suivantes
+      .filter((l) => l.produitId !== cle || l === premiere)
+      .map((l) => (l === premiere ? { ...l, quantite: du, supplementAuto: true } : l));
+  }
+  return suivantes;
+}
+
+/** true : la ligne est un supplément Écriture / Photo dû pour un gâteau — pas de × (non retirable à la main). */
+export function supplementImpose(
+  l: LigneEcran,
+  lignes: readonly LigneEcran[],
+  catalogue: CatalogueCommande | null,
+  famillesGateau: readonly string[],
+): boolean {
+  if (l.produitId === null || !SUPPLEMENTS_AUTOMATIQUES.some((s) => s.cle === l.produitId)) return false;
+  return supplementsDus(lignes, l.produitId, catalogue, famillesGateau) > 0;
+}
+
+/** Ce que l'on saisit dans le bloc « Sur le gâteau » d'UNE ligne. */
+export type SaisieSurLeGateau = Partial<Pick<LigneEcran, 'texteGateau' | 'sansEcriture' | 'photoImprimee'>>;
+
+/**
+ * Saisie dans le bloc « Sur le gâteau » de la ligne `cle` : texte, « Pas
+ * d'écriture » (vide le texte), photo à imprimer ; puis les suppléments
+ * Écriture et Photo suivent aussitôt (`synchroniserSupplementsGateau`).
+ */
+export function saisirSurLeGateau(
+  lignes: readonly LigneEcran[],
+  cle: string,
+  saisie: SaisieSurLeGateau,
   catalogue: CatalogueCommande | null,
   famillesGateau: readonly string[],
 ): LigneEcran[] {
-  if (sansEcriture || texte.trim() === '' || aSupplement(lignes, SUPPLEMENT_ECRITURE)) return lignes;
-  const suivantes = basculerSupplement(lignes, SUPPLEMENT_ECRITURE, true, catalogue, famillesGateau);
-  return suivantes.length === lignes.length ? lignes : suivantes;
+  const partiel: SaisieSurLeGateau = saisie.sansEcriture === true ? { ...saisie, texteGateau: '' } : saisie;
+  const majes = lignes.map((l) => (l.cle === cle ? { ...l, ...partiel } : l));
+  return synchroniserSupplementsGateau(majes, catalogue, famillesGateau, true);
 }
-
-/** true : la ligne est le supplément « Écriture » d'une écriture saisie — pas de × (non retirable à la main). */
-export function supplementEcritureImpose(l: LigneEcran, texte: string, sansEcriture: boolean): boolean {
-  return l.produitId === SUPPLEMENT_ECRITURE && !sansEcriture && texte.trim() !== '';
-}
-
-export type PrecisionsGateau = {
-  texteGateau: string;
-  sansEcriture: boolean;
-  photoWhatsapp: boolean;
-  photoImprimee: boolean;
-};
 
 /**
- * Précisions « gâteau » réellement enregistrées. Sans gâteau au bon (dernier
- * gâteau retiré), le bloc n'existe plus : rien ne part en base (texte null,
- * cases à false) — la saisie reste en mémoire sur l'écran et réapparaît si un
- * gâteau est remis au bon. Sauf « Photo d'exemple envoyée sur WhatsApp » :
- * utile aussi pour une commande salée (propriétaire, 28/10/2026), la case est
- * alors dans les Remarques et part en base telle quelle. Les lignes de supplément ne sont PAS retirées en
- * silence : le domaine les refuse (ERR_SUPPLEMENT_SANS_GATEAU) avec le bouton
- * « Retirer la ligne », visible du vendeur.
+ * Supplément au bon pour ce gâteau ? (texte d'aide du bloc). true si la ligne
+ * porte une écriture / une photo et que le bon a le supplément en quantité
+ * suffisante pour tous les gâteaux qui en portent.
  */
-export function precisionsAEnregistrer(p: PrecisionsGateau, nbGateaux: number): PrecisionsGateau {
-  if (nbGateaux > 0) return { ...p, texteGateau: p.sansEcriture ? '' : p.texteGateau };
-  return { texteGateau: '', sansEcriture: false, photoWhatsapp: p.photoWhatsapp, photoImprimee: false };
+export function supplementCouvert(
+  lignes: readonly LigneEcran[],
+  cle: string,
+  catalogue: CatalogueCommande | null,
+  famillesGateau: readonly string[],
+): boolean {
+  const du = supplementsDus(lignes, cle, catalogue, famillesGateau);
+  const present = lignes.reduce((n, l) => n + (l.produitId === cle ? (l.quantite ?? 0) : 0), 0);
+  return du > 0 && present >= du;
+}
+
+/**
+ * Index du gâteau sous lequel s'affiche la case « Pâte à sucre » (R64) : le
+ * gâteau qui la reçoit — le premier gâteau porteur, sinon le premier gâteau du
+ * bon (même choix que `basculerSupplementParPersonne`). null : aucun gâteau.
+ */
+export function indexGateauPateASucre(
+  lignes: readonly LigneEcran[],
+  produitId: string,
+  catalogue: CatalogueCommande | null,
+  famillesGateau: readonly string[],
+  regles: Readonly<Record<string, RegleSupplementParPersonne>>,
+): number | null {
+  const regle = regles[produitId];
+  const porteur = regle ? porteursParPersonne(lignes, regle, Object.keys(regles))[0] : undefined;
+  return porteur ?? indexPremierGateau(lignes, catalogue, famillesGateau);
 }
 
 // ---------------------------------------------------------------------------

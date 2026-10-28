@@ -17,6 +17,8 @@ import type { Commande } from '@/lib/commandes';
 import { suivreImpression } from '@/lib/suiviImpression';
 import { ImprimanteTicket, type LotImprime } from '@/components/ImprimanteTicket';
 import { apprendreVitesse, lireMsParLigne } from '@/lib/vitesseImpression';
+import { messagePour } from '@/domaine/messages';
+import { lireReponse } from '@/components/commande/modele';
 
 type Travail = {
   id: number;
@@ -33,6 +35,13 @@ const LIBELLE_STATUT: Record<string, string> = {
   remis: 'en train d’imprimer',
   imprime: 'sorti',
 };
+
+/** Nom d'un bon à l'écran, sans capitales criées (les capitales restent sur le papier). */
+const NOM_BON: Record<string, string> = { CLIENT: 'Client', BUREAU: 'Bureau', MAGASIN: 'Magasin', ATELIER: 'Atelier' };
+const nomBon = (destination: string) => NOM_BON[destination] ?? destination;
+
+/** Sans nouvelle de l'imprimante depuis ce délai, on la dit injoignable. */
+const INJOIGNABLE_APRES_MS = 45_000;
 
 /** Sans progrès pendant ce délai, on rend la main au vendeur pour relancer. */
 const BLOQUE_APRES_MS = 45_000;
@@ -212,14 +221,21 @@ export function ApercuReseau({
       const tickets = await (ticketsPrets.current ?? Promise.reject(new Error())).catch(() =>
         encoderTickets(Array.from(hote.querySelectorAll('canvas'))),
       );
-      const reponse = await fetch('/api/impression', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ commandeId: commande.id, numero: commande.numero, tickets }),
-      });
+      let reponse: Response;
+      try {
+        reponse = await fetch('/api/impression', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ commandeId: commande.id, numero: commande.numero, tickets }),
+        });
+      } catch {
+        // Réseau coupé : jamais « Failed to fetch » (LOI 9). La commande, elle, est enregistrée.
+        throw new Error(messagePour('ERR_IMPRESSION_NON_ENVOYEE', {}));
+      }
       if (!reponse.ok) {
-        const donnees = await reponse.json().catch(() => ({}));
-        throw new Error(donnees.erreur ?? 'Envoi refusé.');
+        // Refus typé du catalogue (bons illisibles, base injoignable…), lu par le lecteur commun.
+        const r = await lireReponse(reponse);
+        throw new Error(r.ok ? messagePour('ERR_BON_ILLISIBLE', {}) : r.message);
       }
       // Déposés : le vendeur peut partir, le voyant en bas d'écran prend le relais.
       suivreImpression(commande.id, commande.numero);
@@ -229,7 +245,8 @@ export function ApercuReseau({
       setSuivi(true);
       void rafraichir();
     } catch (e) {
-      setErreur(e instanceof Error ? e.message : 'Envoi impossible.');
+      // Seuls des messages du catalogue arrivent ici (ci-dessus et encoderTickets).
+      setErreur(e instanceof Error && e.message ? e.message : messagePour('ERR_IMPRESSION_NON_ENVOYEE', {}));
       setVuEnDirect(false);
       void rafraichir();
     } finally {
@@ -238,7 +255,7 @@ export function ApercuReseau({
     }
   };
 
-  const enLigne = imprimante ? Date.now() - Date.parse(imprimante.vueLe) < 45_000 : false;
+  const enLigne = imprimante ? Date.now() - Date.parse(imprimante.vueLe) < INJOIGNABLE_APRES_MS : false;
   const probleme = imprimante && imprimante.statusCode && !/^200/.test(imprimante.statusCode);
   const tousSortis = travaux.length > 0 && travaux.every((t) => t.statut === 'imprime');
   const sortis = travaux.filter((t) => t.statut === 'imprime').length;
@@ -288,8 +305,8 @@ export function ApercuReseau({
           {imprimante
             ? enLigne
               ? 'Imprimante en ligne'
-              : `Imprimante silencieuse depuis ${depuis(imprimante.vueLe)}`
-            : 'Imprimante jamais vue'}
+              : `Imprimante injoignable depuis ${depuis(imprimante.vueLe)}`
+            : 'Imprimante pas encore branchée'}
         </Puce>
       </div>
 
@@ -311,7 +328,7 @@ export function ApercuReseau({
                   : bloque
                     ? 'Vérifiez le papier'
                     : travaux.find((t) => t.statut === 'remis')
-                      ? `Imprime : ${travaux.find((t) => t.statut === 'remis')?.destination}`
+                      ? `Imprime : bon ${nomBon(travaux.find((t) => t.statut === 'remis')?.destination ?? '')}`
                       : 'En file'
             }
             sortis={sortis}
@@ -332,20 +349,20 @@ export function ApercuReseau({
             <div>
               <p className="text-base font-semibold text-ink">
                 {tousSortis
-                  ? `✓ Les ${travaux.length} tickets sont sortis`
+                  ? `✓ Les ${travaux.length} bons sont sortis`
                   : bloque
                     ? 'L’impression n’avance plus'
                     : envoi || sortis === 0
                       ? '✓ Envoyé à l’imprimante'
                       : clientSorti
-                        ? '✓ Ticket client sorti — vous pouvez le donner'
+                        ? '✓ Bon du client sorti — vous pouvez le lui donner'
                         : `Ça imprime — ${sortis} sur ${travaux.length} sortis`}
               </p>
               {envoi ? (
-                <p className="mt-0.5 text-sm text-ink-2">Préparation des tickets…</p>
+                <p className="mt-0.5 text-sm text-ink-2">Préparation des bons…</p>
               ) : !tousSortis && !bloque ? (
                 <p className="mt-0.5 text-sm text-ink-2">
-                  Vous pouvez passer à la suite : les tickets sortent tout seuls, un voyant en bas de
+                  Vous pouvez passer à la suite&nbsp;: les bons sortent tout seuls, un voyant en bas de
                   l’écran suit l’impression.
                 </p>
               ) : null}
@@ -353,12 +370,12 @@ export function ApercuReseau({
           </div>
           {bloque ? (
             <p className="mt-0.5 text-sm text-ink-2">
-              Vérifiez le papier et le capot de l’imprimante, puis touchez « Relancer l’impression ».
+              Vérifiez le papier et le capot de l’imprimante, puis touchez «&nbsp;Relancer l’impression&nbsp;».
             </p>
           ) : null}
           {deposes && !tousSortis && pendantImpression ? (
             <div className="mt-3 flex flex-wrap items-center justify-center gap-2 text-sm text-ink-2">
-              <span>Pendant ce temps :</span>
+              <span>Pendant ce temps&nbsp;:</span>
               {pendantImpression}
             </div>
           ) : null}
@@ -371,10 +388,11 @@ export function ApercuReseau({
                 <span aria-hidden className="w-5 text-center">
                   {travail.statut === 'imprime' ? '✓' : travail.statut === 'remis' ? '⟳' : '·'}
                 </span>
-                <span className="w-24 font-medium text-ink">{travail.destination}</span>
+                <span className="w-24 font-medium text-ink">{nomBon(travail.destination)}</span>
                 <span className={travail.statut === 'imprime' ? 'text-ok' : 'text-ink-2'}>
-                  {LIBELLE_STATUT[travail.statut] ?? travail.statut}
-                  {travail.erreur ? ` (${travail.erreur})` : ''}
+                  {LIBELLE_STATUT[travail.statut] ?? 'en file'}
+                  {/* Le code renvoyé par l'imprimante reste au journal, jamais à l'écran (LOI 9). */}
+                  {travail.erreur && travail.statut !== 'imprime' ? ' — repart après un incident' : ''}
                 </span>
               </li>
             ))}
@@ -384,26 +402,25 @@ export function ApercuReseau({
 
       {probleme ? (
         <div className="mb-4">
-          <Alerte>
-            L’imprimante signale un problème (code {imprimante?.statusCode}). Le plus souvent :
-            plus de papier, ou le capot est resté ouvert. Les tickets restent en file et sortiront
-            tout seuls une fois le rouleau remis.
+          <Alerte ton="attention">
+            L’imprimante signale un problème. Le plus souvent&nbsp;: plus de papier, ou le capot est
+            resté ouvert. Les bons restent en file et sortiront tout seuls une fois réglé.
           </Alerte>
         </div>
       ) : null}
 
       {!imprimante ? (
         <div className="mb-4">
-          <Alerte>
-            L’imprimante ne s’est encore jamais manifestée. Vérifiez qu’elle est allumée, sur le
-            réseau, et que l’URL CloudPRNT est bien renseignée dans ses réglages.
+          <Alerte ton="attention">
+            L’imprimante n’est pas encore branchée à l’application. Vérifiez qu’elle est allumée
+            et reliée au réseau du magasin&nbsp;; si cela continue, prévenez le manager.
           </Alerte>
         </div>
       ) : null}
 
       <p className="mb-4 max-w-prose text-center text-sm text-ink-2">
-        Ce que vous voyez ci-dessous est l’image exacte envoyée à l’imprimante — même largeur, mêmes
-        points. Le premier ticket sort en quelques secondes, les suivants s’enchaînent.
+        Ci-dessous, les bons tels qu’ils sortiront de l’imprimante. Le premier sort en quelques
+        secondes, les suivants s’enchaînent.
       </p>
 
       <div ref={conteneur} className="rouleau-apercu" />
@@ -440,7 +457,7 @@ function encoderTickets(canvases: HTMLCanvasElement[]): Promise<TicketEncode[]> 
   return Promise.all(
     canvases.map(async (canvas, index) => {
       const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Ticket illisible : rechargez la page.');
+      if (!ctx) throw new Error(messagePour('ERR_BON_ILLISIBLE', {}));
       const points = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
       const png = await pngMonochrome(points, canvas.width, canvas.height, zlibNavigateur);
       return { destination: DESTINATIONS[index] as Destination, png: enBase64(png), hauteur: canvas.height };
@@ -477,10 +494,11 @@ function enFile(): Travail[] {
 
 function depuis(iso: string): string {
   const secondes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
-  if (secondes < 120) return `${secondes} s`;
+  // Espace insécable : « 3 min » ne se coupe jamais en fin de ligne.
+  if (secondes < 120) return `${secondes}\u00A0s`;
   const minutes = Math.round(secondes / 60);
-  if (minutes < 120) return `${minutes} min`;
+  if (minutes < 120) return `${minutes}\u00A0min`;
   const heures = Math.round(minutes / 60);
-  if (heures < 48) return `${heures} h`;
-  return `${Math.round(heures / 24)} jours`;
+  if (heures < 48) return `${heures}\u00A0h`;
+  return `${Math.round(heures / 24)}\u00A0jours`;
 }

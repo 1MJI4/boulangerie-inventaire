@@ -20,8 +20,9 @@ import {
   gateauxAuBon,
   ligneVide,
   resoudreLocal,
-  supplementEcritureImpose,
-  synchroniserSupplementEcriture,
+  saisirSurLeGateau,
+  supplementImpose,
+  synchroniserSupplementsGateau,
   versLigneSaisie,
   type CatalogueCommande,
   type FicheCatalogue,
@@ -106,6 +107,9 @@ test('1. tout champ imprimé compte : goût, déco, chiffres, précision, remarq
     { precision: 'peu sucré' },
     { nbObjets: 30 },
     { photoModele: 'G043' },
+    // Lot 2 (28/10/2026) : écriture et photo à imprimer d'UN gâteau.
+    { texteGateau: 'JOYEUX ANNIVERSAIRE LINA' },
+    { photoImprimee: true },
   ];
   for (const c of casLigne) {
     assert.ok(changementsLisibles(EXISTANTE, APRES, [{ ...LIGNE, ...c }]).length > 0, JSON.stringify(c));
@@ -172,41 +176,60 @@ test('3. domaine (rejoué serveur) : « 25 » déclaré 1 chiffre, 15 parts → 
 
 // ===================================================================== 4. Supplément écriture
 
+/** Ligne d'une tablette d'avant le lot 2 : sans écriture ni photo par gâteau. */
+function sansSurLeGateau<L extends { texteGateau?: unknown; sansEcriture?: unknown; photoImprimee?: unknown }>(l: L): L {
+  const copie = { ...l };
+  delete copie.texteGateau;
+  delete copie.sansEcriture;
+  delete copie.photoImprimee;
+  return copie;
+}
+
 const layer20: LigneEcran = { ...ligneVide(LAYER), quantite: 20, gouts: ['Vanille'] };
 
 test('4. écriture + gâteau sans supplément : refus bloquant avec sortie « Ajouter le supplément Écriture »', () => {
-  const sans = commande([versLigneSaisie(layer20, layer)], { texteGateau: 'JOYEUX ANNIVERSAIRE' });
+  // Ancien format (écriture de la commande) : elle va au premier gâteau (lot 2, 28/10/2026).
+  const sans = commande([versLigneSaisie(layer20, layer)].map(sansSurLeGateau), {
+    texteGateau: 'JOYEUX ANNIVERSAIRE',
+  });
   const b = blocagesCommande(sans, ctx).find((e) => e.code === 'ERR_ECRITURE_SANS_SUPPLEMENT');
   assert.ok(b);
-  assert.equal(b.champ, 'texteGateau');
+  assert.equal(b.champ, 'lignes[0].texteGateau', 'sous le gâteau qui porte l’écriture');
+  // Nouveau format : l'écriture est sur la ligne.
+  const parGateau = commande([versLigneSaisie({ ...layer20, texteGateau: 'JOYEUX ANNIVERSAIRE' }, layer)]);
+  assert.equal(blocagesCommande(parGateau, ctx).find((e) => e.code === 'ERR_ECRITURE_SANS_SUPPLEMENT')?.champ, 'lignes[0].texteGateau');
   assert.equal(b.valeurProposee, SUPPLEMENT_ECRITURE);
   assert.equal(sortieDe(b).libelle, 'Ajouter le supplément Écriture');
-  const avec = commande(
-    [versLigneSaisie(layer20, layer), versLigneSaisie({ ...ligneVide(SUPPLEMENT_ECRITURE), quantite: 1 }, ecriture)],
-    { texteGateau: 'JOYEUX ANNIVERSAIRE' },
-  );
+  const avec = commande([
+    versLigneSaisie({ ...layer20, texteGateau: 'JOYEUX ANNIVERSAIRE' }, layer),
+    versLigneSaisie({ ...ligneVide(SUPPLEMENT_ECRITURE), quantite: 1 }, ecriture),
+  ]);
   assert.ok(controlerCommande(avec, ctx).ok);
   // Sans texte : pas de supplément exigé.
   assert.equal(blocagesCommande(commande([versLigneSaisie(layer20, layer)]), ctx).length, 0);
-  assert.deepEqual(controlerSupplementEcriture({ texteGateau: '  ', lignes: [{ produitId: LAYER, nbGateaux: 1 }], supplementEcriture: SUPPLEMENT_ECRITURE }), []);
+  assert.deepEqual(
+    controlerSupplementEcriture({ lignes: [{ produitId: LAYER, quantite: 20, nbGateaux: 1, texteGateau: '  ' }], supplementEcriture: SUPPLEMENT_ECRITURE }),
+    [],
+  );
 });
 
 test('4. gâteau retiré puis remis, supplément retiré au × : il revient tout seul (texte présent)', () => {
-  // Supplément retiré (sortie « Supprimer la ligne » ou ×), gâteau remis :
-  const lignes = [layer20];
-  const remis = synchroniserSupplementEcriture(lignes, 'JOYEUX ANNIVERSAIRE', false, cat, FAMILLES);
+  // Supplément retiré (sortie « Supprimer la ligne » ou ×), gâteau remis avec son écriture :
+  const lignes = [{ ...layer20, texteGateau: 'JOYEUX ANNIVERSAIRE' }];
+  const remis = synchroniserSupplementsGateau(lignes, cat, FAMILLES);
   assert.deepEqual(remis.map((l) => l.produitId), [LAYER, SUPPLEMENT_ECRITURE]);
   // Rien à faire → même tableau (aucune boucle de rendu).
-  assert.equal(synchroniserSupplementEcriture(remis, 'JOYEUX ANNIVERSAIRE', false, cat, FAMILLES), remis);
+  assert.equal(synchroniserSupplementsGateau(remis, cat, FAMILLES), remis);
   // Sans gâteau, sans texte, ou « Pas d'écriture » : rien n'est ajouté.
-  assert.deepEqual(synchroniserSupplementEcriture([], 'X', false, cat, FAMILLES), []);
-  assert.equal(synchroniserSupplementEcriture(lignes, '', false, cat, FAMILLES), lignes);
-  assert.equal(synchroniserSupplementEcriture(lignes, 'X', true, cat, FAMILLES), lignes);
+  assert.deepEqual(synchroniserSupplementsGateau([], cat, FAMILLES), []);
+  assert.equal(synchroniserSupplementsGateau([layer20], cat, FAMILLES).length, 1);
+  assert.equal(synchroniserSupplementsGateau([{ ...layer20, texteGateau: 'X', sansEcriture: true }], cat, FAMILLES).length, 1);
   // Pas de × sur le supplément d'une écriture saisie.
   const sup = remis[1];
-  assert.equal(supplementEcritureImpose(sup, 'X', false), true);
-  assert.equal(supplementEcritureImpose(sup, '', false), false);
-  assert.equal(supplementEcritureImpose(layer20, 'X', false), false);
+  assert.equal(supplementImpose(sup, remis, cat, FAMILLES), true);
+  const vide = saisirSurLeGateau(remis, remis[0].cle, { texteGateau: '' }, cat, FAMILLES);
+  assert.equal(vide.length, 1, 'texte vidé : supplément retiré');
+  assert.equal(supplementImpose(layer20, remis, cat, FAMILLES), false);
   assert.equal(basculerSupplement(remis, SUPPLEMENT_ECRITURE, true, cat, FAMILLES).length, 2, 'jamais en double');
 });
 
@@ -222,7 +245,7 @@ test('5. « Autre demande » : « C’est un gâteau ? » obligatoire, jamais de
   if (r.ok) return;
   assert.equal(r.code, 'ERR_CHAMP_OBLIGATOIRE');
   assert.equal(r.champ, 'lignes[0].gateauLibre');
-  assert.equal(libelleManque(r, [libre({})], cat).titre, 'GÂTEAU OU NON — Gâteau licorne');
+  assert.equal(libelleManque(r, [libre({})], cat).titre, 'Gâteau ou non — Gâteau licorne');
   const non = controlerLigne(versLigneSaisie(libre({ gateauLibre: false }), null), 0, DATE, ctx);
   assert.ok(non.ok);
   assert.equal(non.donnees.nbGateaux, 0);
@@ -258,15 +281,15 @@ test('6. libellé du niveau bloquant : « À corriger », plus « Refusé »', (
 
 test('7. « Il manque » : un refus de règle porte sa phrase du domaine ; un champ vide, le mot-clé seul', () => {
   const mardi = { code: 'ERR_JOUR_FERME', message: 'Fermé le mardi — choisissez un autre jour de retrait.', champ: 'dateRetrait' };
-  assert.deepEqual(libelleManque(mardi, [], cat), { titre: 'DATE de retrait', detail: mardi.message });
+  assert.deepEqual(libelleManque(mardi, [], cat), { titre: 'Date de retrait', detail: mardi.message });
   const lignes = [{ ...ligneVide(LAYER), quantite: 12 }];
   const min = controlerLigne(versLigneSaisie(lignes[0], layer), 0, DATE, ctx);
   assert.equal(min.ok, false);
   if (!min.ok) {
     const l = libelleManque(min, lignes, cat);
-    assert.equal(l.titre, 'TAILLE / QUANTITÉ — Layer Cake');
+    assert.equal(l.titre, 'Taille ou quantité — Layer Cake');
     assert.match(l.detail ?? '', /Minimum 20/);
   }
   const vide = { code: 'ERR_CHAMP_OBLIGATOIRE', message: 'Le champ « nom du client » est obligatoire : remplissez-le pour continuer.', champ: 'client' };
-  assert.deepEqual(libelleManque(vide, [], cat), { titre: 'NOM du client', detail: null });
+  assert.deepEqual(libelleManque(vide, [], cat), { titre: 'Nom du client', detail: null });
 });

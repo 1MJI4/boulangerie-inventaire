@@ -41,7 +41,7 @@ import {
 } from 'react';
 import { Bouton, Carte, Chargement, Entete } from '@/components/ui';
 import { useEquipe } from '@/lib/vendeurs';
-import type { Commande, ModePaiement, Origine } from '@/lib/commandes';
+import { surLesGateaux, type Commande, type ModePaiement, type Origine } from '@/lib/commandes';
 import type { OptionsGateau } from '@/lib/gateaux';
 import { dateDuJour } from '@/lib/dateProduction';
 import {
@@ -117,21 +117,22 @@ import {
   gateauxAuBon,
   aSupplement,
   appliquerRemplacement,
-  basculerSupplement,
   basculerSupplementParPersonne,
   remplacementsProposes,
   synchroniserSupplementsParPersonne,
-  synchroniserSupplementEcriture,
-  supplementEcritureImpose,
+  synchroniserSupplementsGateau,
+  supplementImpose,
+  supplementCouvert,
+  saisirSurLeGateau,
+  indexGateauPateASucre,
   ecrireChiffresOuLettres,
   choisirNombreSymboles,
   basculerFormesLibres,
   formesLibresEnregistrees,
   SUPPLEMENT_PATE_A_SUCRE,
   estLigneGateau,
-  indexBlocGateau,
-  precisionsAEnregistrer,
-  saisirEcriture,
+  estFicheGateauDuComptoir,
+  separerLigneGateau,
   SUPPLEMENT_ECRITURE,
   SUPPLEMENT_PHOTO,
   toucherProduit,
@@ -143,8 +144,17 @@ import {
   type LigneEcran,
 } from '@/components/commande/modele';
 import { sortieDe } from '@/components/commande/sorties';
-import { CHAMPS_A_PHRASE, libelleManque, MANQUE_SIMPLE, texteChampVide } from '@/components/commande/manques';
-import { empreinteSaisie, saisieEntamee, texteMontantEnCours, texteResteEnCours } from '@/components/commande/saisieEnCours';
+import { CHAMPS_A_PHRASE, estManqueSimple, libelleManque, MANQUE_SIMPLE, texteChampVide } from '@/components/commande/manques';
+import { estSeparationProposee, libelleSeparation } from '@/domaine/unGateauParLigne';
+import {
+  empreinteSaisie,
+  saisieEntamee,
+  texteHeureRetrait,
+  texteMontantEnCours,
+  texteResteEnCours,
+} from '@/components/commande/saisieEnCours';
+import { aGarderSurLaTablette, classerReponse, TEXTES_HORS_LIGNE, type CommandeEnAttente } from '@/lib/commandesHorsLigne';
+import { envoyerAuServeur, garderCommande, noterIssue, nouvelIdCommande, trouverCommandeEnAttente } from '@/lib/envoiHorsLigne';
 import { ChampPave } from '@/components/commande/ChampPave';
 import { AccesGerant } from '@/components/commande/AccesGerant';
 import { BandeRetrait } from '@/components/commande/BandeRetrait';
@@ -204,9 +214,63 @@ type Validee = { id: number; numero: string; controlee: CommandeControlee | null
 /** Tablette : espace laissé sous l'espace de travail, en px (la page ne défile jamais). */
 const MARGE_BAS_CADRE_PX = 12;
 
+/** Champs d'une ligne gâteau affichés dans son bloc « Sur le gâteau » (lot 2, 28/10/2026). */
+const CHAMPS_SUR_LE_GATEAU: ReadonlySet<string> = new Set(['texteGateau', 'photoImprimee']);
+
 /* ======================================================================== */
 
+/**
+ * Instantané de l'écran gardé avec une commande hors ligne : de quoi la rouvrir
+ * telle quelle si le magasin la refuse à l'arrivée (« Rouvrir pour corriger »).
+ */
+type EcranGarde = {
+  client: string;
+  telephone: string;
+  dateRetrait: string | null;
+  heureRetrait: string;
+  origine: Origine;
+  modePaiement: ModePaiement;
+  lignes: LigneEcran[];
+  acompte: number | null;
+  totalConvenu: number | null;
+  remise: Deverrouillage | null;
+  photoWhatsapp: boolean;
+  demandeInhabituelle: boolean;
+  zoneDessin: boolean;
+  remarques: string;
+};
+
+/**
+ * Dernier calendrier / catalogue / options reçus dans cette session : une
+ * commande suivante peut être prise même si le réseau vient de tomber (sans
+ * cela, « Nouvelle commande » hors ligne ouvrirait un écran vide). Mémoire de la
+ * page seulement, jamais au-delà de la journée.
+ * HYPOTHÈSE À VALIDER : 3 h de validité ; le serveur rejoue tous les prix et
+ * toutes les règles à l'envoi, un tarif changé entre-temps y est refusé.
+ */
+const MEMOIRE_CHARGEMENT_MS = 3 * 60 * 60_000;
+const memoireChargement: {
+  cal: (ContexteCalendrier & { heure: string }) | null;
+  catalogues: Map<string, CatalogueCommande>;
+  options: OptionsGateau | null;
+  le: number;
+} = { cal: null, catalogues: new Map(), options: null, le: 0 };
+function memoireValable(): boolean {
+  return (
+    memoireChargement.cal !== null &&
+    Date.now() - memoireChargement.le < MEMOIRE_CHARGEMENT_MS &&
+    memoireChargement.cal.aujourdhui === dateDuJour(new Date())
+  );
+}
+
 export function FormulaireCommande({ commande }: { commande?: Commande }) {
+  // « Nouvelle commande » après une commande gardée hors ligne : on repart d'un
+  // écran vierge sans recharger la page (impossible sans réseau).
+  const [tour, setTour] = useState(0);
+  return <SaisieCommande key={tour} commande={commande} onRecommencer={() => setTour((n) => n + 1)} />;
+}
+
+function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRecommencer: () => void }) {
   const router = useRouter();
   const { vendeur, prete } = useEquipe();
   const modification = commande !== undefined;
@@ -245,17 +309,9 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       ? { par: commande.remiseAutoriseePar, le: commande.remiseAutoriseeLe }
       : null,
   );
-  const [texteGateau, setTexteGateau] = useState(commande?.texteGateau ?? '');
-  const [sansEcriture, setSansEcriture] = useState(commande?.sansEcriture ?? false);
+  // Écriture et photo à imprimer : sur chaque ligne gâteau (lot 2, 28/10/2026).
+  // La photo d'exemple envoyée sur WhatsApp reste au niveau de la commande.
   const [photoWhatsapp, setPhotoWhatsapp] = useState(commande?.photoWhatsapp ?? false);
-  // « Photo à imprimer » = présence du supplément Photo au bon (18/10/2026).
-  // Seule exception : une commande enregistrée cochée SANS ligne de supplément
-  // (antérieure à l'automatisme) garde sa case jusqu'à ce qu'on la décoche.
-  const [photoHeritee, setPhotoHeritee] = useState(
-    () =>
-      !!commande?.photoImprimee &&
-      !commande.lignes.some((l) => l.produitCatalogue?.cleCatalogue === SUPPLEMENT_PHOTO),
-  );
   const [demandeInhabituelle, setDemandeInhabituelle] = useState(commande?.demandeInhabituelle ?? false);
   // Zone « dessin, précisions » sur les bons internes : seulement si demandée
   // (21/10/2026). Ancienne commande sans le champ : non.
@@ -292,6 +348,14 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   const [refusServeur, setRefusServeur] = useState<Echec | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [validee, setValidee] = useState<Validee | null>(null);
+  // Hors ligne (décision du propriétaire, 28/10/2026) : commande gardée sur la
+  // tablette, envoyée au retour du réseau. Identifiant client unique et date de
+  // prise posés au premier essai, gardés pour tous les suivants (jamais de doublon).
+  const [gardee, setGardee] = useState(false);
+  const idClient = useRef<string | null>(null);
+  const priseLe = useRef<string | null>(null);
+  // Commande refusée à l'arrivée, rouverte pour être corrigée (« ?reprise=… »).
+  const [reprise, setReprise] = useState<CommandeEnAttente | null>(null);
   const [demande, setDemande] = useState<DemandeGerant | null>(null);
   const [parGerant, setParGerant] = useState<string | null>(null);
   const champClient = useRef<HTMLInputElement>(null);
@@ -305,9 +369,15 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   const chargerCatalogue = useCallback(async (date: string) => {
     try {
       const r = await lireReponse<CatalogueCommande>(await fetch(`/api/tarifs?date=${encodeURIComponent(date)}`));
-      if (r.ok) setCatalogue(r.donnees);
-      else setRefusChargement(r);
+      if (r.ok) {
+        memoireChargement.catalogues.set(date, r.donnees);
+        setCatalogue(r.donnees);
+      } else if (r.code === 'ERR_SERVEUR_INDISPONIBLE' && memoireValable() && memoireChargement.catalogues.has(date)) {
+        setCatalogue(memoireChargement.catalogues.get(date)!);
+      } else setRefusChargement(r);
     } catch {
+      const enMemoire = memoireValable() ? memoireChargement.catalogues.get(date) : undefined;
+      if (enMemoire) return setCatalogue(enMemoire);
       const e = echecReseau();
       if (!e.ok) setRefusChargement(e);
     }
@@ -320,20 +390,35 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         const r = await lireReponse<ContexteCalendrier & { heure: string }>(await fetch('/api/calendrier'));
         if (annule) return;
         if (!r.ok) {
+          if (r.code === 'ERR_SERVEUR_INDISPONIBLE' && memoireValable()) return utiliserMemoire();
           setRefusChargement(r);
           return;
         }
+        memoireChargement.cal = r.donnees;
+        memoireChargement.le = Date.now();
         setCal(r.donnees);
         await chargerCatalogue(datePrix ?? r.donnees.aujourdhui);
       } catch {
+        if (annule) return;
+        if (memoireValable()) return utiliserMemoire();
         const e = echecReseau();
-        if (!annule && !e.ok) setRefusChargement(e);
+        if (!e.ok) setRefusChargement(e);
       }
     })();
+    // Hors ligne : le calendrier de la session, déjà reçu (voir `memoireChargement`).
+    async function utiliserMemoire() {
+      const c = memoireChargement.cal!;
+      setCal(c);
+      if (memoireChargement.options) setOptions(memoireChargement.options);
+      await chargerCatalogue(datePrix ?? c.aujourdhui);
+    }
     fetch('/api/gateaux')
       .then((r) => (r.ok ? r.json() : null))
       .then((o: OptionsGateau | null) => {
-        if (!annule && o && Array.isArray(o.parfums)) setOptions(o);
+        if (!annule && o && Array.isArray(o.parfums)) {
+          memoireChargement.options = o;
+          setOptions(o);
+        }
       })
       .catch(() => {});
     return () => {
@@ -345,19 +430,49 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     if (prete && !vendeur) router.replace('/commandes');
   }, [prete, vendeur, router]);
 
+  // « Rouvrir pour corriger » (voyant des commandes gardées) : la saisie gardée
+  // revient telle quelle, avec le message du magasin à côté de « Valider ».
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('reprise');
+    if (!id) return;
+    window.history.replaceState(null, '', window.location.pathname);
+    const c = trouverCommandeEnAttente(id);
+    if (!c || c.etat !== 'a_reprendre') return;
+    if (c.methode === 'PATCH' && c.commandeId !== commande?.id) return;
+    const e = c.ecran as Partial<EcranGarde> | null;
+    if (!e || !Array.isArray(e.lignes)) return;
+    idClient.current = c.idClient;
+    // Refusée parce que prise il y a trop longtemps : le vendeur a rappelé le
+    // client et la reprend maintenant, la prise repart de maintenant (sinon
+    // elle serait refusée à chaque envoi).
+    priseLe.current = c.refus?.champ === 'priseLe' ? null : c.priseLe;
+    setReprise(c);
+    setClient(e.client ?? '');
+    setTelephone(e.telephone ?? '');
+    setDateRetrait(e.dateRetrait ?? null);
+    setHeureRetrait(e.heureRetrait ?? '');
+    if (e.origine) setOrigine(e.origine);
+    if (e.modePaiement) setModePaiement(e.modePaiement);
+    setLignes(e.lignes);
+    setAcompte(e.acompte ?? null);
+    setTotalConvenu(e.totalConvenu ?? null);
+    setRemise(e.remise ?? null);
+    setPhotoWhatsapp(e.photoWhatsapp === true);
+    setDemandeInhabituelle(e.demandeInhabituelle === true);
+    setZoneDessin(e.zoneDessin === true);
+    setRemarques(e.remarques ?? '');
+    setTentative(true);
+    if (c.refus) setRefusServeur(echecDuServeur(c.refus));
+  }, [commande?.id, setLignes]);
+
   // --- Domaine ---------------------------------------------------------------
   // Gâteaux au bon (R7, compté par le domaine sur les données, jamais par le
   // nom) : ils décident du bloc « Gâteau » et des suppléments au forfait.
   const famillesGateau = cal?.reglement.famillesGateau ?? FAMILLES_GATEAU;
   const nbGateaux = cal ? gateauxAuBon(lignes, catalogue, famillesGateau) : 0;
   const sansGateau = nbGateaux === 0;
-  // Sous le gâteau choisi sur photo, sinon sous le premier gâteau (28/10/2026).
-  const iBlocGateau = indexBlocGateau(lignes, catalogue, famillesGateau);
-  const ficheBlocGateau = iBlocGateau === null ? null : ficheDe(catalogue, lignes[iBlocGateau]?.produitId ?? null);
-  const photoImprimee = photoHeritee || aSupplement(lignes, SUPPLEMENT_PHOTO);
-  // Sans gâteau, aucune précision « gâteau » ne part en base (bloc absent),
-  // sauf la photo WhatsApp (case alors dans les Remarques).
-  const precisionsGateau = precisionsAEnregistrer({ texteGateau, sansEcriture, photoWhatsapp, photoImprimee }, nbGateaux);
+  // R64 : la case « Pâte à sucre » est sous le gâteau qui la reçoit.
+  const iPateASucre = cal ? indexGateauPateASucre(lignes, SUPPLEMENT_PATE_A_SUCRE, catalogue, famillesGateau, SUPPLEMENTS_PAR_PERSONNE) : null;
 
   const etat: EtatFormulaire = {
     client,
@@ -368,8 +483,6 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     acompteCentimes: acompte,
     totalConvenuCentimes: totalConvenu,
     remise,
-    texteGateau: precisionsGateau.texteGateau,
-    sansEcriture: precisionsGateau.sansEcriture,
     demandeInhabituelle,
   };
 
@@ -389,6 +502,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       taillesInterdites: TAILLES_INTERDITES,
       // Écriture sur un gâteau = supplément Écriture au bon, toujours (28/10/2026).
       supplementEcriture: SUPPLEMENT_ECRITURE_DOMAINE,
+      // Photo à imprimer sur un gâteau = supplément Photo, une fois par gâteau (28/10/2026).
+      supplementPhoto: SUPPLEMENT_PHOTO,
       aujourdhui: cal.aujourdhui,
       existante: commande
         ? { statut: commande.statut, retraitLe: commande.retraitLe, anonymiseeLe: commande.anonymiseeLe }
@@ -470,7 +585,6 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   ];
   const signauxHeure = (dateRetrait && (lignes.length > 0 || heureRetrait !== '')) || tentative ? pour(['heureRetrait', 'heurePrise']) : [];
   const signauxProduits = tentative || ancienTarif ? pour(['lignes']) : [];
-  const signauxGateau = pour(['texteGateau']);
   const signauxInhabituelle = pour(['demandeInhabituelle']);
   const signauxMontants = acompte !== null || tentative ? pour(['acompte', 'total']) : pour(['total']);
   const signauxStatut = pour(['statut']);
@@ -492,13 +606,14 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     ) : null;
   const refusClient = signauxClient.filter((s) => !estVideDuHaut(s));
 
-  // Écriture présente + gâteau au bon → supplément Écriture remis s'il manque
-  // (gâteau retiré puis remis, ligne retirée…) : le retirer à la main n'est
-  // pas autorisé (propriétaire, 28/10/2026). Même tableau si rien ne change.
+  // Suppléments Écriture et Photo : un par gâteau qui porte une écriture / une
+  // photo à imprimer, remis s'ils manquent (gâteau retiré puis remis, ligne
+  // retirée…), ajustés quand un gâteau change ; jamais retirés à la main
+  // (propriétaire, 28/10/2026). Même tableau si rien ne change.
   useEffect(() => {
     if (!catalogue) return;
-    setLignes((ls) => synchroniserSupplementEcriture(ls, texteGateau, sansEcriture, catalogue, famillesGateau));
-  }, [lignes, texteGateau, sansEcriture, catalogue, famillesGateau, setLignes]);
+    setLignes((ls) => synchroniserSupplementsGateau(ls, catalogue, famillesGateau));
+  }, [lignes, catalogue, famillesGateau, setLignes]);
 
   // --- Actions -----------------------------------------------------------------
   // Un goût changé APRÈS la taille : la ligne passe au gâteau du comptoir de ce
@@ -511,12 +626,13 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         return 'gouts' in partiel ? suivreGout(suivante, catalogue, CORRESPONDANCES_COMPTOIR) : suivante;
       }),
     );
-  // Le bloc « Sur le gâteau » est sous la ligne du premier gâteau : sur tablette,
+  // Chaque gâteau a son bloc « Sur le gâteau », sous sa ligne : sur tablette,
   // hors de vue une fois la taille et le goût affichés (28/10/2026). Tous les
-  // goûts choisis : l'écriture est l'étape suivante, on la fait venir.
-  const zoneGateau = useRef<HTMLDivElement>(null);
-  const montrerEcriture = () =>
-    requestAnimationFrame(() => zoneGateau.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  // goûts de CE gâteau choisis : son écriture est l'étape suivante, on la fait venir.
+  const montrerEcriture = (cle: string) =>
+    requestAnimationFrame(() =>
+      document.getElementById(`sur-gateau-${cle}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    );
   const retirerLigne = (i: number) => setLignes((ls) => ls.filter((_, j) => j !== i));
   /** R63 / R65 : la ligne devient le produit proposé par le domaine (un geste). */
   const remplacer = (i: number, r: SortieRemplacement) =>
@@ -550,21 +666,27 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     if (photo && photo === photoEnAttente) setPhotoEnAttente(null);
     const t = photo
       ? ajouterAvecPhoto(lignes, f, photo, catalogue, famillesGateau, SUPPLEMENTS_PAR_PERSONNE, CORRESPONDANCES_COMPTOIR)
-      : toucherProduit(lignes, f);
+      : toucherProduit(lignes, f, famillesGateau);
     setLignes(t.lignes);
     setActif(`${t.cle}.${t.champ}`);
     setEclair((e) => ({ cle: t.cle, produitId: f.produit.id, n: (e?.n ?? 0) + 1 }));
     const ligne = t.lignes.find((l) => l.cle === t.cle);
     const fiche = ficheDe(catalogue, f.produit.id);
+    // Une ligne par gâteau (28/10/2026) : « nouveau gâteau », jamais « 2 ».
+    const gateauxDuProduit = t.lignes.filter((l) => l.produitId === f.produit.id).length;
     setAnnonce(
       (photo ? `Photo ${photo.id} — ` : '') +
-      (t.champ === 'taille'
+      (t.champ === 'gateau'
+        ? gateauxDuProduit > 1
+          ? `${libelleProduit(f)} : un gâteau de plus au bon (${gateauxDuProduit} en tout, chacun sa ligne)`
+          : `${libelleProduit(f)} : 1 gâteau au bon`
+        : t.champ === 'taille'
         ? f.prix.minParSymbole !== null && ligne?.nbSymboles == null
-          ? `${libelleProduit(f)} au bon : combien de chiffres ou lettres ?`
-          : `${libelleProduit(f)} au bon : choisissez la taille`
+          ? `${libelleProduit(f)} au bon\u00a0: combien de chiffres ou lettres\u00a0?`
+          : `${libelleProduit(f)} au bon\u00a0: choisissez la taille`
         : ligne?.quantite != null && f.produit.unite !== 'kg'
-          ? `${libelleProduit(f)} : ${ligne.quantite} ${uniteDe(fiche)} au bon`
-          : `${libelleProduit(f)} ajouté au bon : saisissez le poids`),
+          ? `${libelleProduit(f)}\u00a0: ${ligne.quantite} ${uniteDe(fiche)} au bon`
+          : `${libelleProduit(f)} ajouté au bon\u00a0: saisissez le poids`),
     );
   };
 
@@ -648,19 +770,24 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     if (s.code === 'ERR_DROIT_INSUFFISANT') {
       if (i === null && champ === 'lignes') {
         // Commande prise avec l'ancien tarif : le gérant ouvre son accès, puis accorde chaque ligne.
-        setDemande({ raison: 'Commande prise avec l’ancien tarif : code du gérant pour la modifier.', appliquer: () => {} });
+        setDemande({ raison: 'Commande prise avec l’ancien tarif\u00a0: le code du manager est nécessaire pour la modifier, s’il vous plaît.', appliquer: () => {} });
       } else if (ligne && ligne.produitId === null) {
-        avecGerant(`Prix d’une demande hors catalogue : « ${ligne.libelleLibre || 'ligne libre'} ».`, (d) =>
+        avecGerant(`Prix d’une demande hors catalogue\u00a0: «\u00a0${ligne.libelleLibre || 'ligne libre'}\u00a0».`, (d) =>
           majLigne(i!, { deverrouillage: d }),
         );
       } else {
         setParGerant(null);
-        setDemande({ raison: 'L’accès gérant a expiré : ressaisissez le code, puis validez à nouveau.', appliquer: () => {} });
+        setDemande({ raison: 'L’accès manager a expiré\u00a0: ressaisissez le code, s’il vous plaît, puis validez à nouveau.', appliquer: () => {} });
       }
       return;
     }
     // Photo en attente d'un produit : la sortie la retire (rien d'autre ne change).
     if (s.code === 'ERR_PHOTO_EN_ATTENTE') return setPhotoEnAttente(null);
+    // Une ligne par gâteau (28/10/2026) : « Séparer en N gâteaux », chacun sa ligne.
+    if (i !== null && ligne && estSeparationProposee(v ?? s.valeurProposee)) {
+      const cle = ligne.cle;
+      return setLignes((ls) => synchroniserSupplementsGateau(separerLigneGateau(ls, cle), catalogue, famillesGateau));
+    }
     // « Autre demande » pas encore décrite : on amène au champ, jamais retirer la ligne.
     if (i !== null && ligne && champ === 'libelle') {
       montrerLigne(i);
@@ -676,9 +803,10 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     }
     // Ligne libre : « C'est un gâteau ? » se répond sur la ligne (jamais la retirer).
     if (i !== null && ligne && champ === 'gateauLibre') return montrerLigne(i);
-    // Écriture sans supplément (28/10/2026) : la sortie le remet au bon.
-    if (s.code === 'ERR_ECRITURE_SANS_SUPPLEMENT') {
-      return setLignes((ls) => basculerSupplement(ls, SUPPLEMENT_ECRITURE, true, catalogue, famillesGateau));
+    // Écriture / photo à imprimer sans son supplément (28/10/2026) : la sortie
+    // met le supplément au bon, une fois par gâteau qui en porte.
+    if (s.code === 'ERR_ECRITURE_SANS_SUPPLEMENT' || s.code === 'ERR_PHOTO_SANS_SUPPLEMENT') {
+      return setLignes((ls) => synchroniserSupplementsGateau(ls, catalogue, famillesGateau));
     }
     // R63 : forme du gâteau — jamais retirer la ligne. Rond impossible → carré
     // (les remplaçants ont leurs propres boutons) ; forme illisible → à rechoisir.
@@ -697,7 +825,10 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     }
     if (i !== null && ligne) {
       // Supplément sans gâteau, ou plus aucune place pour ce supplément : la sortie retire la ligne.
-      if (s.code === 'ERR_SUPPLEMENT_SANS_GATEAU' || (s.code === 'ERR_SUPPLEMENT_TROP_NOMBREUX' && v === 0)) {
+      if (
+        s.code === 'ERR_SUPPLEMENT_SANS_GATEAU' ||
+        ((s.code === 'ERR_SUPPLEMENT_TROP_NOMBREUX' || s.code === 'ERR_SUPPLEMENT_EN_TROP') && v === 0)
+      ) {
         return retirerLigne(i);
       }
       // R60 : la taille existe au comptoir → la ligne devient le gâteau du comptoir.
@@ -769,8 +900,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   // dit ; sous le champ, juste « ▲ À remplir » (propriétaire, 22/10/2026). Les refus
   // de règle (mardi, minimum…) gardent leur message et leur bouton sur place.
   const rendre = (liste: readonly SignalementAffichable[], unite = 'pièces', prefixe?: string): ReactNode => {
-    const vides = liste.filter((s) => MANQUE_SIMPLE.has(s.code));
-    const autres = liste.filter((s) => !MANQUE_SIMPLE.has(s.code));
+    const vides = liste.filter((s) => estManqueSimple(s));
+    const autres = liste.filter((s) => !estManqueSimple(s));
     return (
       <>
         {vides.map((s) => (
@@ -806,6 +937,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
           ) {
             return undefined;
           }
+          // Une ligne par gâteau : « Séparer en N gâteaux » (texte du domaine).
+          if (estSeparationProposee(s.valeurProposee)) return libelleSeparation(s.valeurProposee.separerEn);
           const so = sortieDe(s, unite);
           return so.avecValeur ? so.libelle : undefined;
         }}
@@ -903,7 +1036,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                   )
                 }
               >
-                {libelleCorrection('ERR_DROIT_INSUFFISANT', { action: '', role: 'gérant' })}
+                {libelleCorrection('ERR_DROIT_INSUFFISANT', { action: '', role: 'manager' })}
               </BoutonSortie>,
             );
             return <>{boutons}</>;
@@ -934,7 +1067,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                   avecGerant('Prix par personne sous le prix « à partir de ».', (d) => majLigne(iLigne, { deverrouillage: d }))
                 }
               >
-                {libelleCorrection('ERR_DROIT_INSUFFISANT', { action: '', role: 'gérant' })}
+                {libelleCorrection('ERR_DROIT_INSUFFISANT', { action: '', role: 'manager' })}
               </BoutonSortie>,
             );
           }
@@ -963,8 +1096,6 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       lignes,
       acompte,
       totalConvenu,
-      texteGateau,
-      sansEcriture,
       photoWhatsapp,
       demandeInhabituelle,
       zoneDessin,
@@ -982,8 +1113,6 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
           lignes: synchroniserSupplementsParPersonne(lignesDepuisCommande(commande), SUPPLEMENTS_PAR_PERSONNE, CORRESPONDANCES_COMPTOIR),
           acompte: commande.acompteCentimes,
           totalConvenu,
-          texteGateau: commande.texteGateau ?? '',
-          sansEcriture: commande.sansEcriture ?? false,
           photoWhatsapp: commande.photoWhatsapp ?? false,
           demandeInhabituelle: commande.demandeInhabituelle ?? false,
           zoneDessin: commande.zoneDessin === true,
@@ -1010,8 +1139,13 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     }
     setEnvoi(true);
     try {
+      idClient.current ??= nouvelIdCommande();
+      priseLe.current ??= new Date().toISOString();
       const corps = {
-        ...(modification ? { id: commande.id, action: 'modification', auteur: vendeur } : { vendeur }),
+        // Commande reprise : elle reste au nom de qui l'a prise, à l'heure où elle l'a été.
+        ...(modification ? { id: commande.id, action: 'modification', auteur: vendeur } : { vendeur: reprise?.vendeur ?? vendeur }),
+        // Horodatage de la tablette (hors ligne, l'envoi peut arriver bien plus tard).
+        priseLe: priseLe.current,
         client,
         telephone,
         origine,
@@ -1021,10 +1155,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         acompteCentimes: acompte ?? 0,
         totalConvenuCentimes: totalConvenu,
         remise,
-        texteGateau: precisionsGateau.texteGateau || null,
-        sansEcriture: precisionsGateau.sansEcriture,
-        photoWhatsapp: precisionsGateau.photoWhatsapp,
-        photoImprimee: precisionsGateau.photoImprimee,
+        // Écriture et photo à imprimer : dans chaque ligne (`saisie.lignes`, lot 2).
+        photoWhatsapp,
         demandeInhabituelle,
         zoneDessin,
         remarques: remarques || null,
@@ -1036,19 +1168,59 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
           photoModele: l.photoModele ?? null,
         })),
       };
-      const r = await lireReponse<{ id: number; numero: string }>(
-        await fetch('/api/commandes', {
-          method: modification ? 'PATCH' : 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(corps),
-        }),
-      );
-      if (!r.ok) {
-        if (r.code === 'ERR_DROIT_INSUFFISANT') setParGerant(null);
-        setRefusServeur(r);
+      const methode = modification ? 'PATCH' : 'POST';
+      const lu = await envoyerAuServeur(methode, corps, idClient.current);
+      if (aGarderSurLaTablette(lu)) {
+        // Pas de réseau (ou serveur injoignable) : gardée sur la tablette, partira toute seule.
+        const ecran: EcranGarde = {
+          client,
+          telephone,
+          dateRetrait,
+          heureRetrait,
+          origine,
+          modePaiement,
+          lignes,
+          acompte,
+          totalConvenu,
+          remise,
+          photoWhatsapp,
+          demandeInhabituelle,
+          zoneDessin,
+          remarques,
+        };
+        const ok = garderCommande({
+          idClient: idClient.current,
+          methode,
+          commandeId: commande?.id ?? null,
+          numero: commande?.numero ?? null,
+          client,
+          dateRetrait,
+          heureRetrait: heureRetrait || null,
+          vendeur: reprise?.vendeur ?? vendeur ?? '',
+          priseLe: priseLe.current,
+          corps,
+          ecran,
+        });
+        if (ok) {
+          setGardee(true);
+          window.scrollTo({ top: 0 });
+        } else {
+          const e = echecReseau();
+          if (!e.ok) setRefusServeur({ ...e, message: TEXTES_HORS_LIGNE.stockageIndisponible });
+        }
         return;
       }
-      setValidee({ id: r.donnees.id, numero: r.donnees.numero, controlee: succesCommande?.donnees ?? null });
+      if (lu.type === 'reponse' && !lu.ok) {
+        // Refus du magasin (règle rejouée, accord du manager…) : affiché comme avant, rien n'est gardé.
+        if (lu.refus.code === 'ERR_DROIT_INSUFFISANT') setParGerant(null);
+        setRefusServeur(echecDuServeur(lu.refus));
+        return;
+      }
+      const issue = classerReponse(lu);
+      const donnees = (lu.type === 'reponse' && lu.ok ? lu.donnees : null) as { id: number; numero: string } | null;
+      // Reprise corrigée et acceptée : elle sort de la file des commandes à reprendre.
+      if (reprise && issue.type === 'envoyee') noterIssue(reprise.idClient, issue);
+      setValidee({ id: donnees?.id ?? 0, numero: donnees?.numero ?? '', controlee: succesCommande?.donnees ?? null });
       window.scrollTo({ top: 0 });
     } catch {
       const e = echecReseau();
@@ -1061,6 +1233,20 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   /* ---------------------------------------------------------------- Rendu */
 
   if (!prete || !vendeur) return null;
+
+  if (gardee) {
+    return (
+      <CommandeGardee
+        modification={modification}
+        client={client}
+        dateRetrait={dateRetrait}
+        heureRetrait={heureRetrait}
+        controlee={succesCommande?.donnees ?? null}
+        onNouvelle={() => (modification ? router.push('/commandes/nouvelle') : onRecommencer())}
+        onAccueil={() => router.push('/')}
+      />
+    );
+  }
 
   if (validee) {
     return (
@@ -1092,7 +1278,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       return (
         <PaveMontant
           libelle="Acompte versé"
-          sousTitre={`au moins ${cal.reglement.acomptePourcentageMin} % du total`}
+          sousTitre={`au moins ${cal.reglement.acomptePourcentageMin}\u00a0% du total`}
           centimes={acompte}
           onChange={setAcompte}
           onValider={() => setActif(null)}
@@ -1104,7 +1290,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       return remise ? (
         <PaveMontant
           libelle="Prix convenu avec le client"
-          sousTitre={`Tarif : ${formaterEuros(totalTarif)}${totalComplet ? '' : ' + à compléter'}`}
+          sousTitre={`Tarif\u00a0: ${formaterEuros(totalTarif)}${totalComplet ? '' : ' + à compléter'}`}
           centimes={totalConvenu}
           onChange={setTotalConvenu}
           onValider={() => setActif(null)}
@@ -1139,99 +1325,88 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     </div>
   ) : null;
 
-  /* --------------------------------------------- Bloc « Gâteau » (sous le 1er gâteau) */
-  // Demande du propriétaire (18/10/2026) : écriture et photos rattachées à la
-  // ligne du gâteau. Champs au niveau de la commande : UN bloc, sous le premier
-  // gâteau. Écrire / cocher la photo met le supplément au bon ; vider / décocher
-  // le retire (le vendeur peut aussi retirer la ligne du supplément lui-même).
-  const ecrire = (v: string) => {
-    setTexteGateau(v);
-    setLignes((ls) => saisirEcriture(ls, v, catalogue, famillesGateau));
-  };
+  /* ------------------------------------ Bloc « Sur le gâteau » (sous CHAQUE gâteau) */
+  // Lot 2 (propriétaire, 28/10/2026 : « une écriture par gâteau, ça doit être
+  // clair quelle écriture pour quel gâteau ») : chaque gâteau a son écriture,
+  // son « Pas d'écriture » et sa photo à imprimer. Écrire / cocher met le
+  // supplément au bon, une fois par gâteau ; vider / décocher le retire.
+  const surLeGateau = (cle: string, saisie: Parameters<typeof saisirSurLeGateau>[2]) =>
+    setLignes((ls) => saisirSurLeGateau(ls, cle, saisie, catalogue, famillesGateau));
   const photoAuTarif = ficheDe(catalogue, SUPPLEMENT_PHOTO) !== null;
   // R64 : prix par personne LU au catalogue reçu (date de prise), jamais écrit ici.
   const ficheSucre = ficheDe(catalogue, SUPPLEMENT_PATE_A_SUCRE);
-  const blocGateau = (
-    <div
-      ref={zoneGateau}
-      style={{ scrollMarginTop: 8 }}
-      role="group"
-      aria-label="Sur le gâteau"
-      className="mt-2 rounded-lg border-l-4 border-accent bg-surface-2 px-2.5 pb-1.5 pt-2"
-    >
-      <label className="block">
-        <span className="mb-1 block text-sm font-semibold text-ink">Écriture sur le gâteau</span>
-        <input
-          className={CHAMP_TEXTE}
-          value={sansEcriture ? '' : texteGateau}
-          disabled={sansEcriture}
-          onChange={(e) => ecrire(e.target.value)}
-          placeholder={sansEcriture ? 'Pas d’écriture' : 'JOYEUX ANNIVERSAIRE MARIAM'}
-          autoComplete="off"
-        />
-      </label>
-      <p className="mt-1 text-xs text-ink-2">
-        {!sansEcriture && texteGateau.trim() !== '' && aSupplement(lignes, SUPPLEMENT_ECRITURE)
-          ? 'Supplément écriture au bon. '
-          : ''}
-        Relisez le texte au client : imprimé tel quel.
-      </p>
-      <Case
-        compact
-        coche={sansEcriture}
-        onChange={(v) => {
-          setSansEcriture(v);
-          if (v) {
-            setTexteGateau('');
-            setLignes((ls) => basculerSupplement(ls, SUPPLEMENT_ECRITURE, false, catalogue, famillesGateau));
+  const blocGateauDe = (ligne: LigneEcran, i: number, signaux: readonly SignalementAffichable[]) => {
+    const sansEcriture = ligne.sansEcriture === true;
+    const texteGateau = sansEcriture ? '' : (ligne.texteGateau ?? '');
+    const photoImprimee = ligne.photoImprimee === true;
+    return (
+      <div
+        id={`sur-gateau-${ligne.cle}`}
+        style={{ scrollMarginTop: 8 }}
+        role="group"
+        aria-label="Sur ce gâteau"
+        className="mt-2 rounded-lg border-l-4 border-accent bg-surface-2 px-2.5 pb-1.5 pt-2"
+      >
+        <label className="block">
+          <span className="mb-1 block text-sm font-semibold text-ink">Écriture sur ce gâteau</span>
+          <input
+            className={CHAMP_TEXTE}
+            value={texteGateau}
+            disabled={sansEcriture}
+            onChange={(e) => surLeGateau(ligne.cle, { texteGateau: e.target.value })}
+            placeholder={sansEcriture ? 'Pas d’écriture' : 'JOYEUX ANNIVERSAIRE MARIAM'}
+            autoComplete="off"
+          />
+        </label>
+        <p className="mt-1 text-xs text-ink-2">
+          {texteGateau.trim() !== '' && supplementCouvert(lignes, SUPPLEMENT_ECRITURE, catalogue, famillesGateau)
+            ? 'Supplément écriture au bon. '
+            : ''}
+          Relisez le texte au client, s’il vous plaît&nbsp;: imprimé tel quel, sous ce gâteau.
+        </p>
+        <Case compact coche={sansEcriture} onChange={(v) => surLeGateau(ligne.cle, { sansEcriture: v })}>
+          Pas d’écriture
+        </Case>
+        <Case
+          compact
+          coche={photoImprimee}
+          desactive={!photoAuTarif && !photoImprimee}
+          aide={
+            photoImprimee && supplementCouvert(lignes, SUPPLEMENT_PHOTO, catalogue, famillesGateau)
+              ? 'Supplément photo au bon'
+              : !photoAuTarif
+                ? 'Supplément «\u00a0Photo\u00a0» absent du tarif\u00a0: prévenez le manager, s’il vous plaît'
+                : undefined
           }
-        }}
-      >
-        Pas d’écriture
-      </Case>
-      <Case compact coche={photoWhatsapp} onChange={setPhotoWhatsapp}>
-        Photo d’exemple envoyée sur WhatsApp
-      </Case>
-      <Case
-        compact
-        coche={photoImprimee}
-        desactive={!photoAuTarif && !photoImprimee}
-        aide={
-          aSupplement(lignes, SUPPLEMENT_PHOTO)
-            ? 'Supplément photo au bon'
-            : !photoAuTarif
-              ? 'Supplément « Photo » absent du tarif : prévenez le gérant'
-              : undefined
-        }
-        onChange={(v) => {
-          if (!v) setPhotoHeritee(false);
-          setLignes((ls) => basculerSupplement(ls, SUPPLEMENT_PHOTO, v, catalogue, famillesGateau));
-        }}
-      >
-        Photo à imprimer sur le gâteau
-      </Case>
-      <Case
-        compact
-        coche={aSupplement(lignes, SUPPLEMENT_PATE_A_SUCRE)}
-        desactive={!ficheSucre && !aSupplement(lignes, SUPPLEMENT_PATE_A_SUCRE)}
-        aide={
-          aSupplement(lignes, SUPPLEMENT_PATE_A_SUCRE)
-            ? 'Au bon, autant de parts que le gâteau'
-            : !ficheSucre
-              ? 'Pâte à sucre absente du tarif : prévenez le gérant'
-              : undefined
-        }
-        onChange={(v) =>
-          setLignes((ls) =>
-            basculerSupplementParPersonne(ls, SUPPLEMENT_PATE_A_SUCRE, v, catalogue, famillesGateau, SUPPLEMENTS_PAR_PERSONNE, CORRESPONDANCES_COMPTOIR),
-          )
-        }
-      >
-        {ficheSucre ? `${libelleProduit(ficheSucre)} (${formaterEuros(ficheSucre.prix.prixCentimes)}/pers.)` : 'Pâte à sucre'}
-      </Case>
-      {rendre(signauxGateau)}
-    </div>
-  );
+          onChange={(v) => surLeGateau(ligne.cle, { photoImprimee: v })}
+        >
+          Photo à imprimer sur ce gâteau
+        </Case>
+        {i === iPateASucre ? (
+          <Case
+            compact
+            coche={aSupplement(lignes, SUPPLEMENT_PATE_A_SUCRE)}
+            desactive={!ficheSucre && !aSupplement(lignes, SUPPLEMENT_PATE_A_SUCRE)}
+            aide={
+              aSupplement(lignes, SUPPLEMENT_PATE_A_SUCRE)
+                ? 'Au bon, autant de parts que le gâteau'
+                : !ficheSucre
+                  ? 'Pâte à sucre absente du tarif\u00a0: prévenez le manager, s’il vous plaît'
+                  : undefined
+            }
+            onChange={(v) =>
+              setLignes((ls) =>
+                basculerSupplementParPersonne(ls, SUPPLEMENT_PATE_A_SUCRE, v, catalogue, famillesGateau, SUPPLEMENTS_PAR_PERSONNE, CORRESPONDANCES_COMPTOIR),
+              )
+            }
+          >
+            {ficheSucre ? `${libelleProduit(ficheSucre)} (${formaterEuros(ficheSucre.prix.prixCentimes)}/pers.)` : 'Pâte à sucre'}
+          </Case>
+        ) : null}
+        {rendre(signaux, 'pièces', `gateau-${ligne.cle}`)}
+      </div>
+    );
+  };
 
   /* ----------------------------------------------- Le bon (lignes saisies) */
   const bon =
@@ -1253,7 +1428,14 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
               // Refus qui portent sur PLUSIEURS lignes (suppléments…) : `controlerLigne`
               // ne les voit pas, `blocagesCommande` si. Affichés sur la ligne dès sa
               // saisie, sans doubler le refus propre à la ligne.
-              const blocagesLigne = r ? blocages.filter((b) => indexLigne(b.champ) === i && (r.ok || b.code !== r.code)) : [];
+              const blocagesLigne = r
+                ? blocages.filter((b) => indexLigne(b.champ) === i && !CHAMPS_SUR_LE_GATEAU.has(champLocal(b.champ)) && (r.ok || b.code !== r.code))
+                : [];
+              // Écriture et photo de CE gâteau : dans son bloc « Sur le gâteau » (lot 2).
+              const gateau = estLigneGateau(ligne, catalogue, famillesGateau);
+              const signauxSurGateau = gateau
+                ? tous.filter((s) => indexLigne(s.champ) === i && CHAMPS_SUR_LE_GATEAU.has(champLocal(s.champ)))
+                : [];
               // Ancien tarif : l'accord manquant n'est pas répété sur chaque ligne (refus unique plus haut).
               const accordAncien = ancienTarif && r && !r.ok && r.code === 'ERR_DROIT_INSUFFISANT' && sansAccord(i);
               const signaux: SignalementAffichable[] = [
@@ -1290,14 +1472,15 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                     basculerDetail={() => setLigneDetail(ligneDetail === ligne.cle ? null : ligne.cle)}
                     options={options}
                     tailles={cal.reglement.taillesGateau}
+                    unGateau={fiche !== null && estFicheGateauDuComptoir(fiche, famillesGateau)}
                     onChange={(p) => majLigne(i, p)}
                     // Taille ET goût donnés : l'écriture est l'étape suivante (jamais avant la taille).
-                    onGoutChoisi={i === iBlocGateau && ligne.quantite !== null ? montrerEcriture : undefined}
+                    onGoutChoisi={gateau && ligne.quantite !== null ? () => montrerEcriture(ligne.cle) : undefined}
                     onRetirer={() => retirerLigne(i)}
-                    // Supplément Écriture d'une écriture saisie : pas de × (non retirable à la main, 28/10/2026).
-                    retirable={!supplementEcritureImpose(ligne, precisionsGateau.texteGateau, precisionsGateau.sansEcriture)}
+                    // Supplément Écriture / Photo dû pour un gâteau : pas de × (non retirable à la main, 28/10/2026).
+                    retirable={!supplementImpose(ligne, lignes, catalogue, famillesGateau)}
                     onGerantLibre={() =>
-                      avecGerant(`Prix d’une demande hors catalogue : « ${ligne.libelleLibre || 'ligne libre'} ».`, (d) =>
+                      avecGerant(`Prix d’une demande hors catalogue\u00a0: «\u00a0${ligne.libelleLibre || 'ligne libre'}\u00a0».`, (d) =>
                         majLigne(i, { deverrouillage: d }),
                       )
                     }
@@ -1305,18 +1488,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                     onRetirerPhoto={() => setLignes((ls) => retirerPhoto(ls, ligne.cle))}
                   />
                   {rendre(signaux, unite, `ligne-${ligne.cle}`)}
-                  {i === iBlocGateau ? (
-                    blocGateau
-                  ) : ficheBlocGateau && estLigneGateau(ligne, catalogue, famillesGateau) ? (
-                    // Un seul bloc pour la commande : les autres gâteaux y mènent d'un geste.
-                    <button
-                      type="button"
-                      onClick={montrerEcriture}
-                      className="mt-1 min-h-10 text-left text-sm text-ink-2 underline underline-offset-2"
-                    >
-                      Écriture et photo : sous « {libelleProduit(ficheBlocGateau)} » {iBlocGateau !== null && iBlocGateau < i ? '↑' : '↓'}
-                    </button>
-                  ) : null}
+                  {gateau ? blocGateauDe(ligne, i, signauxSurGateau) : null}
                 </li>
               );
             })}
@@ -1352,9 +1524,9 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
             <button
               type="button"
               className="min-h-12 text-left text-sm text-ink-2 underline underline-offset-2"
-              onClick={() => avecGerant('Prix convenu sous le tarif (remise).', (d) => { setRemise(d); setActif('total'); })}
+              onClick={() => avecGerant('Prix convenu sous le tarif (réduction).', (d) => { setRemise(d); setActif('total'); })}
             >
-              Prix convenu avec le client (accord du gérant)
+              Prix convenu avec le client (accord du manager)
             </button>
           )}
         </div>
@@ -1422,12 +1594,10 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       <Case compact coche={zoneDessin} onChange={setZoneDessin}>
         <span className="text-sm text-ink-2">Zone pour dessiner sur le bon (dessin, croquis du client)</span>
       </Case>
-      {/* Commande sans gâteau (salé…) : la case du bloc « Sur le gâteau » vient ici (28/10/2026). */}
-      {sansGateau ? (
-        <Case compact coche={photoWhatsapp} onChange={setPhotoWhatsapp}>
-          <span className="text-sm text-ink-2">Photo d’exemple envoyée sur WhatsApp</span>
-        </Case>
-      ) : null}
+      {/* Photo d'exemple du client : une par COMMANDE (lot 2, 28/10/2026), salé compris. */}
+      <Case compact coche={photoWhatsapp} onChange={setPhotoWhatsapp}>
+        <span className="text-sm text-ink-2">Photo d’exemple envoyée sur WhatsApp</span>
+      </Case>
     </>
   );
 
@@ -1866,7 +2036,11 @@ function formeEnregistree(l: Commande['lignes'][number]): Forme | null {
 
 /** Commande enregistrée → lignes de l'écran (prix appliqués et accords conservés). */
 function lignesDepuisCommande(c: Commande): LigneEcran[] {
-  return c.lignes.map((l) => {
+  // Lot 2 : écriture et photo par gâteau ; commande ancienne → sur son premier gâteau.
+  const sur = surLesGateaux(c);
+  const ecritures = sur.some((s) => s.texteGateau !== null);
+  const photos = sur.some((s) => s.photoImprimee);
+  return c.lignes.map((l, i) => {
     const produitId = l.produitCatalogue?.cleCatalogue ?? null;
     const accordPar = produitId ? l.sousPlancherAutorisePar : l.ligneLibreAutoriseePar;
     const accordLe = produitId ? l.sousPlancherAutoriseLe : l.ligneLibreAutoriseeLe;
@@ -1902,6 +2076,11 @@ function lignesDepuisCommande(c: Commande): LigneEcran[] {
       // modification. Plusieurs pièces (achat comptoir) : quantité au pavé, inchangée.
       origineSurCommande:
         l.quantite === 1 ? (gateauSurCommandeDe(produitId, CORRESPONDANCES_COMPTOIR)?.surCommande ?? null) : null,
+      texteGateau: sur[i]?.texteGateau ?? '',
+      sansEcriture: sur[i]?.sansEcriture === true,
+      photoImprimee: sur[i]?.photoImprimee === true,
+      // Supplément Écriture / Photo d'un gâteau qui en porte : automatique (il suit les gâteaux).
+      supplementAuto: (produitId === SUPPLEMENT_ECRITURE && ecritures) || (produitId === SUPPLEMENT_PHOTO && photos),
     };
   });
 }
@@ -1966,7 +2145,7 @@ function PaveDeLigne({
   if (champ === 'prix' && (plancher || libre)) {
     return (
       <PaveMontant
-        libelle={libre ? `${nom} — ${ligne.gateauLibre ? 'prix par part, ' : ''}fixé avec le gérant` : `${nom} — prix par personne`}
+        libelle={libre ? `${nom} — ${ligne.gateauLibre ? 'prix par part, ' : ''}fixé avec le manager` : `${nom} — prix par personne`}
         sousTitre={plancher && fiche ? `à partir de ${formaterEuros(fiche.prix.prixCentimes)}, modifiable vers le haut` : undefined}
         centimes={ligne.prixUnitaireCentimes ?? (plancher && fiche ? fiche.prix.prixCentimes : null)}
         onChange={(c) => onChange({ prixUnitaireCentimes: c, deverrouillage: libre ? ligne.deverrouillage : null })}
@@ -2028,7 +2207,7 @@ function RecapManques({
           ✕
         </button>
         <h2 id="recap-manques-titre" className="mb-3 text-lg font-bold text-bloquant">
-          Il manque :
+          Il manque&nbsp;:
         </h2>
         <ul className="grid gap-1">
           {manques.map((m) => (
@@ -2052,7 +2231,7 @@ function RecapManques({
           onClick={onFermer}
           className="mt-4 min-h-12 w-full rounded-xl bg-accent text-base font-semibold text-white active:bg-accent-fort"
         >
-          OK
+          Compléter
         </button>
       </div>
     </div>
@@ -2091,7 +2270,7 @@ function FenetreAbandon({
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id="abandon-titre" className="text-lg font-bold text-ink">
-          {modification ? 'Abandonner les changements ?' : 'Abandonner cette commande ?'}
+          {modification ? 'Abandonner les changements\u00a0?' : 'Abandonner cette commande\u00a0?'}
         </h2>
         <p id="abandon-texte" className="mt-1 text-base text-ink-2">
           {modification ? 'Les changements faits ici seront perdus.' : 'Ce qui a été saisi sera perdu.'}
@@ -2162,7 +2341,7 @@ function BlocGouts({
     if (suivants[etage] && suivants.every(Boolean)) onGoutChoisi?.();
   };
   const titre = (etage: number) =>
-    attendus > 1 ? `Goût de l’étage ${etage + 1}` : choix.liste === 'entremet' ? 'Quel entremet ?' : 'Goût ?';
+    attendus > 1 ? `Goût de l’étage ${etage + 1}` : choix.liste === 'entremet' ? 'Quel entremet\u00a0?' : 'Goût\u00a0?';
   const pastille = (actif: boolean) =>
     `min-h-11 rounded-lg border-2 px-2.5 text-sm font-medium leading-tight ${
       actif ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
@@ -2287,7 +2466,7 @@ function BlocFormes({
   return (
     <div className="grid gap-2 rounded-lg border-l-4 border-accent bg-surface-2 px-2.5 py-2">
       <div>
-        <p className="mb-1 text-sm font-semibold text-ink">Combien de chiffres ou lettres ?</p>
+        <p className="mb-1 text-sm font-semibold text-ink">Combien de chiffres ou lettres&nbsp;?</p>
         <div role="group" aria-label="Nombre de chiffres ou lettres" className="grid grid-cols-5 gap-1">
           {NOMBRES_DE_SYMBOLES.map((k) => (
             <button
@@ -2321,7 +2500,7 @@ function BlocFormes({
       {n !== null ? (
         <div>
           <label className="block">
-            <span className="mb-1 block text-sm font-semibold text-ink">{autre ? 'Quel dessin ?' : 'Quels chiffres ou lettres ?'}</span>
+            <span className="mb-1 block text-sm font-semibold text-ink">{autre ? 'Quel dessin\u00a0?' : 'Quels chiffres ou lettres\u00a0?'}</span>
             <input
               className={CHAMP_TEXTE}
               value={ligne.formes}
@@ -2334,7 +2513,7 @@ function BlocFormes({
           </label>
           {apercu ? (
             <p className="mt-1 text-sm text-ink-2">
-              Au ticket : <b className="whitespace-pre text-base text-ink">{apercu}</b>
+              Au bon&nbsp;: <b className="whitespace-pre text-base text-ink">{apercu}</b>
             </p>
           ) : null}
           <Case
@@ -2345,7 +2524,7 @@ function BlocFormes({
               if (v) onAutreForme();
             }}
           >
-            Autre dessin (cœur, étoile…) — zone de dessin au ticket
+            Autre dessin (cœur, étoile…) — zone de dessin sur le bon
           </Case>
         </div>
       ) : null}
@@ -2369,6 +2548,7 @@ function LigneDuBon({
   basculerDetail,
   options,
   tailles,
+  unGateau = false,
   onChange,
   onRetirer,
   retirable = true,
@@ -2395,6 +2575,8 @@ function LigneDuBon({
   options: OptionsGateau | null;
   /** Tailles standard des gâteaux simples (réglages du gérant, LOI 11). */
   tailles: readonly number[];
+  /** Gâteau du comptoir (Bavarois 6P…) : une ligne = UN gâteau, pas de pavé de quantité (28/10/2026). */
+  unGateau?: boolean;
   onChange: (p: Partial<LigneEcran>) => void;
   onRetirer: () => void;
   /** false : pas de × (supplément Écriture d'une écriture saisie, 28/10/2026). */
@@ -2504,7 +2686,7 @@ function LigneDuBon({
       {libre ? (
         // « C'est un gâteau ? » (audit du 28/10/2026) : réponse explicite, jamais déduite du libellé (LOI 6).
         <div role="group" aria-label="C’est un gâteau ?" className="mt-2 flex items-center gap-1">
-          <span className="mr-1 text-sm font-semibold text-ink">C’est un gâteau ?</span>
+          <span className="mr-1 text-sm font-semibold text-ink">C’est un gâteau&nbsp;?</span>
           {([true, false] as const).map((v) => (
             <button
               key={String(v)}
@@ -2593,6 +2775,12 @@ function LigneDuBon({
           <p className="chiffres text-base text-ink">
             {ligne.quantite === null ? 'Parts du gâteau à choisir' : `${ligne.quantite} parts`}
             <span className="ml-1 text-sm text-ink-2">— autant que le gâteau</span>
+          </p>
+        ) : unGateau && !ligne.origineSurCommande ? (
+          // Une ligne par gâteau (28/10/2026) : pas de pavé. Un 2e gâteau = un toucher de la carte.
+          // Ligne ancienne « 2 × » : affichée telle quelle, le domaine propose « Séparer ».
+          <p className="chiffres text-base font-semibold text-ink">
+            {ligne.quantite !== null && ligne.quantite > 1 ? `${ligne.quantite} gâteaux` : '1 gâteau'}
           </p>
         ) : (
           <ChampPave
@@ -2703,7 +2891,7 @@ function LigneDuBon({
         aria-expanded={detail}
         className="mt-1 min-h-10 max-w-full break-words text-left text-sm text-ink-2 underline underline-offset-2"
       >
-        {ligne.precision ? `Précision : ${ligne.precision}` : regime === 'B' ? 'Garnitures, précision…' : goutAPart ? 'Précision…' : 'Parfum, précision…'}
+        {ligne.precision ? `Précision\u00a0: ${ligne.precision}` : regime === 'B' ? 'Garnitures, précision…' : goutAPart ? 'Précision…' : 'Parfum, précision…'}
       </button>
 
       {detail ? (
@@ -2736,7 +2924,7 @@ function LigneDuBon({
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {ligne.deverrouillage ? null : (
             <Bouton variante="secondaire" onClick={onGerantLibre}>
-              Accord du gérant pour ce prix
+              Accord du manager pour ce prix
             </Bouton>
           )}
           <Bouton
@@ -2744,7 +2932,7 @@ function LigneDuBon({
             disabled={ligne.prixUnitaireCentimes === null || ligne.libelleLibre.trim() === '' || signalementTarif === 'ok'}
             onClick={() => void signalerAuGerant()}
           >
-            {signalementTarif === 'ok' ? 'Signalé au gérant' : 'Retenir pour le tarif (gérant)'}
+            {signalementTarif === 'ok' ? 'Proposé au manager' : 'Proposer ce prix pour le tarif'}
           </Bouton>
         </div>
       ) : null}
@@ -2990,11 +3178,11 @@ function GrilleProduits({
     <>
       {fiches.length > MAX_CARTES ? (
         <p className="mt-2 text-sm text-ink-2">
-          {fiches.length - MAX_CARTES} autres produits : affinez la recherche ou choisissez une famille.
+          {fiches.length - MAX_CARTES} autres produits&nbsp;: affinez la recherche ou choisissez une famille.
         </p>
       ) : null}
       {libre ? (
-        <p className="mt-2 text-sm text-ink-3">Comptoir : seuls les favoris sont affichés. Cherchez ou choisissez une famille pour les autres.</p>
+        <p className="mt-2 text-sm text-ink-3">Comptoir&nbsp;: seuls les favoris sont affichés. Cherchez ou choisissez une famille pour les autres.</p>
       ) : null}
     </>
   );
@@ -3019,6 +3207,66 @@ function GrilleProduits({
         {liste}
         {pied}
       </div>
+    </>
+  );
+}
+
+/** Refus typé lu du serveur → échec affichable (format LOI 9, message du serveur tel quel). */
+function echecDuServeur(r: { code: string; message: string; champ?: string; valeurProposee?: unknown }): Echec {
+  return {
+    ok: false,
+    niveau: 'bloquant',
+    code: (r.code.startsWith('ERR_') ? r.code : 'ERR_INATTENDUE') as Echec['code'],
+    message: r.message,
+    ...(r.champ !== undefined ? { champ: r.champ } : {}),
+    ...(r.valeurProposee !== undefined ? { valeurProposee: r.valeurProposee } : {}),
+  };
+}
+
+/* ====================================================== Commande gardée */
+
+/** Pas de réseau : la commande est sur la tablette, elle partira toute seule. */
+function CommandeGardee({
+  modification,
+  client,
+  dateRetrait,
+  heureRetrait,
+  controlee,
+  onNouvelle,
+  onAccueil,
+}: {
+  modification: boolean;
+  client: string;
+  dateRetrait: string | null;
+  heureRetrait: string;
+  controlee: CommandeControlee | null;
+  onNouvelle: () => void;
+  onAccueil: () => void;
+}) {
+  return (
+    <>
+      <Entete
+        titre={modification ? 'Changements gardés sur la tablette' : 'Commande gardée sur la tablette'}
+        sousTitre={modification ? TEXTES_HORS_LIGNE.gardeeModification : TEXTES_HORS_LIGNE.gardee}
+      />
+      <Carte className="p-4">
+        <p className="text-lg text-ink">
+          {client} — retrait {dateRetrait ? `le ${formaterDate(dateRetrait)}` : 'à fixer'}, {texteHeureRetrait(heureRetrait)}
+        </p>
+        {controlee ? (
+          <p className="chiffres mt-2 text-2xl font-bold text-ink">Total {formaterEuros(controlee.totalCentimes)}</p>
+        ) : null}
+        <p className="mt-3 text-base text-ink-2">{TEXTES_HORS_LIGNE.pasDImpression}</p>
+        <p className="mt-1 text-sm text-ink-2">Le voyant en bas de l’écran indique quand elle est partie.</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Bouton variante="principal" className="min-h-14 text-lg" onClick={onNouvelle}>
+            Nouvelle commande
+          </Bouton>
+          <Bouton className="min-h-14" onClick={onAccueil}>
+            Accueil
+          </Bouton>
+        </div>
+      </Carte>
     </>
   );
 }
@@ -3048,11 +3296,10 @@ function Confirmation({
   const c = validee.controlee;
   return (
     <>
-      <Entete titre={`Commande ${validee.numero} ${modification ? 'modifiée' : 'enregistrée'}`} sousTitre="Relisez-la au client à voix haute." />
+      <Entete titre={`Commande ${validee.numero} ${modification ? 'modifiée' : 'enregistrée'}`} sousTitre="Relisez-la au client à voix haute, s’il vous plaît." />
       <Carte className="p-4">
         <p className="text-lg text-ink">
-          {client} — retrait le {dateRetrait ? formaterDate(dateRetrait) : '…'}
-          {heureRetrait ? ` à ${heureRetrait}` : ''}
+          {client} — retrait {dateRetrait ? `le ${formaterDate(dateRetrait)}` : 'à fixer'}, {texteHeureRetrait(heureRetrait)}
         </p>
         {c ? (
           <>

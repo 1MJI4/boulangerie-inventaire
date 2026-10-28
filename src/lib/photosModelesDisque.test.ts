@@ -94,7 +94,7 @@ test('dossier : variable absente, non posée ou relative → refus clair (préve
       assert.equal(r.ok, false, String(v));
       if (!r.ok) {
         assert.equal(r.code, 'ERR_CONFIGURATION_SERVEUR');
-        assert.match(r.message, /Prévenez le gérant/);
+        assert.match(r.message, /Prévenez le manager/);
         assert.doesNotMatch(r.message, /DOSSIER_PHOTOS_MODELES/);
       }
     }

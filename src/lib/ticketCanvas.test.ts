@@ -21,6 +21,7 @@ import {
   formaterLigneTicket,
   mentionHeureRetrait,
   MENTION_LIGNE_LIBRE,
+  MENTION_PHOTO_A_IMPRIMER,
   zoneDessinImprimee,
   bandeauModification,
   basePrixDeLigne,
@@ -639,20 +640,25 @@ test('bandeau « MODIFIÉE » : même règle pour les trois formats ; CLIENT : �
   const evenements = [{ quand: '2026-10-22T16:40:00Z', action: 'modification', detail: 'produits, à réimprimer' }];
   assert.equal(bandeauModification({ evenements: [] }, 'ATELIER'), null);
   for (const d of ['BUREAU', 'MAGASIN', 'ATELIER'] as const) {
-    assert.deepEqual(bandeauModification({ evenements }, d), { titre: 'MODIFIÉE le 22/10 à 18h40', consigne: 'Jetez l’ancien ticket' });
+    assert.deepEqual(bandeauModification({ evenements }, d), { titre: 'MODIFIÉE le 22/10 à 18h40', consigne: 'Jetez l’ancien bon' });
     const t = textes(d, commande({ evenements })).map((x) => x.texte);
-    assert.ok(t.includes('MODIFIÉE le 22/10 à 18h40') && t.includes('Jetez l’ancien ticket'), d);
+    assert.ok(t.includes('MODIFIÉE le 22/10 à 18h40') && t.includes('Jetez l’ancien bon'), d);
   }
   assert.deepEqual(bandeauModification({ evenements }, 'CLIENT'), { titre: 'Version du 22/10 à 18h40', consigne: null });
   const client = textes('CLIENT', commande({ evenements })).map((x) => x.texte);
   assert.ok(client.includes('Version du 22/10 à 18h40') && !client.some((x) => x.startsWith('MODIFIÉE')));
 });
 
-test('écriture : rien d’imprimé sans écriture, l’écriture si elle existe', () => {
+test('écriture : rien d’imprimé sans écriture, l’écriture SOUS son gâteau si elle existe (lot 2, 28/10/2026)', () => {
   for (const d of DESTINATIONS) {
     const sans = textes(d, commande({ texteGateau: null })).map((x) => x.texte.toUpperCase()).join(' | ');
-    assert.ok(!sans.includes('SUR LE GÂTEAU'), d);
-    const avec = textes(d, commande({ texteGateau: 'Joyeux anniversaire Léa' })).map((x) => x.texte);
-    assert.ok(avec.includes('SUR LE GÂTEAU') && avec.join(' ').includes('Joyeux anniversaire Léa'), d);
+    assert.ok(!sans.includes('SUR LE GÂTEAU') && !sans.includes('ÉCRITURE'), d);
+    // Commande ancienne : l'écriture de la commande s'imprime sous la première ligne.
+    const avec = textes(d, commande({ texteGateau: 'Joyeux anniversaire Léa' })).map((x) => x.texte.replace(/\u00a0/g, ' '));
+    assert.ok(!avec.includes('SUR LE GÂTEAU'), `${d} : plus de bloc global`);
+    assert.ok(avec.join(' ').includes('ÉCRITURE : Joyeux anniversaire Léa'), `${d} : ${avec.join(' | ')}`);
+    // Photo à imprimer : sous le gâteau, plus de mention globale.
+    const photo = textes(d, commande({ photoImprimee: true })).map((x) => x.texte);
+    assert.ok(photo.includes(MENTION_PHOTO_A_IMPRIMER) && !photo.includes('À IMPRIMER SUR LE GÂTEAU'), d);
   }
 });

@@ -64,8 +64,8 @@ export function AccesGerant({
   const sortie = refus ? sortieDe(refus) : null;
 
   return (
-    <div className="rounded-xl border-2 border-accent bg-accent-doux/40 p-4" role="group" aria-label="Accord du gérant">
-      <p className="text-base font-semibold text-ink">Accord du gérant</p>
+    <div className="rounded-xl border-2 border-accent bg-accent-doux/40 p-4" role="group" aria-label="Accord du manager">
+      <p className="text-base font-semibold text-ink">Accord du manager</p>
       <p className="mb-3 text-sm text-ink-2">{raison}</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
@@ -79,7 +79,7 @@ export function AccesGerant({
           />
         </label>
         <label className="block">
-          <span className="mb-1 block text-sm text-ink-2">Code gérant</span>
+          <span className="mb-1 block text-sm text-ink-2">Code du manager</span>
           <input
             type="password"
             // Code gérant en chiffres (21/10/2026) : pavé numérique de la tablette.

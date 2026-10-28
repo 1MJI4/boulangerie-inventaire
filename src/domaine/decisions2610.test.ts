@@ -373,9 +373,12 @@ test('R65 : Matadi chocolat 4P → ERR_TAILLE_INTERDITE, « Passer en Matadi cho
   assert.equal(r.message, '« Matadi chocolat 4P » ne se fait pas. Proposez au client « Matadi chocolat 6P » ou « Mousse chocolat 4P ».');
 });
 
-test('R65 : 2 Matadi chocolat 4P → les remplaçants gardent la quantité (2)', () => {
-  const v = refus({ produitId: ID.matadi4p, quantite: 2 }).valeurProposee as SortieRemplacement[];
-  assert.deepEqual(v.map((x) => x.quantite), [2, 2]);
+test('R65 : les remplaçants gardent la quantité de la règle ; « 2 × Matadi 4P » se sépare d’abord (une ligne par gâteau)', () => {
+  const r = validerTailleAutorisee(fiche(ID.matadi4p), 2, TAILLES_INTERDITES, fiche);
+  assert.ok(!r.ok);
+  if (!r.ok) assert.deepEqual((r.valeurProposee as SortieRemplacement[]).map((x) => x.quantite), [2, 2]);
+  // À la saisie, deux gâteaux du comptoir sur une ligne sont refusés AVANT R65 (28/10/2026).
+  assert.deepEqual(refus({ produitId: ID.matadi4p, quantite: 2 }).valeurProposee, { separerEn: 2 });
 });
 
 test('R65 n’interdit pas : Matadi chocolat 6P et 8P, Mousse chocolat 4P ; le tarif comptoir garde sa ligne 4P', () => {

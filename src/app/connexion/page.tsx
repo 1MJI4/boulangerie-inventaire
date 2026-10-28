@@ -9,7 +9,7 @@
 
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
-import { signaler } from '@/domaine/messages';
+import { signaler, typographier } from '@/domaine/messages';
 import { cheminDeRetour } from '@/lib/auth/chemins';
 import { NOM_COOKIE_TABLETTE, lireConfiguration } from '@/lib/auth/config';
 import { verifierJeton } from '@/lib/auth/session';
@@ -42,7 +42,7 @@ export default async function PageConnexion({
 
         {!conf.ok ? (
           <p role="alert" className="mt-4 text-sm text-ink text-pretty">
-            {signaler('ERR_CONFIGURATION_SERVEUR', { reference: conf.reference }).message}
+            {typographier(signaler('ERR_CONFIGURATION_SERVEUR', { reference: conf.reference }).message)}
           </p>
         ) : installee ? (
           <>
@@ -67,8 +67,8 @@ export default async function PageConnexion({
         ) : (
           <>
             <p className="mt-2 text-sm text-ink-2 text-pretty">
-              Première ouverture sur cette tablette : saisissez le code de la tablette donné par
-              le gérant. Il ne sera plus demandé ensuite.
+              Première ouverture sur cette tablette&nbsp;: saisissez le code de la tablette donné par
+              le manager. Il ne sera plus demandé ensuite.
             </p>
             <FormulaireConnexion suite={suite} />
           </>

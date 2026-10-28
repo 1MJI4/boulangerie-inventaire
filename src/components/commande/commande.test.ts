@@ -79,7 +79,7 @@ test('ligne libre sans accord du gérant : refus, sortie « Saisir le code géra
   assert.equal(r.code, 'ERR_DROIT_INSUFFISANT');
   const s = sortieDe(r);
   assert.equal(s.avecValeur, false);
-  assert.equal(s.libelle, 'Saisir le code gérant');
+  assert.equal(s.libelle, 'Saisir le code du manager');
 });
 
 test('acompte insuffisant : accepté, avertissement avec le bouton « Mettre l’acompte à X »', () => {

@@ -84,8 +84,11 @@ function parametres(s: S, uniteQuantite: string): Record<string, unknown> {
       return { max: entier(v) ?? '' };
     case 'ERR_SUPPLEMENT_SANS_GATEAU':
       return {};
+    // Écriture / photo à imprimer en trop : `valeurProposee` = quantité à mettre (0 → « Retirer la ligne »).
+    case 'ERR_SUPPLEMENT_EN_TROP':
+      return { attendus: entier(v) ?? 0, objet: '' };
     case 'ERR_DROIT_INSUFFISANT':
-      return { action: '', role: 'gérant' };
+      return { action: '', role: 'manager' };
     case 'ERR_STATUT_INCOHERENT':
       return { de: statutLisible(v), vers: '' };
     default:

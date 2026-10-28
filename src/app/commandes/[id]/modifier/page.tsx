@@ -52,9 +52,9 @@ export default function ModifierCommande() {
 
   if (commande.statut === 'annulee') {
     return (
-      <Alerte>
-        La commande {commande.numero} est annulée. Créez-en une nouvelle plutôt que de la rouvrir —
-        son historique doit rester intact.
+      <Alerte ton="info">
+        La commande n°&nbsp;{commande.numero} est annulée&nbsp;: elle ne se modifie plus. Créez-en une
+        nouvelle, s’il vous plaît.
       </Alerte>
     );
   }

@@ -126,7 +126,7 @@ export function GaleriePhotos({ onChoisir, onFermer }: { onChoisir: (p: PhotoMod
         ) : donnees === null ? (
           <Chargement libelle="Chargement des photos…" />
         ) : photos.length === 0 ? (
-          <p className="py-10 text-center text-lg text-ink-2">Aucune photo pour l’instant : le gérant les ajoute dans Réglages des commandes.</p>
+          <p className="py-10 text-center text-lg text-ink-2">Aucune photo pour l’instant : le manager les ajoute dans Réglages des commandes.</p>
         ) : null}
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {photos.map((p) => (

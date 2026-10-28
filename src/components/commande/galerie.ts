@@ -20,8 +20,11 @@ import type { CorrespondanceComptoir } from '../../domaine/prixComptoir.ts';
 import type { PhotoModele } from '../../catalogue/photosModeles.ts';
 import {
   basculerSupplementParPersonne,
+  estFicheGateau,
+  gateauSansTaille,
   toucherProduit,
   type CatalogueCommande,
+  type ChampTouche,
   type FicheCatalogue,
   type LigneEcran,
 } from './modele.ts';
@@ -29,7 +32,7 @@ import {
 // Lecture de l'identifiant reçu par la route : ./photosGestion.ts (`lirePhotoDeLigne`,
 // contrôlé contre la base, photo masquée comprise).
 
-export type ToucherPhoto = { lignes: LigneEcran[]; cle: string; champ: 'quantite' | 'symboles' | 'taille' };
+export type ToucherPhoto = { lignes: LigneEcran[]; cle: string; champ: ChampTouche };
 
 /**
  * Pose la photo sur le produit de la fiche. Poser une photo n'ajoute JAMAIS
@@ -40,6 +43,12 @@ export type ToucherPhoto = { lignes: LigneEcran[]; cle: string; champ: 'quantite
  * - produit déjà au bon, mais chaque ligne porte une AUTRE photo (deux gâteaux
  *   différents du même produit) : nouvelle ligne, jamais d'écrasement ;
  * - produit absent du bon : ajouté comme un toucher de sa carte (`toucherProduit`).
+ * GÂTEAU (une ligne par gâteau, propriétaire, 28/10/2026) : la photo se pose
+ * sur le DERNIER gâteau de ce produit qui n'a pas encore de photo (le gâteau
+ * qu'on est en train de décrire — c'est aussi le seul moyen de donner une
+ * photo à un gâteau déjà au bon), ou sur un gâteau encore sans taille qui
+ * porte déjà cette photo (double toucher). Sinon — tous ses gâteaux ont une
+ * photo, même celle-ci — c'est un NOUVEAU gâteau, jamais « 2 × ».
  * Même règle pour la photo « en attente » posée sur le prochain produit touché.
  * - Suppléments du modèle : seuls les suppléments PAR PERSONNE (Pâte à sucre,
  *   R64) sont cochés, par le mécanisme de la case du bloc gâteau ; le domaine
@@ -57,16 +66,19 @@ export function ajouterAvecPhoto(
 ): ToucherPhoto {
   // Même repérage que `toucherProduit` (gâteau devenu celui du comptoir compris, R60).
   const duProduit = lignes.filter((l) => l.produitId === fiche.produit.id || l.origineSurCommande === fiche.produit.id);
-  const cible = duProduit.find((l) => l.photoModele === photo.id) ?? duProduit.find((l) => !l.photoModele);
+  const derniers = [...duProduit].reverse();
+  const cible = estFicheGateau(fiche, famillesGateau)
+    ? (derniers.find((l) => !l.photoModele) ?? derniers.find((l) => l.photoModele === photo.id && gateauSansTaille(l)))
+    : (duProduit.find((l) => l.photoModele === photo.id) ?? duProduit.find((l) => !l.photoModele));
   let t: ToucherPhoto;
   if (cible) {
     // Champ à ouvrir comme un toucher de la carte, mais AUCUNE quantité ajoutée.
-    t = { lignes: [...lignes], cle: cible.cle, champ: toucherProduit([cible], fiche).champ };
+    t = { lignes: [...lignes], cle: cible.cle, champ: toucherProduit([cible], fiche, famillesGateau).champ };
   } else if (duProduit.length > 0) {
-    const neuve = toucherProduit([], fiche);
+    const neuve = toucherProduit([], fiche, famillesGateau);
     t = { lignes: [...lignes, ...neuve.lignes], cle: neuve.cle, champ: neuve.champ };
   } else {
-    t = toucherProduit(lignes, fiche);
+    t = toucherProduit(lignes, fiche, famillesGateau);
   }
   let suivantes = t.lignes.map((l) => (l.cle === t.cle ? { ...l, photoModele: photo.id } : l));
   for (const s of photo.supplements ?? []) {

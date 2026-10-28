@@ -22,7 +22,7 @@ export type StatutCommande = (typeof STATUTS)[number];
 export const LIBELLE_STATUT: Record<StatutCommande, string> = {
   a_imprimer: 'À imprimer',
   imprimee: 'Imprimée',
-  remise: 'Remise au client',
+  remise: 'Retirée par le client',
   annulee: 'Annulée',
 };
 
@@ -55,6 +55,17 @@ export type LigneCommande = {
    * imprimé « Photo sélectionnée : G043 » sur le bon. null / absent : pas de photo.
    */
   photoModele?: string | null;
+  /**
+   * Lot 2 (propriétaire, 28/10/2026 : « une écriture par gâteau ») : ce qui
+   * s'écrit sur CE gâteau, imprimé en gras sous sa ligne. null / absent : rien.
+   * Ancienne commande (écriture au niveau de la commande) : `depuisApi` la
+   * reporte sur son premier gâteau (`lignesSurLeGateau`), en lecture seulement.
+   */
+  texteGateau?: string | null;
+  /** Lot 2 : « Pas d'écriture » coché pour CE gâteau. */
+  sansEcriture?: boolean | null;
+  /** Lot 2 : photo à imprimer SUR ce gâteau (supplément Photo). */
+  photoImprimee?: boolean | null;
   /** Produit du catalogue de commande (null : ligne libre ou ligne antérieure au lot 2). */
   /** Rayon, nom et régime : de quoi classer la ligne (boulangerie, pâtisserie, salé). */
   produitCatalogue?: { cleCatalogue: string; categorie?: string; nom?: string; regimePrix?: 'A' | 'B' | 'C' | null } | null;
@@ -88,9 +99,18 @@ export type Commande = {
   remiseAutoriseeLe?: string | null;
   accordLendemainPar?: string | null;
   accordLendemainLe?: string | null;
+  /**
+   * Lot 2 (28/10/2026) : l'écriture est sur la LIGNE (`LigneCommande.texteGateau`).
+   * Ici : l'écriture des commandes anciennes, et pour les nouvelles un RÉSUMÉ
+   * (« A · B ») gardé pour les écrans qui ne lisent pas encore les lignes.
+   * Lire de préférence `lignesSurLeGateau` / `ecrituresDeCommande`.
+   */
   texteGateau: string | null;
+  /** Ancien format ; nouvelles commandes : true si TOUS les gâteaux sont sans écriture. */
   sansEcriture: boolean;
+  /** Photo d'exemple envoyée par le client sur WhatsApp : reste au niveau de la commande. */
   photoWhatsapp: boolean;
+  /** Ancien format ; nouvelles commandes : true si au moins un gâteau porte une photo à imprimer. */
   photoImprimee: boolean;
   demandeInhabituelle?: boolean;
   /** OBSOLÈTE (lot 2) : remplacé par `demandeInhabituelle`, encore lu par les gabarits imprimés. */
@@ -124,7 +144,96 @@ export function depuisApi(c: CommandeApi): Commande {
   } catch {
     avertissements = [];
   }
-  return { ...c, retraitLe: c.retraitLe.slice(0, 10), avertissements };
+  const commande = { ...c, retraitLe: c.retraitLe.slice(0, 10), avertissements };
+  return { ...commande, lignes: lignesSurLeGateau(commande) };
+}
+
+/* ------------------------------------- Écriture par gâteau (lot 2, 28/10/2026) */
+
+/** Ce qui s'écrit et s'imprime sur UN gâteau. */
+export type SurLeGateau = { texteGateau: string | null; sansEcriture: boolean; photoImprimee: boolean };
+
+const texteOuNull = (t: string | null | undefined): string | null => (t ?? '').trim() || null;
+
+/** Ce qu'il faut d'une ligne (écran, API ou base) pour lire son écriture. */
+export type LigneSurLeGateau = Pick<LigneCommande, 'texteGateau' | 'sansEcriture' | 'photoImprimee'> & {
+  produitCatalogue?: { categorie?: string; nom?: string; regimePrix?: 'A' | 'B' | 'C' | null } | null;
+  prixProduit?: { basePrix: string } | null;
+};
+
+/** Champs de la commande à l'ancien format (repli). */
+type CommandeSurLeGateau<L extends LigneSurLeGateau = LigneSurLeGateau> = { lignes: readonly L[] } & Partial<
+  Pick<Commande, 'texteGateau' | 'sansEcriture' | 'photoImprimee'>
+>;
+
+/** true : au moins une ligne porte son écriture ou sa photo (commande prise depuis le lot 2). */
+export function commandeParGateau(c: { lignes: readonly LigneSurLeGateau[] }): boolean {
+  return c.lignes.some((l) => l.texteGateau != null || l.sansEcriture != null || l.photoImprimee != null);
+}
+
+/**
+ * Ligne enregistrée qui est un gâteau, lue sur les DONNÉES du tarif (régime,
+ * base de prix, rayon), jamais sur le nom : gâteau sur commande par personne,
+ * ou gâteau du comptoir. Sert seulement au repli de l'ancien format.
+ */
+export function estGateauEnregistre(l: LigneSurLeGateau): boolean {
+  const p = l.produitCatalogue;
+  const base = l.prixProduit?.basePrix;
+  if (!p?.categorie || !p.nom || !p.regimePrix || base === 'forfait' || base === 'kg') return false;
+  const famille = familleDuProduit(p.regimePrix === 'A' ? 'comptoir' : 'sur-commande', p.categorie, p.nom);
+  if (famille === 'supplement') return false;
+  if (p.regimePrix === 'C') return base === 'personne';
+  return p.regimePrix === 'A' && famille === 'gateau';
+}
+
+function estSupplementEnregistre(l: LigneSurLeGateau): boolean {
+  const p = l.produitCatalogue;
+  if (l.prixProduit?.basePrix === 'forfait') return true;
+  if (!p?.categorie || !p.nom || !p.regimePrix) return false;
+  return familleDuProduit(p.regimePrix === 'A' ? 'comptoir' : 'sur-commande', p.categorie, p.nom) === 'supplement';
+}
+
+/**
+ * Écriture, « Pas d'écriture » et photo à imprimer de CHAQUE ligne, dans
+ * l'ordre des lignes. Commande ancienne (aucune ligne ne porte la sienne) :
+ * l'écriture de la commande devient celle du PREMIER gâteau (à défaut, de la
+ * première ligne qui n'est pas un supplément) — lecture seule, rien n'est réécrit.
+ */
+export function surLesGateaux(c: CommandeSurLeGateau): SurLeGateau[] {
+  if (commandeParGateau(c)) {
+    return c.lignes.map((l) => {
+      const sans = l.sansEcriture === true;
+      return { texteGateau: sans ? null : texteOuNull(l.texteGateau), sansEcriture: sans, photoImprimee: l.photoImprimee === true };
+    });
+  }
+  const rien = c.lignes.map((): SurLeGateau => ({ texteGateau: null, sansEcriture: false, photoImprimee: false }));
+  const texte = texteOuNull(c.texteGateau);
+  if (!texte && !c.sansEcriture && !c.photoImprimee) return rien;
+  let k = c.lignes.findIndex(estGateauEnregistre);
+  if (k < 0) k = c.lignes.findIndex((l) => !estSupplementEnregistre(l));
+  if (k < 0) k = 0;
+  if (rien[k]) rien[k] = { texteGateau: c.sansEcriture ? null : texte, sansEcriture: c.sansEcriture === true, photoImprimee: c.photoImprimee === true };
+  return rien;
+}
+
+/** Lignes avec leur écriture et leur photo à imprimer (repli de l'ancien format compris). */
+export function lignesSurLeGateau<L extends LigneSurLeGateau>(c: CommandeSurLeGateau<L>): (L & SurLeGateau)[] {
+  const sur = surLesGateaux(c);
+  return c.lignes.map((l, i) => ({ ...l, ...sur[i] }));
+}
+
+/** Écritures de la commande, dans l'ordre des gâteaux (vide : aucune). */
+export function ecrituresDeCommande(c: CommandeSurLeGateau): string[] {
+  return surLesGateaux(c).flatMap((s) => (s.texteGateau ? [s.texteGateau] : []));
+}
+
+/**
+ * Résumé enregistré dans `Commande.texteGateau` pour les nouvelles commandes
+ * (« JOYEUX ANNIVERSAIRE LINA · BRAVO MARC ») : null s'il n'y a aucune écriture.
+ */
+export function resumeEcritures(textes: readonly (string | null | undefined)[]): string | null {
+  const t = textes.map((x) => (x ?? '').trim()).filter(Boolean);
+  return t.length > 0 ? t.join(' · ').slice(0, 200) : null;
 }
 
 /* ------------------------------------------------------------- Échéances */
@@ -154,21 +263,26 @@ export function formaterNumero(annee: number, sequence: number): string {
  */
 export function messageConfirmation(commande: {
   numero: string;
-  lignes: Pick<LigneCommande, 'libelle' | 'quantite'>[];
+  lignes: Pick<LigneCommande, 'libelle' | 'quantite' | 'texteGateau' | 'sansEcriture' | 'photoImprimee' | 'produitCatalogue' | 'prixProduit'>[];
   retraitLe: DateISO;
   retraitHeure: string | null;
   totalCentimes: number;
   acompteCentimes: number;
   texteGateau?: string | null;
+  sansEcriture?: boolean;
+  photoImprimee?: boolean;
   modePaiement: ModePaiement;
 }): string {
+  // Une écriture par gâteau (lot 2, 28/10/2026) : sous la ligne de son gâteau.
+  const sur = surLesGateaux(commande);
   const lignes = [
     `PAin PAtisserie — Commande n° ${commande.numero}`,
     '',
-    ...commande.lignes.map((l) => `• ${l.quantite} × ${l.libelle}`),
+    ...commande.lignes.flatMap((l, i) => {
+      const t = sur[i]?.texteGateau;
+      return [`• ${l.quantite} × ${l.libelle}`, ...(t ? [`   À écrire : « ${t} »`] : [])];
+    }),
   ];
-
-  if (commande.texteGateau) lignes.push(`• À écrire : « ${commande.texteGateau} »`);
 
   lignes.push(
     '',

@@ -24,7 +24,7 @@ test('bon code accepté, mauvais code refusé avec un message qui dit quoi faire
   assert.equal(r.ok, false);
   if (!r.ok) {
     assert.equal(r.code, 'ERR_CODE_INCORRECT');
-    assert.match(r.message, /gérant/);
+    assert.match(r.message, /manager/);
     assert.doesNotMatch(r.message, new RegExp(BON));
   }
 });

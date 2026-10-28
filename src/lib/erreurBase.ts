@@ -275,12 +275,12 @@ const CHECKS: Record<string, CibleCheck> = {
   Commande_acompte_max_total: { code: 'ERR_ACOMPTE_SUPERIEUR_TOTAL', champ: 'acompte' },
   LigneCommande_ligne_libre_trace: { code: 'ERR_DROIT_INSUFFISANT', champ: 'prixCentimes' },
   LigneCommande_deverrouillage_trace: { code: 'ERR_DROIT_INSUFFISANT', champ: 'prixCentimes' },
-  LigneCommande_deverrouillage_nom_non_vide: { code: 'ERR_SAISIE_INVALIDE', champ: 'sousPlancherAutorisePar', champLibelle: 'nom du gérant' },
+  LigneCommande_deverrouillage_nom_non_vide: { code: 'ERR_SAISIE_INVALIDE', champ: 'sousPlancherAutorisePar', champLibelle: 'nom du manager' },
   LigneCommande_nbObjets_positif: { code: 'ERR_QUANTITE_INVALIDE', champ: 'nbObjets' },
   LigneCommande_nbSymboles_positif: { code: 'ERR_SAISIE_INVALIDE', champ: 'nbSymboles', champLibelle: 'chiffres ou lettres' },
   // Accord du gérant pour une taille de gâteau hors liste (migration 20261015150000).
   LigneCommande_taille_trace: { code: 'ERR_DROIT_INSUFFISANT', champ: 'tailleAutoriseePar' },
-  LigneCommande_taille_nom_non_vide: { code: 'ERR_SAISIE_INVALIDE', champ: 'tailleAutoriseePar', champLibelle: 'nom du gérant' },
+  LigneCommande_taille_nom_non_vide: { code: 'ERR_SAISIE_INVALIDE', champ: 'tailleAutoriseePar', champLibelle: 'nom du manager' },
   // L'écran des réglages ÉCRIT dans Reglage : une valeur refusée par le CHECK
   // (fonction "reglage_valeur_valide", étendue par 20261015150000 ; le nom de
   // la contrainte, lui, reste "Reglage_reglement_valide") est une saisie mal

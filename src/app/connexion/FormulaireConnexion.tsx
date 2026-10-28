@@ -6,6 +6,7 @@
 
 import { useActionState } from 'react';
 import { installerTablette, type EtatConnexion } from './actions';
+import { typographier } from '@/domaine/messages';
 
 const ETAT_INITIAL: EtatConnexion = { message: null };
 
@@ -34,7 +35,7 @@ export function FormulaireConnexion({ suite }: { suite: string }) {
 
       {etat.message ? (
         <p role="alert" className="rounded-lg border border-line-fort bg-surface-2 p-3 text-sm text-ink">
-          {etat.message}
+          {typographier(etat.message)}
         </p>
       ) : null}
 

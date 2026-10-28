@@ -13,6 +13,7 @@ import { formaterEuros } from '../../domaine/argent.ts';
 import { formaterQuantite } from '../../domaine/unites.ts';
 import { LIBELLES_FORME } from '../../domaine/messages.ts';
 import { estForme } from '../../domaine/formes.ts';
+import { HEURE_A_FIXER, texteHeure } from './saisieEnCours.ts';
 
 /** Une ligne telle qu'enregistrée (base) ou à enregistrer (route) : ce qui s'imprime sur le bon. */
 export type LigneTexte = {
@@ -34,6 +35,12 @@ export type LigneTexte = {
   precision?: string | null;
   /** Pain surprise : nombre de sandwichs. */
   nbObjets?: number | null;
+  /** Lot 2 (28/10/2026) : écriture de CE gâteau, imprimée sous sa ligne. */
+  texteGateau?: string | null;
+  /** Lot 2 : « Pas d'écriture » (rien ne s'imprime : ne compte pas pour la réimpression). */
+  sansEcriture?: boolean | null;
+  /** Lot 2 : photo à imprimer sur CE gâteau, imprimée sous sa ligne. */
+  photoImprimee?: boolean | null;
 };
 
 /** Champs de la commande imprimés sur le bon, avant ou après modification. */
@@ -91,6 +98,10 @@ export function ligneEnTexte(l: LigneTexte): string {
     l.nbSymboles != null ? `${l.nbSymboles} chiffre(s) ou lettre(s)` : '',
     vide(l.precision) ? `précision « ${vide(l.precision)} »` : '',
     l.nbObjets != null ? `${l.nbObjets} demandés` : '',
+    // Une écriture par gâteau (lot 2) : changer le texte ou la photo à imprimer
+    // d'UN gâteau change le bon → réimpression, et l'ancien texte est tracé (R31).
+    vide(l.texteGateau) && l.sansEcriture !== true ? `écriture « ${vide(l.texteGateau)} »` : '',
+    l.photoImprimee === true ? 'photo à imprimer' : '',
   ].filter(Boolean);
   const suite = details.length ? ` [${details.join(' ; ')}]` : '';
   return `${formaterQuantite(l.unite === 'kg' ? 'kg' : 'piece', l.quantite)} × ${l.libelle}${forme}${photo}${suite} à ${formaterEuros(l.prixCentimes)}`;
@@ -108,7 +119,8 @@ export function changementsLisibles(existante: Existante, apres: Apres, lignesAp
   const avantRetrait = jourIso(existante.retraitLe);
   if (apres.dateRetrait !== avantRetrait) changements.push(`retrait : ${avantRetrait} → ${apres.dateRetrait}`);
   if ((apres.heureRetrait ?? '') !== (existante.retraitHeure ?? '')) {
-    changements.push(`heure : ${existante.retraitHeure ?? '—'} → ${apres.heureRetrait ?? '—'}`);
+    // « 14h30 » comme partout ; sans heure : « heure à fixer » (audit du 28/10/2026).
+    changements.push(`heure : ${texteHeure(existante.retraitHeure) ?? HEURE_A_FIXER} → ${texteHeure(apres.heureRetrait) ?? HEURE_A_FIXER}`);
   }
   if (vide(apres.texteGateau) !== vide(existante.texteGateau)) {
     changements.push(`écriture : ${existante.texteGateau ?? 'aucune'} → ${apres.texteGateau ?? 'aucune'}`);

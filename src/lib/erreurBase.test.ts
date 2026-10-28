@@ -430,7 +430,7 @@ const CAS_CHECK: CasCheck[] = [
   { contrainte: 'LigneCommande_deverrouillage_trace', code: 'ERR_DROIT_INSUFFISANT', champ: 'prixCentimes',
     message: messagePour('ERR_DROIT_INSUFFISANT', {}), statut: 403 },
   { contrainte: 'LigneCommande_deverrouillage_nom_non_vide', code: 'ERR_SAISIE_INVALIDE', champ: 'sousPlancherAutorisePar',
-    message: messagePour('ERR_SAISIE_INVALIDE', { champLibelle: 'nom du gérant' }), statut: 422 },
+    message: messagePour('ERR_SAISIE_INVALIDE', { champLibelle: 'nom du manager' }), statut: 422 },
   { contrainte: 'LigneCommande_nbObjets_positif', code: 'ERR_QUANTITE_INVALIDE', champ: 'nbObjets',
     message: messagePour('ERR_QUANTITE_INVALIDE', { unite: 'piece' }), statut: 422 },
   { contrainte: 'LigneCommande_nbSymboles_positif', code: 'ERR_SAISIE_INVALIDE', champ: 'nbSymboles',
@@ -438,7 +438,7 @@ const CAS_CHECK: CasCheck[] = [
   { contrainte: 'LigneCommande_taille_trace', code: 'ERR_DROIT_INSUFFISANT', champ: 'tailleAutoriseePar',
     message: messagePour('ERR_DROIT_INSUFFISANT', {}), statut: 403 },
   { contrainte: 'LigneCommande_taille_nom_non_vide', code: 'ERR_SAISIE_INVALIDE', champ: 'tailleAutoriseePar',
-    message: messagePour('ERR_SAISIE_INVALIDE', { champLibelle: 'nom du gérant' }), statut: 422 },
+    message: messagePour('ERR_SAISIE_INVALIDE', { champLibelle: 'nom du manager' }), statut: 422 },
   // Écran des réglages : valeur refusée par le CHECK = saisie du gérant, pas une panne.
   { contrainte: 'Reglage_reglement_valide', code: 'ERR_SAISIE_INVALIDE', champ: 'reglages',
     message: messagePour('ERR_SAISIE_INVALIDE', {}), statut: 422 },

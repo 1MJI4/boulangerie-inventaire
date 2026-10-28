@@ -93,6 +93,13 @@ export type ParametresMessages = {
   ERR_SUPPLEMENT_SANS_GATEAU: { produit?: string };
   /** `produit` : libellé du supplément Écriture au catalogue (LOI 5), s'il est connu. */
   ERR_ECRITURE_SANS_SUPPLEMENT: { produit?: string };
+  /** `produit` : libellé du supplément Photo au catalogue (LOI 5), s'il est connu. */
+  ERR_PHOTO_SANS_SUPPLEMENT: { produit?: string };
+  /**
+   * Supplément automatique (Écriture, Photo) en plus grand nombre que les
+   * gâteaux qui le portent. `objet` : « une écriture » / « une photo à imprimer ».
+   */
+  ERR_SUPPLEMENT_EN_TROP: { attendus: number; objet: string; produit?: string };
 
   // --- Refus métier : prix ---------------------------------------------------
   /**
@@ -116,6 +123,12 @@ export type ParametresMessages = {
   ERR_COMMANDE_VIDE: Record<string, never>;
   ERR_LIGNE_SANS_PRODUIT: Record<string, never>;
   ERR_PHOTO_EN_ATTENTE: { photo: string };
+  /** Galerie : image envoyée dans un format non pris en charge (HEIC, pas une image…). */
+  ERR_FORMAT_PHOTO: Record<string, never>;
+  /** Galerie : image trop lourde. `maxMo` : poids maximal en Mo, fourni par l'appelant. */
+  ERR_PHOTO_TROP_LOURDE: { maxMo: number };
+  /** Galerie : photo retirée de la galerie par le manager, demandée sur une nouvelle ligne. */
+  ERR_PHOTO_MASQUEE: { photo: string };
   /** Libellés de statut en clair (« Remise au client »…). */
   ERR_STATUT_INCOHERENT: { de: string; vers: string };
   /** `etat` : « annulée », « remise au client », « archivée », « anonymisée ». */
@@ -166,8 +179,14 @@ export type ParametresMessages = {
   ERR_SUPPLEMENT_PARTS: { produit: string; gateau: string; parts: number };
   /** R64 — supplément par personne sans gâteau qui puisse le recevoir. `gateaux` : liste en clair. */
   ERR_SUPPLEMENT_NON_ADMIS: { produit: string; gateaux: string };
-  /** LOI 11 — décompte des articles devant le client non terminé à la remise. */
+  /** LOI 11 — décompte des articles devant le client non terminé au retrait. */
   ERR_DECOMPTE_INCOMPLET: { restants: number };
+
+  // --- Impression des bons (famille 2 et 5) ------------------------------------
+  /** Bons reçus vides, illisibles ou trop lourds par la file d'impression. */
+  ERR_BON_ILLISIBLE: Record<string, never>;
+  /** Bons pas partis vers l'imprimante : réseau coupé avant toute réponse. */
+  ERR_IMPRESSION_NON_ENVOYEE: Record<string, never>;
 
   // --- Accès (securite) ------------------------------------------------------
   /**
@@ -225,6 +244,11 @@ export type ParametresMessages = {
   INFO_COMMANDE_LENDEMAIN: { jour: string; demain: boolean };
   /** Retrait le jour même de la prise : accepté (décision du propriétaire, 18/10/2026), l'atelier est prévenu. */
   INFO_COMMANDE_JOUR_MEME: Record<string, never>;
+  /**
+   * Famille 2 (réseau absent) : la commande est gardée sur la tablette et partira
+   * seule au retour du réseau. Rien n'est perdu, rien à refaire.
+   */
+  INFO_COMMANDE_GARDEE_SUR_TABLETTE: Record<string, never>;
 
   // --- Données incohérentes (famille 5) ---------------------------------------
   ERR_TARIF_ABSENT: { produit: string; date: string };
@@ -357,9 +381,16 @@ export function libelleRemplacement(action: ActionRemplacement, libelle: string,
 export const LIBELLES_FORME: Readonly<Record<'carre' | 'rond', string>> = { carre: 'Carré', rond: 'Rond' };
 
 /** Issue commune quand l'employé ne peut rien corriger lui-même. */
-export const APPELER_LE_GERANT = 'Appeler le gérant';
-/** Issue du règlement intérieur (points 52 et lendemain) : le responsable, sur place ou au téléphone. */
-export const APPELER_LE_RESPONSABLE = 'Appeler le responsable';
+// Vocabulaire (propriétaire, 28/10/2026) : le chef s'appelle « manager » dans tout
+// texte visible — une seule personne, plus de « gérant » ni de « responsable ».
+// Les noms de constantes, de codes et de rôles techniques ne changent pas.
+export const APPELER_LE_GERANT = 'Appeler le manager';
+/** Même personne que le manager (propriétaire, 28/10/2026) : gardé pour les appelants existants. */
+export const APPELER_LE_RESPONSABLE = APPELER_LE_GERANT;
+/** Ce qui remplace « déverrouiller » dans les textes (propriétaire, 28/10/2026). */
+const ACCORD_DU_MANAGER = 'l’accord du manager';
+/** Le rôle tel qu'on le DIT : « gérant » / « responsable » (nom technique du rôle) → « manager ». */
+const nomDuRole = (role?: string): string => (!role || /g[ée]rant|responsable/i.test(role) ? 'manager' : role);
 const CORRIGER_LE_FICHIER = 'Corriger le fichier puis relancer l’import';
 
 /**
@@ -436,13 +467,14 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
       if (p.minimum === undefined) {
         return `La quantité est sous le minimum ` +
           (p.produit ? `de « ${p.produit} »` : 'de ce produit') +
-          `. Augmentez-la jusqu’au minimum pour continuer.`;
+          `. Augmentez-la jusqu’au minimum, s’il vous plaît.`;
       }
       const u = p.unite ? ` ${p.unite}` : '';
+      // Le bouton « Passer à 20 parts » est à côté : le message ne le répète pas (audit 28/10/2026, 3.10).
       return `Minimum ${p.minimum}${u} pour ` +
         (p.produit ? `« ${p.produit} »` : 'ce produit') +
         (p.precision ? ` (${p.precision})` : '') +
-        `. Passez à ${p.minimum}${u} pour continuer.`;
+        `.`;
     },
     correction: (p) =>
       p.minimum === undefined ? 'Corriger la quantité' : `Passer à ${p.minimum}${p.unite ? ` ${p.unite}` : ''}`,
@@ -511,10 +543,30 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     niveau: 'bloquant',
     cas: 'Écriture sur un gâteau sans le supplément Écriture au bon (décision du propriétaire, 28/10/2026 : une écriture se facture toujours).',
     message: (p) =>
-      `Une écriture sur le gâteau se facture : le supplément ` +
-      (p.produit ? `« ${p.produit} » ` : 'Écriture ') +
-      `doit être au bon. Ajoutez-le, s’il vous plaît, ou retirez le texte.`,
+      `Une écriture se facture : ajoutez le supplément ` +
+      (p.produit ? `« ${p.produit} »` : 'Écriture') +
+      ` pour ce gâteau, s’il vous plaît, ou retirez le texte.`,
     correction: () => 'Ajouter le supplément Écriture',
+  },
+  ERR_PHOTO_SANS_SUPPLEMENT: {
+    niveau: 'bloquant',
+    cas: 'Photo à imprimer sur un gâteau sans le supplément Photo au bon, une fois par gâteau (décision du propriétaire, 28/10/2026).',
+    message: (p) =>
+      `Une photo imprimée se facture : ajoutez le supplément ` +
+      (p.produit ? `« ${p.produit} »` : 'Photo') +
+      ` pour ce gâteau, s’il vous plaît, ou décochez « Photo à imprimer ».`,
+    correction: () => 'Ajouter le supplément Photo',
+  },
+  ERR_SUPPLEMENT_EN_TROP: {
+    niveau: 'bloquant',
+    cas: 'Supplément Écriture ou Photo en plus grand nombre que les gâteaux qui portent une écriture ou une photo à imprimer (une fois par gâteau, 28/10/2026).',
+    message: (p) =>
+      p.attendus > 0
+        ? `Le supplément ` + (p.produit ? `« ${p.produit} » ` : '') +
+          `se compte une fois par gâteau qui porte ${p.objet} : ${p.attendus} sur cette commande.`
+        : `Le supplément ` + (p.produit ? `« ${p.produit} » ` : '') +
+          `suit ${p.objet} notée sous un gâteau, et aucun gâteau n’en porte. Notez-la sous le gâteau, ou retirez la ligne.`,
+    correction: (p) => (p.attendus > 0 ? `Passer à ${p.attendus}` : 'Retirer la ligne'),
   },
 
   // --- Prix ------------------------------------------------------------------
@@ -523,10 +575,10 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     cas: 'Prix par personne saisi sous le plancher « à partir de » (régime C).',
     message: (p) =>
       p.produit && p.plancherFormate
-        ? `Le prix par personne de « ${p.produit} » ne peut pas descendre sous ${p.plancherFormate}. ` +
-          `Remettez ${p.plancherFormate} ou demandez au gérant de déverrouiller.`
-        : `Le prix par personne est sous le prix « à partir de » de ce gâteau. ` +
-          `Remettez au moins ce prix ou demandez au gérant de déverrouiller.`,
+        ? `Le prix par personne de « ${p.produit} » commence à ${p.plancherFormate}. ` +
+          `Remettez ${p.plancherFormate}, ou demandez ${ACCORD_DU_MANAGER}.`
+        : `Ce prix par personne est sous le prix « à partir de » du gâteau. ` +
+          `Remettez ce prix, ou demandez ${ACCORD_DU_MANAGER}.`,
     correction: (p) =>
       p.plancherFormate ? `Remettre ${p.plancherFormate} par personne` : 'Remettre le prix « à partir de »',
   },
@@ -535,7 +587,7 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     cas: 'Ligne ou commande sans montant (QUESTIONS-GERANT n°13 : refusé en attendant).',
     message: (p) =>
       (p.objet ? `Le prix de ${p.objet} est nul.` : `Le prix indiqué est nul.`) +
-      ` Indiquez le prix ; un article offert n’est pas encore prévu, demandez au gérant en cas de doute.`,
+      ` Indiquez le prix, s’il vous plaît. Pour un geste commercial, demandez d’abord au manager.`,
     correction: () => 'Indiquer le prix',
   },
   ERR_ACOMPTE_SUPERIEUR_TOTAL: {
@@ -551,13 +603,13 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
   },
   ERR_REMISE_NON_AUTORISEE: {
     niveau: 'bloquant',
-    cas: 'Prix convenu sous le total du tarif, sans déverrouillage du gérant.',
+    cas: 'Prix convenu sous le total du tarif (réduction), sans l’accord du manager.',
     message: (p) =>
       p.totalFormate
-        ? `Le prix convenu est sous le total du tarif (${p.totalFormate}). ` +
-          `Remettez ${p.totalFormate} ou demandez au gérant de déverrouiller.`
-        : `Le prix convenu est sous le total du tarif. ` +
-          `Remettez le total du tarif ou demandez au gérant de déverrouiller.`,
+        ? `Le prix convenu est sous le tarif (${p.totalFormate}). ` +
+          `Remettez ${p.totalFormate}, ou demandez ${ACCORD_DU_MANAGER} pour une réduction.`
+        : `Le prix convenu est sous le tarif. ` +
+          `Remettez le total du tarif, ou demandez ${ACCORD_DU_MANAGER} pour une réduction.`,
     correction: (p) => (p.totalFormate ? `Remettre ${p.totalFormate}` : 'Remettre le total du tarif'),
   },
   ERR_TOTAL_INCOHERENT: {
@@ -584,7 +636,7 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
   ERR_COMMANDE_VIDE: {
     niveau: 'bloquant',
     cas: 'Commande validée sans aucune ligne.',
-    message: () => `La commande ne contient aucun produit. Ajoutez au moins un produit pour continuer.`,
+    message: () => `La commande est vide. Ajoutez au moins un produit, s’il vous plaît.`,
     correction: () => 'Ajouter un produit',
   },
   ERR_LIGNE_SANS_PRODUIT: {
@@ -599,19 +651,40 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     message: (p) => `Photo ${p.photo} : touchez le produit à qui l’attribuer, ou retirez la photo.`,
     correction: () => 'Retirer la photo',
   },
+  ERR_FORMAT_PHOTO: {
+    niveau: 'bloquant',
+    cas: 'Galerie des modèles : image HEIC/HEIF, fichier qui n’est pas une image, ou image illisible.',
+    message: () =>
+      'Format de photo non pris en charge\u00A0: prenez la photo en JPEG ou faites une capture d’écran, s’il vous plaît.',
+    correction: () => 'Choisir une autre photo',
+  },
+  ERR_PHOTO_TROP_LOURDE: {
+    niveau: 'bloquant',
+    cas: 'Galerie des modèles : image au-delà du poids maximal.',
+    message: (p) =>
+      `Photo trop lourde (plus de ${p.maxMo}\u00A0Mo)\u00A0: reprenez-la avec l’appareil photo de la tablette ou faites une capture d’écran.`,
+    correction: () => 'Choisir une autre photo',
+  },
+  ERR_PHOTO_MASQUEE: {
+    niveau: 'bloquant',
+    cas: 'Photo retirée de la galerie par le manager, demandée sur une nouvelle ligne de commande.',
+    message: (p) =>
+      `La photo ${p.photo} a été retirée de la galerie par le manager\u00A0: retirez-la de la ligne ou choisissez-en une autre, s’il vous plaît.`,
+    correction: () => 'Retirer la photo',
+  },
   ERR_STATUT_INCOHERENT: {
     niveau: 'bloquant',
-    cas: 'Changement de statut impossible (ex. remettre « à imprimer » une commande remise).',
+    cas: 'Changement de statut impossible (ex. repasser « à imprimer » une commande retirée par le client).',
     message: (p) =>
       `Une commande « ${p.de} » ne peut pas passer à « ${p.vers} ». ` +
-      `Vérifiez le statut de la commande ; en cas de doute, demandez au gérant.`,
+      `En cas de doute, demandez au manager.`,
     correction: (p) => `Laisser « ${p.de} »`,
   },
   ERR_COMMANDE_FIGEE: {
     niveau: 'bloquant',
-    cas: 'Modification d’une commande annulée, remise, archivée ou anonymisée.',
+    cas: 'Modification d’une commande annulée, retirée par le client, archivée ou anonymisée.',
     message: (p) =>
-      `Cette commande est ${p.etat} : elle ne se modifie plus. Créez une nouvelle commande si nécessaire.`,
+      `Cette commande est ${p.etat} : elle ne se modifie plus. Créez une nouvelle commande si besoin.`,
     correction: () => 'Créer une nouvelle commande',
   },
 
@@ -622,30 +695,30 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     cas: 'OBSOLÈTE — refus du lendemain encore émis par la base ; le domaine l’accepte depuis le 15/10/2026 (LOI 11).',
     message: (p) =>
       (p.dateRetrait
-        ? `Retrait le ${p.dateRetrait} : une commande pour le lendemain doit d’abord être acceptée par le responsable. `
-        : `Une commande pour le lendemain doit d’abord être acceptée par le responsable. `) +
-      `Demandez-lui de saisir son code gérant, ou appelez-le avant de confirmer au client.`,
-    correction: () => 'Saisir le code gérant',
+        ? `Retrait le ${p.dateRetrait} : une commande pour le lendemain demande ${ACCORD_DU_MANAGER}. `
+        : `Une commande pour le lendemain demande ${ACCORD_DU_MANAGER}. `) +
+      `Demandez-lui de saisir son code, ou appelez-le avant de confirmer au client.`,
+    correction: () => 'Saisir le code du manager',
     autreSortie: APPELER_LE_RESPONSABLE,
   },
   ERR_HEURE_HORS_OUVERTURE: {
     niveau: 'bloquant',
-    cas: 'Heure de retrait hors des heures d’ouverture du magasin (réglées par le gérant, décision du 18/10/2026).',
+    cas: 'Heure de retrait hors des heures d’ouverture du magasin (réglées par le manager, décision du 18/10/2026).',
     message: (p) =>
       `Le magasin est ouvert de ${p.ouverture} à ${p.fermeture} ${p.jour} — choisissez une heure dans ces horaires.`,
     correction: (p) => `Passer à ${p.heureProposee}`,
   },
   ERR_TAILLE_NON_STANDARD: {
     niveau: 'bloquant',
-    cas: 'Gâteau simple sur commande dans une taille hors des tailles standard (liste = donnée, LOI 11). Déverrouillable par le gérant.',
+    cas: 'Gâteau simple sur commande dans une taille hors des tailles standard (liste = donnée, LOI 11). Possible avec l’accord du manager.',
     message: (p) => {
       const proches = [p.inferieure, p.superieure].filter((t): t is number => t !== null);
       const tailles = proches.length > 0 ? proches.join(' ou ') : null;
       return tailles
         ? `Ce gâteau se fait en ${tailles} parts, pas en ${p.parts}. ` +
-            `Choisissez une taille standard ou demandez au gérant de déverrouiller.`
+            `Choisissez une de ces tailles, ou demandez ${ACCORD_DU_MANAGER}.`
         : `Ce gâteau ne se fait pas en ${p.parts} parts. ` +
-            `Choisissez une taille standard ou demandez au gérant de déverrouiller.`;
+            `Choisissez une taille standard, ou demandez ${ACCORD_DU_MANAGER}.`;
     },
     correction: (p) => {
       const t = p.superieure ?? p.inferieure;
@@ -708,11 +781,28 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
   },
   ERR_DECOMPTE_INCOMPLET: {
     niveau: 'bloquant',
-    cas: 'Remise de commande validée alors que des articles ne sont pas cochés comme remis (règlement intérieur, LOI 11).',
+    cas: 'Retrait par le client validé alors que des articles ne sont pas cochés, vérifiés devant lui (règlement intérieur, LOI 11).',
+    // « remise » ne désigne plus le retrait (propriétaire, 28/10/2026).
     message: (p) =>
-      `Il reste ${p.restants} ${pluriel(p.restants, 'article', 'articles')} à remettre au client. ` +
-      `Faites le décompte devant lui avant de valider.`,
-    correction: () => 'Cocher les articles remis',
+      `Il reste ${p.restants} ${pluriel(p.restants, 'article', 'articles')} à cocher. ` +
+      `Vérifiez-${pluriel(p.restants, 'le', 'les')} devant le client avant de valider.`,
+    correction: () => 'Aller aux articles à cocher',
+  },
+
+  // --- Impression des bons -------------------------------------------------------
+  ERR_BON_ILLISIBLE: {
+    niveau: 'bloquant',
+    cas: 'Impression : bons reçus vides, illisibles ou trop lourds (envoi abîmé en route).',
+    message: () => `Les bons n’ont pas pu être préparés. Rechargez la page, puis envoyez-les à nouveau.`,
+    correction: () => 'Recharger',
+  },
+  ERR_IMPRESSION_NON_ENVOYEE: {
+    niveau: 'bloquant',
+    cas: 'Impression : réseau coupé, les bons ne sont pas arrivés dans la file de l’imprimante.',
+    message: () =>
+      `Pas de connexion : les bons ne sont pas partis. La commande, elle, reste enregistrée. ` +
+      `Envoyez-les à nouveau dès le retour du réseau.`,
+    correction: () => 'Envoyer à nouveau',
   },
 
   // --- Accès ---------------------------------------------------------------------
@@ -721,35 +811,36 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     cas: 'Action réservée à un rôle que l’utilisateur connecté n’a pas.',
     message: (p) =>
       p.role && p.action
-        ? `Seul le ${p.role} peut ${p.action}. Demandez-lui de le faire ou de saisir son code.`
-        : `Cette opération demande l’accord du gérant, et cet accord n’est pas enregistré. ` +
+        ? `Seul le ${nomDuRole(p.role)} peut ${p.action}. Demandez-lui de saisir son code, s’il vous plaît.`
+        : `Il faut ${ACCORD_DU_MANAGER}, et il n’est pas encore enregistré. ` +
           `Demandez-lui de saisir son code, puis réessayez.`,
-    correction: (p) => `Saisir le code ${p.role ?? 'gérant'}`,
+    correction: (p) => `Saisir le code du ${nomDuRole(p.role)}`,
   },
   ERR_CODE_INCORRECT: {
     niveau: 'bloquant',
-    cas: 'Code de tablette ou code gérant erroné.',
-    message: () => `Code incorrect. Vérifiez-le et recommencez ; en cas d’oubli, demandez au gérant.`,
+    cas: 'Code de tablette ou code du manager erroné.',
+    message: () => `Code incorrect. Vérifiez-le et recommencez ; en cas d’oubli, demandez au manager.`,
     correction: () => 'Ressaisir le code',
   },
   ERR_TROP_DE_TENTATIVES: {
     niveau: 'bloquant',
     cas: 'Trop de codes erronés : saisie suspendue quelques minutes (même avec le bon code).',
     message: (p) =>
-      `Trop d’essais. Réessayez dans ${p.minutes} ${pluriel(p.minutes, 'minute', 'minutes')}, ou demandez au gérant.`,
+      `Trop d’essais. Réessayez dans ${p.minutes} ${pluriel(p.minutes, 'minute', 'minutes')}, ou demandez au manager.`,
     autreSortie: APPELER_LE_GERANT,
   },
   ERR_ORIGINE_REFUSEE: {
     niveau: 'bloquant',
     cas: 'Écriture envoyée depuis un autre site que l’application (protection contre la falsification).',
-    message: () => `Cette demande ne vient pas de l’application. Rouvrez l’application et recommencez.`,
+    // Jamais « cette demande ne vient pas de l'application » : inquiétant (audit 28/10/2026, 3.7).
+    message: () => `Cette page n’est plus à jour. Rouvrez l’application, puis recommencez, s’il vous plaît.`,
     correction: () => 'Rouvrir l’application',
   },
   ERR_SESSION_EXPIREE: {
     niveau: 'bloquant',
     cas: 'Tablette non installée ou installation expirée (cookie tablette absent ou invalide).',
-    message: () => `Cette tablette doit être réinstallée : saisissez le code de la tablette.`,
-    correction: () => 'Réinstaller la tablette',
+    message: () => `Saisissez le code de la tablette pour continuer, s’il vous plaît.`,
+    correction: () => 'Saisir le code de la tablette',
   },
 
   // --- Avertissements ---------------------------------------------------------------
@@ -758,8 +849,8 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     cas: 'Pain surprise : plus de sandwichs que la contenance d’un pain.',
     message: (p) =>
       `Un pain surprise contient au plus ${p.maximum} sandwichs (${p.demande} demandés). ` +
-      `Ajoutez un 2e pain pour les sandwichs en plus.`,
-    correction: () => 'Ajouter un 2e pain',
+      `Ajoutez un 2ᵉ pain pour les sandwichs en plus.`,
+    correction: () => 'Ajouter un 2ᵉ pain',
   },
   AVERT_DOUBLE_SCAN: {
     niveau: 'avertissement',
@@ -796,7 +887,7 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     niveau: 'avertissement',
     cas: 'Commande marquée « gâteau complexe ».',
     message: () =>
-      `Gâteau complexe : confirmez le prix et la faisabilité avec le gérant avant de vous engager auprès du client.`,
+      `Gâteau complexe : confirmez le prix et la faisabilité avec le manager avant de vous engager auprès du client.`,
   },
   AVERT_COMMANDE_DEJA_IMPRIMEE: {
     niveau: 'avertissement',
@@ -806,27 +897,28 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
   },
   AVERT_SOUS_PLANCHER_AUTORISE: {
     niveau: 'avertissement',
-    cas: 'Prix par personne sous le plancher, déverrouillé par le gérant (tracé).',
-    message: (p) => `Prix de « ${p.produit} » sous le tarif, autorisé par ${p.par}. Ce déverrouillage est enregistré.`,
+    cas: 'Prix par personne sous le plancher, accepté par le manager (tracé).',
+    message: (p) => `Prix de « ${p.produit} » sous le tarif, accepté par ${p.par}. L’accord du manager est enregistré.`,
   },
   AVERT_REMISE_AUTORISEE: {
     niveau: 'avertissement',
-    cas: 'Prix convenu sous le total du tarif, déverrouillé par le gérant (tracé).',
-    message: (p) => `Remise sur le total autorisée par ${p.par}. Ce déverrouillage est enregistré.`,
+    cas: 'Prix convenu sous le total du tarif (réduction), acceptée par le manager (tracé).',
+    message: (p) => `Réduction sur le total acceptée par ${p.par}. L’accord du manager est enregistré.`,
   },
   AVERT_TAILLE_NON_STANDARD_AUTORISEE: {
     niveau: 'avertissement',
-    cas: 'Gâteau simple dans une taille hors standard, déverrouillé par le gérant (tracé, LOI 11).',
-    message: (p) => `Taille de gâteau hors standard autorisée par ${p.par}. Ce déverrouillage est enregistré.`,
+    cas: 'Gâteau simple dans une taille hors standard, acceptée par le manager (tracé, LOI 11).',
+    message: (p) => `Taille hors standard acceptée par ${p.par}. L’accord du manager est enregistré.`,
   },
   AVERT_COMMANDE_INHABITUELLE: {
     niveau: 'avertissement',
     // Recouvre en partie AVERT_GATEAU_COMPLEXE : les deux sont gardés pour l'instant.
-    cas: 'Commande inhabituelle (ingrédients spécifiques, moules spéciaux…) : accord du responsable d’abord (LOI 11).',
+    cas: 'Commande inhabituelle (ingrédients spécifiques, moules spéciaux…) : accord du manager d’abord (LOI 11).',
+    // Court, lisible debout (audit 28/10/2026, 3.10 : 208 caractères avant).
     message: () =>
-      `Commande inhabituelle : demandez d’abord l’accord du responsable, sur place ou au téléphone, ` +
-      `avant de la confirmer au client. Vous pouvez aussi l’inviter à passer commande par WhatsApp pour un meilleur suivi.`,
-    autreSortie: 'Appeler le responsable ou proposer WhatsApp',
+      `Commande inhabituelle : demandez d’abord ${ACCORD_DU_MANAGER} avant de confirmer au client. ` +
+      `Le client peut aussi commander par WhatsApp.`,
+    autreSortie: 'Appeler le manager ou proposer WhatsApp',
   },
   AVERT_ACOMPTE_INSUFFISANT: {
     niveau: 'avertissement',
@@ -893,21 +985,26 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     cas: 'Retrait le jour même de la prise de commande : accepté, l’atelier doit être prévenu tout de suite (décision du propriétaire, 18/10/2026).',
     message: () => `Commande pour aujourd’hui : prévenez l’atelier tout de suite.`,
   },
+  INFO_COMMANDE_GARDEE_SUR_TABLETTE: {
+    niveau: 'information',
+    cas: 'Commande validée sans réseau : gardée sur la tablette, envoyée automatiquement au retour du réseau (propriétaire, 28/10/2026).',
+    message: () => `Pas de connexion : la commande est gardée sur cette tablette et sera envoyée dès le retour du réseau.`,
+  },
 
   // --- Données incohérentes -----------------------------------------------------------
   ERR_TARIF_ABSENT: {
     niveau: 'bloquant',
     cas: 'Aucun prix au catalogue pour ce produit à cette date.',
     message: (p) =>
-      `Aucun prix n’est enregistré pour « ${p.produit} » au ${p.date}. ` +
-      `Ne vendez pas ce produit tant que le gérant n’a pas saisi son prix.`,
+      `Aucun prix pour « ${p.produit} » au ${p.date}. ` +
+      `Ne vendez pas ce produit et prévenez le manager, s’il vous plaît.`,
     correction: () => 'Choisir un autre produit',
   },
   ERR_CATALOGUE_ABSENT: {
     niveau: 'bloquant',
-    cas: 'Aucun tarif n’a encore été importé sur le serveur (base sans catalogue).',
+    cas: 'Aucun tarif n’a encore été importé (base sans catalogue).',
     message: () =>
-      `Les prix ne sont pas encore chargés dans l’application. Prévenez le gérant : le tarif doit être importé avant toute vente ou commande.`,
+      `Les prix ne sont pas encore chargés. Prévenez le manager : le tarif doit être importé avant toute commande.`,
     autreSortie: APPELER_LE_GERANT,
   },
   ERR_PRODUIT_SANS_REGIME: {
@@ -915,8 +1012,8 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     cas: 'Produit présent au catalogue mais sans régime de prix (comptoir, traiteur, gâteau par personne) : invendable (LOI 6).',
     message: (p) =>
       (p.produit ? `« ${p.produit} »` : 'Ce produit') +
-      ` n’a pas encore de façon d’être vendu (comptoir, traiteur ou gâteau par personne). ` +
-      `Choisissez un autre produit et signalez-le au gérant.`,
+      ` n’a pas de prix de vente défini. ` +
+      `Choisissez un autre produit et signalez-le au manager.`,
     correction: () => 'Choisir un autre produit',
   },
   ERR_PRODUIT_INCONNU: {
@@ -924,8 +1021,8 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     cas: 'Référence scannée ou saisie absente du catalogue de commande (ou archivée), ou absente de la liste d’inventaire (LOI 10).',
     message: (p) =>
       p.liste === 'inventaire'
-        ? `Ce produit n’est pas dans la liste d’inventaire. Choisissez un produit de la liste, ou demandez au gérant de l’y ajouter.`
-        : `Ce produit n’est pas dans le catalogue. Mettez-le de côté et signalez-le au gérant.`,
+        ? `Ce produit n’est pas dans la liste d’inventaire. Choisissez un produit de la liste, ou demandez au manager de l’y ajouter.`
+        : `Ce produit n’est pas dans le catalogue. Mettez-le de côté et signalez-le au manager.`,
     correction: () => 'Choisir un autre produit',
   },
   ERR_SAISIE_INVALIDE: {
@@ -959,8 +1056,8 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     niveau: 'bloquant',
     cas: 'Base : changement de régime de prix d’un produit qui a déjà des prix ou des commandes.',
     message: () =>
-      `Ce produit a déjà des prix ou des commandes : sa façon d’être vendu (comptoir, traiteur, gâteau par personne) ` +
-      `ne peut plus changer. Créez un nouveau produit pour l’autre façon de le vendre.`,
+      `Ce produit a déjà des prix ou des commandes : son type de prix (comptoir, traiteur, gâteau par personne) ` +
+      `ne peut plus changer. Créez plutôt un nouveau produit.`,
     correction: () => 'Créer un nouveau produit',
   },
   ERR_TARIF_IMMUABLE: {
@@ -1005,17 +1102,20 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
   // --- Techniques ------------------------------------------------------------------------
   ERR_SERVEUR_INDISPONIBLE: {
     niveau: 'bloquant',
-    cas: 'Base de données injoignable ou saturée.',
+    cas: 'Base de données injoignable ou saturée, ou réseau coupé avant toute réponse (sans référence alors).',
+    // Le vendeur doit savoir si c'est enregistré (audit 28/10/2026, 3.1) : ce refus
+    // arrive AVANT tout enregistrement. Référence vide → phrase sans référence.
     message: (p) =>
-      `Le serveur ne répond pas pour le moment. Réessayez dans quelques minutes ; ` +
-      `si cela continue, prévenez le gérant en citant la référence ${p.reference}.`,
+      `Pas de connexion : rien n’a été enregistré. Réessayez dans un instant` +
+      (p.reference ? ` ; si cela continue, prévenez le manager (référence ${p.reference}).` : '.'),
     correction: () => 'Réessayer',
   },
   ERR_CONFIGURATION_SERVEUR: {
     niveau: 'bloquant',
-    cas: 'Installation du serveur incomplète (base non initialisée, réglage manquant).',
+    cas: 'Installation incomplète côté hébergement (base non initialisée, réglage manquant).',
     message: (p) =>
-      `L’application n’est pas prête sur le serveur. Prévenez le gérant en citant la référence ${p.reference}.`,
+      `L’application n’est pas prête : rien n’a été enregistré. Prévenez le manager` +
+      (p.reference ? ` (référence ${p.reference}).` : '.'),
     autreSortie: APPELER_LE_GERANT,
   },
   ERR_DONNEE_INTROUVABLE: {
@@ -1038,7 +1138,7 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     cas: 'Imprévu (bug).',
     message: (p) =>
       `Un problème imprévu est survenu. Réessayez ; si cela recommence, ` +
-      `prévenez le gérant en citant la référence ${p.reference}.`,
+      `prévenez le manager (référence ${p.reference}).`,
     correction: () => 'Réessayer',
   },
 
@@ -1078,9 +1178,9 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
   ERR_PRODUIT_KG_A_LA_PIECE: rapport('bloquant', 'produit vendu au kilo (LOI 2) déclaré à la pièce.',
     'Ce produit se vend au kilo mais il est déclaré à la pièce', 'Indiquez l’unité « kg » puis relancez l’import.'),
   ERR_PRODUIT_KG_INATTENDU: rapport('bloquant', 'produit déclaré au kilo hors de la liste des produits au kilo (LOI 2).',
-    'Ce produit est déclaré au kilo alors qu’il se vend à la pièce', 'Indiquez l’unité « piece », ou faites confirmer la vente au kilo par le gérant, puis relancez l’import.'),
+    'Ce produit est déclaré au kilo alors qu’il se vend à la pièce', 'Indiquez l’unité « piece », ou faites confirmer la vente au kilo par le manager, puis relancez l’import.'),
   ERR_SEUIL_AU_KILO: rapport('bloquant', 'produit au kilo portant un minimum ou un maximum (unité du seuil inconnue).',
-    'Ce produit au kilo porte un minimum ou un maximum', 'Faites préciser par le gérant si le seuil est en kilos ou en pièces, puis relancez l’import.'),
+    'Ce produit au kilo porte un minimum ou un maximum', 'Faites préciser par le manager si le seuil est en kilos ou en pièces, puis relancez l’import.'),
   ERR_FAVORI_ILLISIBLE: rapport('bloquant', 'colonne favori ni « oui » ni « non ».',
     'Colonne favori illisible', 'Écrivez « oui » ou « non » puis relancez l’import.'),
   ERR_FAVORI_INCOHERENT: rapport('bloquant', 'ligne de la liste Favoris mal marquée (LOI 4).',
@@ -1092,7 +1192,7 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
   ERR_FAVORI_AMBIGU: rapport('bloquant', 'favori correspondant à plusieurs produits de rayon.',
     'Ce favori correspond à plusieurs produits', 'Précisez de quel produit il s’agit puis relancez l’import.'),
   ERR_FAVORI_PRIX_DIFFERENT: rapport('bloquant', 'favori et produit de rayon avec des prix différents.',
-    'Le favori et le produit du rayon n’ont pas le même prix', 'Faites confirmer le bon prix par le gérant, écrivez-le dans les deux lignes, puis relancez l’import.'),
+    'Le favori et le produit du rayon n’ont pas le même prix', 'Faites confirmer le bon prix par le manager, écrivez-le dans les deux lignes, puis relancez l’import.'),
   ERR_REGIME_ABSENT: rapport('bloquant', 'régime de prix absent ou invalide (jamais déduit du nom, LOI 6).',
     'Façon de vendre le produit non précisée', 'Indiquez le régime de prix du produit puis relancez l’import.'),
   ERR_REGIME_INCOHERENT: rapport('bloquant', 'régime de prix incompatible avec la base de prix ou le plancher.',
@@ -1124,27 +1224,27 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
   ERR_VERSION_DEJA_IMPORTEE_DIFFERENTE: rapport('bloquant', 'un tarif de même date existe déjà avec un contenu différent.',
     'Un tarif de même date est déjà enregistré avec d’autres valeurs', 'Donnez une nouvelle date d’effet aux changements puis relancez l’import.'),
   ERR_VERSION_INCONNUE_EN_BASE: rapport('bloquant', 'la base contient un prix que les fichiers ne décrivent pas.',
-    'Le serveur contient un prix absent des fichiers', 'Ajoutez ce tarif aux fichiers, ou faites vérifier par le gérant, puis relancez l’import.'),
+    'L’application contient un prix absent des fichiers', 'Ajoutez ce tarif aux fichiers, ou faites vérifier par le manager, puis relancez l’import.'),
   ERR_PERIODE_DIFFERENTE: rapport('bloquant', 'la période d’un prix diffère entre la base et les fichiers.',
-    'La période de ce prix diffère entre le serveur et les fichiers', 'Alignez les dates dans les fichiers puis relancez l’import.'),
+    'La période de ce prix diffère entre l’application et les fichiers', 'Alignez les dates dans les fichiers puis relancez l’import.'),
   AVERT_CARACTERE_INVISIBLE: rapport('avertissement', 'caractère invisible dans un libellé.',
     'Caractère invisible dans le libellé', 'Retirez-le du fichier au prochain import.'),
   AVERT_PRIX_A_CONFIRMER: rapport('avertissement', 'prix inhabituel, à faire confirmer.',
-    'Prix inhabituel', 'Faites confirmer ce prix par le gérant.'),
+    'Prix inhabituel', 'Faites confirmer ce prix par le manager.'),
   AVERT_PRODUIT_KG_ABSENT: rapport('avertissement', 'un produit vendu au kilo manque dans ce tarif.',
-    'Un produit vendu au kilo manque dans ce tarif', 'Vérifiez avec le gérant s’il est toujours vendu.'),
+    'Un produit vendu au kilo manque dans ce tarif', 'Vérifiez avec le manager s’il est toujours vendu.'),
   AVERT_FAVORI_EN_DOUBLE: rapport('avertissement', 'favori présent plusieurs fois.',
     'Ce favori apparaît plusieurs fois', 'Il n’est compté qu’une fois ; retirez le doublon du fichier au prochain import.'),
   AVERT_LIBELLE_MODIFIE: rapport('avertissement', 'libellé modifié entre deux tarifs (même produit).',
     'Libellé modifié', 'Même produit, historique conservé : vérifiez que les employés le reconnaîtront.'),
   AVERT_PRODUIT_HORS_FICHIERS: rapport('avertissement', 'produit présent sur le serveur mais dans aucun fichier.',
-    'Produit présent sur le serveur mais absent des fichiers', 'Il est laissé tel quel ; vérifiez avec le gérant s’il est toujours vendu.'),
+    'Produit présent dans l’application mais absent des fichiers', 'Il est laissé tel quel ; vérifiez avec le manager s’il est toujours vendu.'),
   AVERT_ECART_AFFICHE_EXCEL: rapport('avertissement', 'prix différent entre l’affiche du gérant et le tarif comptoir.',
-    'Prix différent entre l’affiche et le tarif comptoir', 'Signalez l’écart au gérant.'),
+    'Prix différent entre l’affiche et le tarif comptoir', 'Signalez l’écart au manager.'),
   AVERT_LIBELLE_AFFICHE_EXCEL: rapport('avertissement', 'libellé différent entre l’affiche du gérant et le tarif comptoir (LOI 5).',
-    'Nom différent entre l’affiche et le tarif comptoir', 'Les deux noms sont conservés tels quels ; signalez l’écart au gérant.'),
+    'Nom différent entre l’affiche et le tarif comptoir', 'Les deux noms sont conservés tels quels ; signalez l’écart au manager.'),
   AVERT_RAPPROCHEMENT_INTROUVABLE: rapport('avertissement', 'produit de l’affiche introuvable au tarif comptoir.',
-    'Produit de l’affiche introuvable au tarif comptoir', 'Vérifiez le lien avec le gérant.'),
+    'Produit de l’affiche introuvable au tarif comptoir', 'Vérifiez le lien avec le manager.'),
   INFO_IMPORT: rapport('information', 'résumé de l’import.',
     'Import terminé', 'Vérifiez les avertissements ci-dessus s’il y en a.'),
   INFO_DEJA_IMPORTE: rapport('information', 'tarif identique déjà enregistré : rien à faire.',
@@ -1154,16 +1254,40 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
   INFO_ESPACES_LIBELLE: rapport('information', 'espaces en trop dans un libellé, conservé tel quel (LOI 5).',
     'Espaces en trop dans le libellé, conservé tel quel', 'Vous pouvez les retirer du fichier au prochain import.'),
   INFO_RESTE_ARCHIVE: rapport('information', 'produit au tarif mais désactivé sur le serveur : il reste désactivé.',
-    'Produit au tarif mais désactivé : il reste désactivé', 'Réactivez-le si le gérant le demande.'),
+    'Produit au tarif mais désactivé : il reste désactivé', 'Réactivez-le si le manager le demande.'),
   INFO_AFFICHE_EXCEL_COHERENTS: rapport('information', 'affiche et tarif comptoir concordent.',
     'L’affiche et le tarif comptoir concordent', 'Aucune action nécessaire.'),
   INFO_HYPOTHESE: rapport('information', 'hypothèse à valider avec le gérant (règle de doute).',
-    'Hypothèse à valider', 'Faites-la confirmer par le gérant.'),
+    'Hypothèse à valider', 'Faites-la confirmer par le manager.'),
 };
 
 // ---------------------------------------------------------------------------
 // Accès
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Typographie française (propriétaire, 28/10/2026)
+// ---------------------------------------------------------------------------
+
+/** Espace insécable : « : », « % », « € » et les guillemets ne tombent jamais seuls en début de ligne. */
+const INSECABLE = '\u00A0';
+/** Espace fine insécable, devant « ; ! ? ». */
+const FINE = '\u202F';
+
+/**
+ * Typographie d'un texte d'ÉCRAN : espaces insécables avant « : ; ! ? % € »,
+ * dans « … », et ordinal « 2ᵉ ». À appliquer au moment d'afficher (Signalement,
+ * Alerte) : les messages du catalogue, les journaux et les tests gardent des
+ * espaces ordinaires. Idempotent. N'ajoute ni ne retire aucun mot.
+ */
+export function typographier(texte: string): string {
+  return texte
+    .replace(/[ \u00A0\u202F]+([;!?])/g, `${FINE}$1`)
+    .replace(/ +([:%€»])/g, `${INSECABLE}$1`)
+    .replace(/« +/g, `«${INSECABLE}`)
+    .replace(/\b(\d+)e(?=\s)/g, '$1ᵉ')
+    .replace(/\bn° +(?=\d)/g, `n°${INSECABLE}`);
+}
 
 /** Vrai si `code` est un code du catalogue. */
 export function estCodeCatalogue(code: string): code is CodeCatalogue {

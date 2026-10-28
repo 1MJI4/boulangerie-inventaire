@@ -114,9 +114,9 @@ test('réduction sur la tablette : côté long ≤ 1280, proportions gardées, j
 test('refus d’image : français, disent quoi faire, pointent le champ image', () => {
   const f = refusFormatPhoto();
   assert.equal(f.code, ERR_FORMAT_PHOTO);
-  assert.equal(f.message, 'Format de photo non pris en charge : prenez la photo en JPEG ou faites une capture d’écran.');
+  assert.equal(f.message, 'Format de photo non pris en charge\u00a0: prenez la photo en JPEG ou faites une capture d’écran, s’il vous plaît.');
   assert.equal(f.champ, 'image');
   const t = refusPhotoTropLourde();
-  assert.match(t.message, /10 Mo/);
+  assert.match(t.message, /10\u00a0Mo/);
   assert.match(t.message, /reprenez-la|capture d’écran/);
 });

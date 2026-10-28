@@ -69,8 +69,10 @@ test('bouton « 6 parts » d’un bavarois : prix du comptoir 6P affiché, ligne
   if (r.ok) assert.equal(r.donnees.totalCentimes, prix('gateaux-et-tartes/bavarois/6p'));
   // Le gâteau du comptoir compte pour les suppléments.
   assert.equal(gateauxAuBon([l], catalogue, ['gateau']), 1);
-  // Un nouveau toucher sur la carte « Bavarois » retrouve la ligne (pas de doublon).
-  assert.equal(toucherProduit([l], ficheCatalogue('gateaux-sur-commande/bavarois')).lignes.length, 1);
+  // Un nouveau toucher sur la carte « Bavarois » = un 2e gâteau (une ligne par gâteau, 28/10/2026).
+  const deux = toucherProduit([l], ficheCatalogue('gateaux-sur-commande/bavarois')).lignes;
+  assert.equal(deux.length, 2);
+  assert.deepEqual([deux[0], deux[1].quantite], [l, null], 'le 1er intact, le 2e attend sa taille');
 });
 
 test('repasser à une taille sans équivalent revient au gâteau sur commande ; d’un comptoir à l’autre aussi', () => {

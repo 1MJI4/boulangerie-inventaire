@@ -156,15 +156,18 @@ export function validerPrixConvenu(
 /**
  * Règle : un même produit sur plusieurs lignes est signalé, avec la sortie
  * « fusionner les lignes » (`valeurProposee` = indices des lignes concernées).
- * Niveau : AVERTISSEMENT — deux Number Cake aux textes différents, ou deux
- * variantes d'un même produit, sont légitimes.
+ * Niveau : AVERTISSEMENT — deux variantes d'un même produit sont légitimes.
+ * N'est jamais signalé : deux lignes de GÂTEAU (`nbGateaux` > 0) — une ligne par
+ * gâteau, chacun ses caractéristiques (propriétaire, 28/10/2026) ; les fusionner
+ * mélangerait deux gâteaux.
  */
 export function reperesDoublons(
-  lignes: readonly { produitId?: string | null; libelle: string }[],
+  lignes: readonly { produitId?: string | null; libelle: string; nbGateaux?: number }[],
 ): Signalement[] {
   const parId = new Map<string, number[]>();
   lignes.forEach((l, i) => {
     if (!l.produitId) return;
+    if ((l.nbGateaux ?? 0) > 0) return;
     parId.set(l.produitId, [...(parId.get(l.produitId) ?? []), i]);
   });
   const sortie: Signalement[] = [];
@@ -205,7 +208,7 @@ export type StatutCommande = 'a_imprimer' | 'imprimee' | 'remise' | 'annulee';
 const LIBELLE_STATUT: Record<StatutCommande, string> = {
   a_imprimer: 'À imprimer',
   imprimee: 'Imprimée',
-  remise: 'Remise au client',
+  remise: 'Retirée par le client',
   annulee: 'Annulée',
 };
 
@@ -272,7 +275,7 @@ export function validerModification(
   const figee = (etat: string) => signaler('ERR_COMMANDE_FIGEE', { etat }, { champ: 'statut' });
   if (existante.anonymiseeLe) return figee('anonymisée');
   if (existante.statut === 'annulee') return figee('annulée');
-  if (existante.statut === 'remise') return figee('remise au client');
+  if (existante.statut === 'remise') return figee('retirée par le client');
   if (estDateISO(existante.retraitLe) && decalerJours(existante.retraitLe, joursAvantArchivage) < aujourdhui) {
     return figee('archivée');
   }

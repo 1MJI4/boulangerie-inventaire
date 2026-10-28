@@ -15,6 +15,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { BoutonCorrection } from './BoutonCorrection';
 import { IconeNiveau, NIVEAUX } from './niveaux';
+import { typographier } from '@/domaine/messages';
 import type { SignalementAffichable } from './trier';
 
 export type PropsSignalement = {
@@ -87,7 +88,7 @@ export function Signalement({
           <span className={`text-sm font-semibold ${style.pastille}`}>{style.libelle}</span>
         </p>
 
-        <p className={`leading-snug text-ink text-pretty ${compact ? 'text-sm' : 'text-base'}`}>{message}</p>
+        <p className={`leading-snug text-ink text-pretty ${compact ? 'text-sm' : 'text-base'}`}>{typographier(message)}</p>
 
         {correctionPossible || autreSortie ? (
           <div className={`${compact ? 'mt-1.5' : 'mt-3'} flex flex-wrap gap-2`}>

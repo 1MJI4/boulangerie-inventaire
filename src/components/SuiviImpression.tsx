@@ -17,6 +17,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { ImprimanteAnimee } from '@/components/ImprimanteAnimee';
+import { VoyantCommandesEnAttente } from '@/components/VoyantCommandesEnAttente';
 import {
   ecouterImpressionsSuivies,
   lireImpressionsSuivies,
@@ -95,7 +96,7 @@ export function SuiviImpression() {
 
   // Sur l'écran d'impression d'une commande, c'est lui qui montre le détail.
   const visibles = suivies.filter((s) => chemin !== `/commandes/${s.commandeId}/imprimer`);
-  if (!visibles.length) return null;
+  // Même colonne : le voyant des commandes gardées hors ligne, au-dessus (il s'efface tout seul s'il n'a rien à dire).
 
   return (
     <div
@@ -103,6 +104,7 @@ export function SuiviImpression() {
       aria-live="polite"
       className="ecran-seulement pointer-events-none fixed print:hidden bottom-4 left-4 z-40 flex max-w-[calc(100vw-2rem)] flex-col gap-2"
     >
+      <VoyantCommandesEnAttente />
       {visibles.map((suivie) => {
         const a = avancements[suivie.commandeId];
         const fini = !!a && a.sortis === a.total;

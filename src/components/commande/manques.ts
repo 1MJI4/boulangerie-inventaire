@@ -10,28 +10,36 @@
 // Imports relatifs avec extension : module exécuté tel quel par `node --test`.
 
 import { libelleProduit } from '../../domaine/commande.ts';
+import { estSeparationProposee } from '../../domaine/unGateauParLigne.ts';
 import { champLocal, ficheDe, gateauDeLaLigne, indexLigne, type CatalogueCommande, type LigneEcran } from './modele.ts';
 
-/** Ce qui manque, en un mot en capitales (« NOM du client », « GOÛT — Bavarois »). */
+/**
+ * Ce qui manque, en quelques mots (« Nom du client », « Goût — Bavarois »).
+ * Sans capitales criées à l'écran (audit du 28/10/2026, point 9) : les capitales
+ * restent réservées au papier.
+ */
 export const MOTS_MANQUANTS: Readonly<Record<string, string>> = {
-  client: 'NOM du client',
-  telephone: 'TÉLÉPHONE',
-  dateRetrait: 'DATE de retrait',
-  heureRetrait: 'HEURE de retrait',
-  acompte: 'ACOMPTE',
-  total: 'TOTAL',
-  texteGateau: 'ÉCRITURE sur le gâteau',
-  lignes: 'PRODUITS',
-  quantite: 'TAILLE / QUANTITÉ',
-  gouts: 'GOÛT',
-  forme: 'FORME (carré ou rond)',
-  nbSymboles: 'CHIFFRES OU LETTRES',
-  prixCentimes: 'PRIX',
-  nbObjets: 'NOMBRE DE SANDWICHS',
-  gateauLibre: 'GÂTEAU OU NON',
-  // Nouveaux textes (28/10/2026) : sans capitales criées.
+  client: 'Nom du client',
+  telephone: 'Téléphone',
+  dateRetrait: 'Date de retrait',
+  heureRetrait: 'Heure de retrait',
+  acompte: 'Acompte',
+  total: 'Total',
+  texteGateau: 'Écriture sur le gâteau',
+  photoImprimee: 'Photo à imprimer sur le gâteau',
+  lignes: 'Produits',
+  quantite: 'Taille ou quantité',
+  gouts: 'Goût',
+  forme: 'Forme (carré ou rond)',
+  nbSymboles: 'Chiffres ou lettres',
+  prixCentimes: 'Prix',
+  nbObjets: 'Nombre de sandwichs',
+  gateauLibre: 'Gâteau ou non',
   libelle: 'décrivez la demande',
 };
+
+/** Mot-clé d'une ligne de plusieurs gâteaux du comptoir (« 2 × Bavarois 6P »). */
+export const MOT_UN_GATEAU_PAR_LIGNE = 'Un gâteau par ligne';
 
 /**
  * Champs dont la fenêtre « Il manque » dit la CONSIGNE du domaine plutôt qu'un
@@ -51,22 +59,31 @@ export const MANQUE_SIMPLE: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * true : signalement d'un champ simplement vide (mot-clé, sans bouton). Une
+ * ligne de N gâteaux (« Séparer en N gâteaux », 28/10/2026) n'en est pas un,
+ * bien qu'elle porte le code ERR_QUANTITE_INVALIDE : elle garde son bouton.
+ */
+export function estManqueSimple(s: { code: string; valeurProposee?: unknown }): boolean {
+  return MANQUE_SIMPLE.has(s.code) && !estSeparationProposee(s.valeurProposee);
+}
+
+/**
  * Libellé d'un manque : `titre` (mot-clé + produit de la ligne) et `detail`
  * (phrase du domaine pour un refus de règle, null pour un champ vide).
  */
 export function libelleManque(
-  m: { code: string; message: string; champ?: string },
+  m: { code: string; message: string; champ?: string; valeurProposee?: unknown },
   lignes: readonly LigneEcran[],
   catalogue: CatalogueCommande | null,
 ): { titre: string; detail: string | null } {
   if (MANQUES_PAR_CONSIGNE.has(champLocal(m.champ))) return { titre: m.message, detail: null };
   const i = indexLigne(m.champ);
-  const mot = MOTS_MANQUANTS[champLocal(m.champ)] ?? null;
+  const mot = estSeparationProposee(m.valeurProposee) ? MOT_UN_GATEAU_PAR_LIGNE : (MOTS_MANQUANTS[champLocal(m.champ)] ?? null);
   const ligne = i !== null ? lignes[i] : undefined;
   const fiche = ligne ? ficheDe(catalogue, gateauDeLaLigne(ligne)) : null;
   const produit = ligne ? (fiche ? libelleProduit(fiche) : ligne.libelleLibre || 'Autre demande') : null;
   const titre = [mot, produit].filter(Boolean).join(' — ') || m.message;
-  const detail = MANQUE_SIMPLE.has(m.code) || titre === m.message ? null : m.message;
+  const detail = estManqueSimple(m) || titre === m.message ? null : m.message;
   return { titre, detail };
 }
 
@@ -85,5 +102,5 @@ export function texteChampVide(s: { message: string; champ?: string }): string {
   const champ = champLocal(s.champ);
   if (CHAMPS_A_PHRASE.has(champ)) return s.message;
   const mot = MOTS_MANQUANTS[champ];
-  return mot ? `À remplir : ${mot.toLocaleLowerCase('fr')}` : 'À remplir';
+  return mot ? `À remplir\u00a0: ${mot.toLocaleLowerCase('fr')}` : 'À remplir';
 }

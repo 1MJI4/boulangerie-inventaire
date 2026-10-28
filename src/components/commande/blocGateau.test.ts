@@ -1,9 +1,10 @@
 // node --test src/components/commande/blocGateau.test.ts
 //
-// Bloc « Gâteau » du bon (demande du propriétaire, 18/10/2026) : écriture et
-// photos rattachées au premier gâteau ; écrire / cocher « photo à imprimer »
-// met le supplément au bon, vider / décocher le retire ; R7 respectée (une
-// fois par gâteau, jamais sans gâteau). Vrai catalogue : aucun prix en dur (LOI 1).
+// Bloc « Sur le gâteau » du bon (18/10/2026 ; lot 2 du 28/10/2026 : un bloc
+// SOUS CHAQUE gâteau, cf. ecritureParGateau.test.ts) : écrire / cocher « photo
+// à imprimer » met le supplément au bon, vider / décocher le retire ; R7
+// respectée (une fois par gâteau, jamais sans gâteau). Vrai catalogue : aucun
+// prix en dur (LOI 1).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -20,12 +21,10 @@ import {
   choisirTaille,
   ficheDe,
   gateauxAuBon,
-  indexBlocGateau,
   indexPremierGateau,
   ligneVide,
-  precisionsAEnregistrer,
   resoudreLocal,
-  saisirEcriture,
+  saisirSurLeGateau,
   toucherProduit,
   versLigneSaisie,
   SUPPLEMENT_ECRITURE,
@@ -84,15 +83,13 @@ test('bloc « Gâteau » : sous le premier gâteau (y compris le Bavarois 6P du 
   assert.equal(indexPremierGateau([{ ...ligneVide(SUPPLEMENT_PHOTO), quantite: 1 }], catalogue, F), null);
 });
 
-test('bloc « Sur le gâteau » sous le gâteau choisi sur photo, même avec un autre gâteau avant (28/10/2026)', () => {
-  const avecPhoto = { ...bavarois6(), photoModele: 'G106' };
-  // Le cas du bug : un autre gâteau au-dessus prenait l'écriture.
-  assert.equal(indexBlocGateau([burgers(), bavarois6(), avecPhoto], catalogue, F), 2);
-  // Sans photo : le premier gâteau, comme avant.
-  assert.equal(indexBlocGateau([burgers(), bavarois6(), bavarois6()], catalogue, F), 1);
-  // Une photo posée sur autre chose qu'un gâteau ne déplace rien.
-  assert.equal(indexBlocGateau([bavarois6(), { ...burgers(), photoModele: 'G200' }], catalogue, F), 0);
-  assert.equal(indexBlocGateau([burgers()], catalogue, F), null);
+test('bloc « Sur le gâteau » : sous CHAQUE gâteau, plus de renvoi vers « le » bloc (lot 2, 28/10/2026)', () => {
+  const lignes = [burgers(), bavarois6(), { ...bavarois6(), photoModele: 'G200' }];
+  assert.deepEqual(lignes.map((l) => gateauxAuBon([l], catalogue, F) > 0), [false, true, true]);
+  // Chaque gâteau garde sa propre écriture.
+  let l2 = saisirSurLeGateau(lignes, lignes[1].cle, { texteGateau: 'A' }, catalogue, F);
+  l2 = saisirSurLeGateau(l2, lignes[2].cle, { texteGateau: 'B' }, catalogue, F);
+  assert.deepEqual(l2.slice(0, 3).map((l) => l.texteGateau), ['', 'A', 'B']);
 });
 
 test('photo à imprimer : cocher ajoute le supplément Photo une fois, décocher le retire', () => {
@@ -113,7 +110,7 @@ test('photo à imprimer : cocher ajoute le supplément Photo une fois, décocher
 test('jamais de supplément sans gâteau (R7) : salé seul, rien n’est ajouté', () => {
   const lignes = [burgers()];
   assert.equal(basculerSupplement(lignes, SUPPLEMENT_PHOTO, true, catalogue, F).length, 1);
-  assert.equal(saisirEcriture(lignes, 'BRAVO', catalogue, F).length, 1);
+  assert.equal(saisirSurLeGateau(lignes, lignes[0].cle, { texteGateau: 'BRAVO' }, catalogue, F).length, 1);
 });
 
 test('supplément absent du catalogue reçu : rien n’est ajouté (jamais de prix inventé)', () => {
@@ -122,23 +119,24 @@ test('supplément absent du catalogue reçu : rien n’est ajouté (jamais de pr
   assert.equal(basculerSupplement(lignes, SUPPLEMENT_PHOTO, true, sansPhoto, F).length, 1);
 });
 
-test('écriture : un texte ajoute le supplément, le vider le retire ; retiré à la main, il revient seulement si le texte change', () => {
+test('écriture : un texte ajoute le supplément, le vider le retire ; retiré à la main, il revient (automatique, 28/10/2026)', () => {
   let lignes = [bavarois6()];
-  lignes = saisirEcriture(lignes, 'J', catalogue, F);
-  lignes = saisirEcriture(lignes, 'JO', catalogue, F);
+  const cle = lignes[0].cle;
+  lignes = saisirSurLeGateau(lignes, cle, { texteGateau: 'J' }, catalogue, F);
+  lignes = saisirSurLeGateau(lignes, cle, { texteGateau: 'JO' }, catalogue, F);
   assert.equal(lignes.filter((l) => l.produitId === SUPPLEMENT_ECRITURE).length, 1, 'une seule ligne, pas une par lettre');
   assert.deepEqual(refusR7(lignes), []);
-  // Le vendeur retire la ligne du supplément : rien ne la remet tant qu'on ne touche pas au texte.
+  // Le vendeur retire la ligne du supplément : la saisie suivante la remet (non retirable, 28/10/2026).
   const retiree = lignes.filter((l) => l.produitId !== SUPPLEMENT_ECRITURE);
   assert.ok(!aSupplement(retiree, SUPPLEMENT_ECRITURE));
-  assert.ok(aSupplement(saisirEcriture(retiree, 'JOY', catalogue, F), SUPPLEMENT_ECRITURE), 'texte modifié : de retour');
-  assert.ok(!aSupplement(saisirEcriture(lignes, '   ', catalogue, F), SUPPLEMENT_ECRITURE), 'texte vidé : retiré');
+  assert.ok(aSupplement(saisirSurLeGateau(retiree, cle, { texteGateau: 'JOY' }, catalogue, F), SUPPLEMENT_ECRITURE), 'de retour');
+  assert.ok(!aSupplement(saisirSurLeGateau(lignes, cle, { texteGateau: '   ' }, catalogue, F), SUPPLEMENT_ECRITURE), 'texte vidé : retiré');
 });
 
 test('total affiché = somme des lignes : Bavarois 6P + photo + écriture, prix du catalogue', () => {
   let lignes = [bavarois6()];
-  lignes = basculerSupplement(lignes, SUPPLEMENT_PHOTO, true, catalogue, F);
-  lignes = saisirEcriture(lignes, 'JOYEUX ANNIVERSAIRE', catalogue, F);
+  lignes = saisirSurLeGateau(lignes, lignes[0].cle, { photoImprimee: true }, catalogue, F);
+  lignes = saisirSurLeGateau(lignes, lignes[0].cle, { texteGateau: 'JOYEUX ANNIVERSAIRE' }, catalogue, F);
   const totaux = lignes.map((l, i) => {
     const r = controlerLigne(versLigneSaisie(l, ficheDe(catalogue, l.produitId)), i, DATE, ctx);
     assert.ok(r.ok, `ligne ${l.produitId} refusée`);
@@ -148,13 +146,11 @@ test('total affiché = somme des lignes : Bavarois 6P + photo + écriture, prix 
   assert.equal(somme(totaux), attendu);
 });
 
-test('dernier gâteau retiré : précisions neutralisées à l’enregistrement, suppléments refusés par le domaine (pas retirés en silence)', () => {
-  const p = { texteGateau: 'BRAVO', sansEcriture: false, photoWhatsapp: true, photoImprimee: true };
-  assert.deepEqual(precisionsAEnregistrer(p, 1), p);
-  assert.deepEqual(precisionsAEnregistrer(p, 0), { texteGateau: '', sansEcriture: false, photoWhatsapp: true, photoImprimee: false });
-  // Photo WhatsApp : gardée sans gâteau (commande salée, propriétaire 28/10/2026).
-  assert.equal(precisionsAEnregistrer({ ...p, photoWhatsapp: false }, 0).photoWhatsapp, false);
-  assert.equal(precisionsAEnregistrer({ ...p, sansEcriture: true }, 1).texteGateau, '', '« pas d’écriture » l’emporte');
+test('dernier gâteau retiré : sa saisie part avec lui, suppléments refusés par le domaine (pas retirés en silence)', () => {
+  // L'écriture est sur la ligne du gâteau (lot 2) : retirer le gâteau la retire.
+  const g = { ...bavarois6(), texteGateau: 'BRAVO' };
+  assert.equal(versLigneSaisie(g, ficheDe(catalogue, g.produitId)).texteGateau, 'BRAVO');
+  assert.equal(versLigneSaisie({ ...g, sansEcriture: true }, ficheDe(catalogue, g.produitId)).texteGateau, null, '« pas d’écriture » l’emporte');
 
   let lignes = [bavarois6()];
   lignes = basculerSupplement(lignes, SUPPLEMENT_PHOTO, true, catalogue, F);

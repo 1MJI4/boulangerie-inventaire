@@ -125,7 +125,7 @@ test('matrice tablette / gérant : verdict du garde sur chaque route et chaque m
           assert.equal(g.echec.code, 'ERR_DROIT_INSUFFISANT');
           const corps = await g.reponse.json();
           assert.equal(corps.code, 'ERR_DROIT_INSUFFISANT');
-          assert.match(corps.message, /Seul le gérant peut/);
+          assert.match(corps.message, /Seul le manager peut/);
           assert.equal(corps.error, corps.message, 'champ lu par les écrans existants');
           assert.doesNotMatch(JSON.stringify(corps), /stack|secret|gerant-test|tablette-test|at \w+ \(/i);
         }

@@ -58,6 +58,24 @@
   /* Jour fermé dans le sélecteur de date : hachures neutres. */
   --ferme-fond: #ebe8e3;
   --ferme-hachure: #d9d4cc;
+
+  /* --- Accueil vendeur et liste des commandes (design-ux, 28/10/2026) ---
+     Texte posé sur l'accent : blanc en clair, encre en sombre (le blanc sur
+     l'accent sombre ne fait que 2,7:1). Types de commande : une teinte par
+     type, TOUJOURS avec son libellé (jamais la couleur seule). Contrastes
+     vérifiés au calcul WCAG : texte/fond doux ≥ 5,6:1 en clair, ≥ 7,5:1 en sombre. */
+  --accent-texte: #ffffff;              /* 5,8:1 sur --accent */
+  --type-patisserie: #b0245e;
+  --type-patisserie-doux: #fdeef4;      /* 5,7:1 */
+  --type-sale: #1d6b43;
+  --type-sale-doux: #e5f4eb;            /* 5,7:1 */
+  --type-boulangerie: #8a5300;
+  --type-boulangerie-doux: #fcf1de;     /* 5,7:1 */
+  /* Contrôle segmenté façon iOS : piste grise, segment choisi blanc. */
+  --segment-fond: #e9e7e3;              /* --ink-2 dessus : 5,7:1 */
+  --segment-actif: #ffffff;
+  /* Voile derrière la fiche d'une commande. */
+  --voile: rgb(0 0 0 / 0.32);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -100,6 +118,16 @@
     --sortie-doux: #16281f;
     --ferme-fond: #26241f;
     --ferme-hachure: #322f2b;
+    --accent-texte: #14130f;            /* 6,9:1 sur --accent sombre */
+    --type-patisserie: #ff8ab4;
+    --type-patisserie-doux: #33151f;    /* 7,5:1 */
+    --type-sale: #6fd39e;
+    --type-sale-doux: #12291c;          /* 8,5:1 */
+    --type-boulangerie: #f2bb5c;
+    --type-boulangerie-doux: #2e2310;   /* 8,8:1 */
+    --segment-fond: #2c2a27;            /* --ink-2 dessus : 6,2:1 */
+    --segment-actif: #4a4741;           /* --ink dessus : 7,8:1 */
+    --voile: rgb(0 0 0 / 0.55);
   }
 }
 
@@ -137,6 +165,16 @@
   --color-sortie-fort: var(--sortie-fort);
   --color-sortie-doux: var(--sortie-doux);
   --color-ferme-fond: var(--ferme-fond);
+  --color-accent-texte: var(--accent-texte);
+  --color-type-patisserie: var(--type-patisserie);
+  --color-type-patisserie-doux: var(--type-patisserie-doux);
+  --color-type-sale: var(--type-sale);
+  --color-type-sale-doux: var(--type-sale-doux);
+  --color-type-boulangerie: var(--type-boulangerie);
+  --color-type-boulangerie-doux: var(--type-boulangerie-doux);
+  --color-segment-fond: var(--segment-fond);
+  --color-segment-actif: var(--segment-actif);
+  --color-voile: var(--voile);
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
@@ -203,6 +241,28 @@ html[data-plein-ecran] main {
 }
 html[data-plein-ecran] body {
   overscroll-behavior: none;
+}
+
+/* Fiche d'une commande (src/components/FicheCommande.tsx) : monte du bas sur
+   téléphone, glisse de la droite sur tablette. 160 ms, sans bloquer le
+   toucher ; supprimé par « réduire les animations » (règle ci-dessous).
+   Hors du parcours de comptage. */
+@keyframes fiche-monte {
+  from { transform: translateY(24px); opacity: 0; }
+}
+@keyframes fiche-glisse {
+  from { transform: translateX(24px); opacity: 0; }
+}
+.fiche-commande[open] {
+  animation: fiche-monte 160ms ease-out;
+}
+@media (min-width: 768px) {
+  .fiche-commande[open] {
+    animation-name: fiche-glisse;
+  }
+}
+.fiche-commande::backdrop {
+  background: var(--voile);
 }
 
 @media (prefers-reduced-motion: reduce) {

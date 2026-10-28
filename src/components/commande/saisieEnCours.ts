@@ -9,6 +9,7 @@
 // Imports relatifs avec extension : module exécuté tel quel par `node --test`.
 
 import { formaterEuros } from '../../domaine/argent.ts';
+import { formaterHeure, lireHeure } from '../../domaine/reglement.ts';
 import type { LigneEcran } from './modele.ts';
 
 /** Ce qui suit un montant incomplet (« <montant> + à compléter »). */
@@ -30,6 +31,23 @@ export function texteResteEnCours(resteCentimes: number, totalCentimes: number, 
   if (complet) return `reste ${formaterEuros(resteCentimes)}`;
   if (totalCentimes > 0) return `reste ${formaterEuros(resteCentimes)} + ${A_COMPLETER}`;
   return `reste ${A_COMPLETER}`;
+}
+
+/** Sans heure de retrait : ce qui s'affiche à la place (jamais « à — »). */
+export const HEURE_A_FIXER = 'heure à fixer';
+
+/** Heure lisible, comme sur les affiches : « 14:30 » → « 14h30 » ; illisible → telle quelle. */
+export function texteHeure(heure: string | null | undefined): string | null {
+  const t = (heure ?? '').trim();
+  if (!t) return null;
+  const m = lireHeure(t);
+  return m === null ? t : formaterHeure(m);
+}
+
+/** « à 14h30 », ou « heure à fixer » sans heure. */
+export function texteHeureRetrait(heure: string | null | undefined): string {
+  const h = texteHeure(heure);
+  return h ? `à ${h}` : HEURE_A_FIXER;
 }
 
 /** Ce qu'« Annuler » ferait perdre. */

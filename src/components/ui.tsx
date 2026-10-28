@@ -1,5 +1,8 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { IconeNiveau, NIVEAUX } from '@/components/signalement/niveaux';
+import { typographier } from '@/domaine/messages';
+import type { Niveau } from '@/domaine/resultat';
 
 /* ---------------------------------------------------------------- Entête */
 
@@ -137,22 +140,44 @@ export function EtatVide({ titre, detail, action }: { titre: string; detail?: st
   );
 }
 
+/**
+ * Message d'écran sans sortie propre (chargement impossible, constat). Plus de
+ * quatrième style (audit 28/10/2026, 3.12) : `alerte`, `attention` et `info`
+ * reprennent les TROIS niveaux de la LOI 8 (icône, libellé, couleur de
+ * `signalement/niveaux`) ; `ok` reste la confirmation verte. Un simple constat
+ * se passe en `attention` ou `info`, jamais en rouge. Texte en typographie
+ * française (espaces insécables) quand c'est une chaîne.
+ */
+const NIVEAU_DU_TON: Record<'alerte' | 'attention' | 'info', Niveau> = {
+  alerte: 'bloquant',
+  attention: 'avertissement',
+  info: 'information',
+};
+
 export function Alerte({
   ton = 'alerte',
   children,
 }: {
-  ton?: 'alerte' | 'attention' | 'ok';
+  ton?: 'alerte' | 'attention' | 'info' | 'ok';
   children: ReactNode;
 }) {
-  const styles = {
-    alerte: 'border-alerte/30 bg-alerte-doux text-alerte',
-    attention: 'border-attention/30 bg-attention-doux text-attention',
-    ok: 'border-ok/30 bg-ok-doux text-ok',
-  }[ton];
-
+  const contenu = typeof children === 'string' ? typographier(children) : children;
+  if (ton === 'ok') {
+    return (
+      <div role="status" className="rounded-2xl bg-ok-doux px-4 py-3 text-base text-ink text-pretty">
+        {contenu}
+      </div>
+    );
+  }
+  const niveau = NIVEAU_DU_TON[ton];
+  const style = NIVEAUX[niveau];
   return (
-    <div role="status" className={`rounded-lg border px-4 py-3 text-sm ${styles}`}>
-      {children}
+    <div role={style.role} data-niveau={niveau} className={`flex gap-3 rounded-2xl px-4 py-3 ${style.cadre}`}>
+      <IconeNiveau niveau={niveau} className={`mt-0.5 h-6 w-6 ${style.icone}`} />
+      <div className="min-w-0 flex-1">
+        <p className={`mb-0.5 text-sm font-semibold ${style.pastille}`}>{style.libelle}</p>
+        <div className="text-base leading-snug text-ink text-pretty">{contenu}</div>
+      </div>
     </div>
   );
 }

@@ -281,7 +281,20 @@ model Commande {
   // la tablette (datePrise + heurePrise du domaine, heure de Bruxelles) ;
   // defaut now() si absente. Sert de « jour de la saisie » au controle de
   // la date passee a la creation (declencheur Commande_reglement).
+  // Heure de la tablette retenue seulement si plausible (src/lib/serveur/
+  // envoiUnique.ts, lirePriseTablette) : pas dans le futur (tolerance 5 min,
+  // sinon heure du serveur), pas plus vieille que 7 jours (sinon refus,
+  // HYPOTHESE A VALIDER). LOI 1 : c'est la date du TARIF applique.
   priseLe      DateTime @default(now())
+  // File hors ligne de la tablette (decision du proprietaire, 28/10/2026) :
+  // identifiant UUID pose par la tablette a la PREMIERE tentative d'envoi
+  // (corps `idClient` = en-tete `Idempotency-Key`) et garde pour tous les
+  // renvois. UNIQUE : une commande envoyee deux fois (reponse perdue,
+  // deux envois simultanes) n'est creee qu'UNE fois — la contrainte tranche
+  // la course, la route renvoie la commande deja creee. NULL = commande
+  // anterieure ou creee sans identifiant. Format : UUID en minuscules
+  // (CHECK "Commande_idClient_format"). Migration 20261028150000.
+  idClient     String?  @unique
   origine      String   @default("comptoir") // comptoir | telephone
   // LOI 3 — niveau persistance : un declencheur refuse toute date lue comme
   // fermee dans la table JourFerme (ERR_JOUR_FERME / ERR_PERIODE_CONGES).
@@ -409,6 +422,17 @@ model LigneCommande {
   // R14 — pain surprise : nombre de sandwichs demandes au total (> 0). Le
   // maximum par pain est un avertissement : pas de contrainte.
   nbObjets     Int?
+  // Lot 2 — UNE ECRITURE PAR GATEAU (decision du proprietaire, 28/10/2026 :
+  // « ca doit etre clair quelle ecriture pour quel gateau »). Renseignes sur
+  // une ligne GATEAU seulement (domaine : nbGateaux > 0), NULL ailleurs et
+  // pour l'historique. Commande ancienne (toutes NULL) : Commande.texteGateau
+  // se lit comme l'ecriture de son premier gateau (src/lib/commandes.ts,
+  // surLesGateaux) — rien n'est reecrit. Supplements Ecriture / Photo : une
+  // fois par gateau qui porte un texte / une photo, rejoue par le domaine
+  // cote serveur (controlerSupplementEcriture, controlerSupplementPhoto).
+  texteGateau   String? // ce qui sera ecrit sur CE gateau, orthographe comprise
+  sansEcriture  Boolean? // « Pas d'ecriture » coche pour ce gateau
+  photoImprimee Boolean? // photo a imprimer SUR ce gateau (supplement Photo)
 
   // LOI 7 — le declencheur LigneCommande_controler rejoue les minimums du
   // tarif applique (prixProduitId) : ERR_QUANTITE_MIN, ERR_NB_SYMBOLES_MANQUANT.
@@ -465,6 +489,12 @@ model EvenementCommande {
   auteur String // nom declare (choisi dans la liste a l'ecran), copie figee
   action String // creation | modification | impression | remise | annulation | acompte
   detail String?
+  // File hors ligne : identifiant UUID de la MODIFICATION (PATCH) envoyee par
+  // la tablette. Chaque PATCH cree exactement un evenement : UNIQUE ici rend
+  // toute modification rejouee idempotente (elle n'est appliquee qu'une
+  // fois, la transaction perdante est annulee entiere). NULL = evenement
+  // pose sans identifiant. CHECK "EvenementCommande_idClient_format".
+  idClient String? @unique
 
   commandeId Int
   commande   Commande @relation(fields: [commandeId], references: [id], onDelete: Cascade)

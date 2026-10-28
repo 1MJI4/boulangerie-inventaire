@@ -22,7 +22,7 @@ import {
   consignesDeLigne,
   dateRetraitTicket,
   demandeAConfirmer,
-  formaterLigneTicket,
+  lignesDuBon,
   mentionHeureRetrait,
   zoneDessinImprimee,
 } from '@/lib/ticketCanvas';
@@ -39,8 +39,8 @@ type Destination = (typeof DESTINATIONS)[number];
 
 /** L'imprimante Star d'abord ; les deux autres servent de secours (panne, autre poste). */
 const OPTIONS_FORMAT = [
-  { valeur: 'reseau', libelle: 'Imprimante Star', detail: 'Envoi direct, rien à faire sur la tablette' },
-  { valeur: 'ticket', libelle: 'Ticket 80 mm', detail: 'Par l’impression du navigateur' },
+  { valeur: 'reseau', libelle: 'Imprimante Star', detail: 'Envoi direct à l’imprimante du magasin' },
+  { valeur: 'ticket', libelle: 'Bon 80 mm', detail: 'Par l’impression du navigateur' },
   { valeur: 'a6', libelle: 'A4 découpé en 4', detail: 'Sur une imprimante de bureau' },
 ] as const;
 
@@ -140,8 +140,15 @@ export default function ImprimerCommande() {
           body: JSON.stringify({ id: Number(params.id), action: 'impression', auteur: vendeur ?? 'comptoir' }),
         }),
       );
-      if (!r.ok) setRefus(r);
+      if (!r.ok) {
+        // Refus de la commande (audit 28/10/2026, 3.3) : on n'ouvre pas la fenêtre
+        // d'impression, sinon un bon sort alors que la commande n'est pas « imprimée ».
+        setRefus(r);
+        return;
+      }
     } catch {
+      // Pas de connexion : le bon sort quand même (le client attend) ; le refus
+      // affiché dit que rien n'a été enregistré, il faudra rouvrir ce bon plus tard.
       const e = echecReseau();
       if (!e.ok) setRefus(e);
     }
@@ -158,7 +165,10 @@ export default function ImprimerCommande() {
       retraitHeure: commande.retraitHeure,
       totalCentimes: commande.totalCentimes,
       acompteCentimes: commande.acompteCentimes,
+      // Une écriture par gâteau, lue sur les lignes (repli : écriture de la commande).
       texteGateau: commande.texteGateau,
+      sansEcriture: commande.sansEcriture,
+      photoImprimee: commande.photoImprimee,
       modePaiement: commande.modePaiement as ModePaiement,
     });
     try {
@@ -186,13 +196,13 @@ export default function ImprimerCommande() {
 
       <div className="ecran-seulement mx-auto max-w-xl">
         <Entete
-          titre={`Bon n° ${commande.numero}`}
+          titre={`Bon n°\u00A0${commande.numero}`}
           sousTitre={
             format === 'reseau'
-              ? 'Envoyé directement à l’imprimante Star. Rien à faire sur la tablette.'
+              ? 'Touchez Envoyer\u00A0: les 4 bons sortent à l’imprimante.'
               : format === 'ticket'
-                ? 'Quatre tickets 80 mm à la suite. L’imprimante coupe entre chaque.'
-                : 'Quatre exemplaires A6 sur une feuille A4. Deux coups de massicot.'
+                ? 'Quatre bons de 80\u00A0mm à la suite. L’imprimante coupe entre chaque.'
+                : 'Quatre bons A6 sur une feuille A4. Deux coups de massicot.'
           }
           actions={
             <>
@@ -201,7 +211,7 @@ export default function ImprimerCommande() {
               <Bouton onClick={() => router.push(`/commandes/${params.id}/modifier`)}>
                 ← Revenir à la commande
               </Bouton>
-              <Bouton onClick={() => router.push('/commandes')}>Liste</Bouton>
+              <Bouton onClick={() => router.push('/commandes')}>Liste des commandes</Bouton>
               {format === 'reseau' ? null : (
                 <Bouton variante="principal" onClick={() => void imprimer()}>
                   Imprimer
@@ -255,7 +265,7 @@ export default function ImprimerCommande() {
         {format !== 'reseau' ? (
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <Puce ton="attention">
-              Format de secours : {OPTIONS_FORMAT.find((o) => o.valeur === format)?.libelle}
+              Format de secours&nbsp;: {OPTIONS_FORMAT.find((o) => o.valeur === format)?.libelle}
             </Puce>
             <Bouton variante="discret" onClick={() => setFormat('reseau')}>
               Revenir à l’imprimante Star
@@ -265,7 +275,7 @@ export default function ImprimerCommande() {
 
         <div className="mb-5 flex flex-wrap items-center gap-2">
           <Puce ton={commande.statut === 'a_imprimer' ? 'accent' : 'ok'}>
-            {commande.statut === 'a_imprimer' ? 'Pas encore imprimée' : 'Imprimée'}
+            {commande.statut === 'a_imprimer' ? 'Bon à imprimer' : 'Bon imprimé'}
           </Puce>
           {commande.modePaiement === 'virement' && !commande.acompteRecuLe ? (
             <Puce ton="attention">Virement à vérifier</Puce>
@@ -288,19 +298,19 @@ export default function ImprimerCommande() {
 
         {deborde && format === 'a6' ? (
           <div className="mb-4">
-            <Alerte>
-              Ce bon ne tient pas sur un A6 : les dernières lignes seront coupées à l’impression.
-              Regroupez des lignes, ou faites deux commandes — n’imprimez pas tel quel.
+            <Alerte ton="attention">
+              Ce bon ne tient pas sur un A6&nbsp;: les dernières lignes seraient coupées. Regroupez
+              des lignes ou faites deux commandes, puis imprimez, s’il vous plaît.
             </Alerte>
           </div>
         ) : null}
 
         {format === 'ticket' ? (
           <p className="mb-4 max-w-prose text-sm text-ink-2">
-            Pour essayer sans imprimante à tickets&nbsp;: imprimez sur votre A4 habituelle, la
-            bande de 80 mm sortira sur le bord de la feuille et vous jugerez la lisibilité. Sur une
-            vraie imprimante de caisse, réglez le format papier sur « rouleau
-            80&nbsp;mm » et les marges sur « aucune ». L’application donne à chaque exemplaire sa
+            Pour essayer sans imprimante de caisse&nbsp;: imprimez sur votre A4 habituelle, la
+            bande de 80&nbsp;mm sortira sur le bord de la feuille et vous jugerez la lisibilité. Sur une
+            vraie imprimante de caisse, réglez le format papier sur «&nbsp;rouleau
+            80&nbsp;mm&nbsp;» et les marges sur «&nbsp;aucune&nbsp;». L’application donne à chaque bon sa
             longueur exacte, l’imprimante coupe juste après le dernier trait.
           </p>
         ) : null}
@@ -441,7 +451,8 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
         {/* Même mise en forme que le ticket Star (formaterLigneTicket) : « 10 × » à la
             pièce, « 0,750 kg » sans « × », « 1 gâteau — 20 PARTS » par personne,
             consignes sous le produit sur toute la largeur (propriétaire, 28/10/2026). */}
-        {commande.lignes.map((l) => formaterLigneTicket(l, destination)).map((ligne, index) => (
+        {/* Écriture et photo à imprimer SOUS leur gâteau (lot 2, 28/10/2026). */}
+        {lignesDuBon(commande, destination).map((ligne, index) => (
           <div className="bon-ligne" key={index}>
             <span>{ligne.quantite}</span>
             <span>
@@ -470,24 +481,10 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
         <div className="bon-libre">{zoneDessinImprimee(commande, destination) ? 'Zone libre — dessin, précisions' : null}</div>
       </div>
 
-      {commande.texteGateau ? (
-        <div className="bon-mention">
-          <span>Sur le gâteau</span>
-          <b>{commande.texteGateau}</b>
-        </div>
-      ) : null}
-
       {demandeAConfirmer(commande, destination) ? (
         <div className="bon-mention">
           <span>Inhabituelle</span>
           <b>À CONFIRMER — PRIX ET FAISABILITÉ</b>
-        </div>
-      ) : null}
-
-      {commande.photoImprimee ? (
-        <div className="bon-mention">
-          <span>Photo</span>
-          <b>À IMPRIMER SUR LE GÂTEAU</b>
         </div>
       ) : null}
 

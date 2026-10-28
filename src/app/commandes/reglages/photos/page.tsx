@@ -184,11 +184,11 @@ export default function PhotosModeles() {
   if (acces === 'ferme') {
     return (
       <>
-        <Entete titre="Photos des modèles" sousTitre="Réservé au gérant." />
+        <Entete titre="Photos des modèles" sousTitre="Réservé au manager." />
         {refusAffiche}
         <div className="max-w-xl">
           <AccesGerant
-            raison="Saisissez le code gérant pour gérer les photos des modèles."
+            raison="Saisissez le code du manager pour gérer les photos des modèles."
             onAccorde={() => {
               setRefus(null);
               setAcces('ouvert');

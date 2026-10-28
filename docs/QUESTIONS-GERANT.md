@@ -457,3 +457,43 @@ l'avez pas confirmé ici.
 88. **Bavarois goût Matadi chocolat en 4 parts** : le Matadi commence à 6P (votre décision du
     26/10). *(en attendant, l'application fait : refus avec deux boutons, « Passer en Matadi
     chocolat 6P » ou « Prendre Mousse chocolat 4P », comme au comptoir.)*
+
+89. **Une écriture par gâteau : 2 Bavarois 6P du comptoir sur la même ligne, une seule écriture**
+    saisie — faut-il écrire le même texte sur les deux gâteaux (2 suppléments Écriture), ou sur
+    un seul ? *(en attendant, l'application fait : le même texte sur chaque gâteau de la ligne,
+    donc 2 suppléments ; pour deux textes différents, saisir deux lignes. Même logique pour la
+    photo à imprimer.)*
+    **Réponse du propriétaire (28/10/2026)** : 2 Bavarois sont **2 gâteaux différents**, chacun
+    avec ses propres caractéristiques (goût, forme, écriture, photo) : une ligne par gâteau.
+    Les commandes actuellement en base sont des tests.
+    **Appliqué (28/10/2026)** : chaque gâteau a sa ligne. Toucher deux fois « Bavarois 6P »
+    met deux gâteaux au bon (jamais « 2 × ») ; une ancienne ligne « 2 × Bavarois 6P » est
+    refusée avec le bouton « Séparer en 2 gâteaux » (goût, forme, photo de modèle et
+    précision copiés ; écriture et photo à imprimer sur le premier, à demander pour l'autre).
+    Une écriture = un supplément Écriture, par gâteau qui en porte une (R66).
+
+90. **Commande gardée sur la tablette (coupure réseau) : jusqu'à quand l'accepter ?** Une
+    commande prise hors ligne part toute seule au retour du réseau, au tarif du jour où elle
+    a été prise.
+    *(en attendant, l'application fait : jusqu'à 7 jours après la prise, elle est acceptée au
+    prix de ce jour-là ; au-delà, elle est refusée et reste « à reprendre » sur la tablette
+    avec le message « Rappelez le client pour la confirmer, puis prenez-la de nouveau ».)*
+
+91. **Commande gardée sur la tablette dont le jour de retrait est passé à son arrivée** (prise
+    lundi pour mercredi, réseau revenu jeudi).
+    *(en attendant, l'application fait : refusée à l'arrivée, « date déjà passée », elle reste
+    « à reprendre » sur la tablette — personne ne l'a produite. Faut-il plutôt l'enregistrer
+    quand même, pour la trace ?)*
+
+92. **Délai d'un gâteau à étages pour une commande gardée sur la tablette** : compté depuis
+    la prise (devant le client) ou depuis son arrivée au magasin (quand l'atelier l'apprend) ?
+    *(en attendant, l'application fait : depuis la prise. Sans effet tant que le délai réglé
+    reste à 0 jour.)*
+
+93. **Une ligne par gâteau : aussi pour les petites pièces de fin d'année ?** La règle « un
+    gâteau = une ligne » (n°89) s'applique à tout le rayon gâteaux du comptoir, donc aussi à
+    la **Bûchette** et aux **Petit Cœurs** (rayon « Special fin d'année ») : 6 bûchettes = 6
+    lignes, chacune son goût et son écriture. *(en attendant, l'application fait : une ligne
+    par pièce, comme pour un Bavarois — c'est le plus sûr pour l'atelier, mais plus long à
+    saisir. Faut-il les traiter comme des pâtisseries individuelles, « 6 × Bûchette » sur une
+    ligne, sans écriture ?)*

@@ -26,12 +26,21 @@
 // Commande prise avant le lot 2 (lignes sans produit du catalogue) : sans le
 // gérant, seuls les champs sans effet sur les prix se modifient (réserve 4).
 // HYPOTHÈSE À VALIDER : identité déclarée (nom saisi), pas de compte individuel.
+//
+// File hors ligne de la tablette (28/10/2026, src/lib/serveur/envoiUnique.ts) :
+// `idClient` (corps) = `Idempotency-Key` (en-tête), UUID. Une création ou une
+// modification déjà reçue sous cet identifiant renvoie la commande telle
+// qu'elle est en base (200), sans rien refaire (numéro, lignes, événement) ;
+// deux envois simultanés : l'index UNIQUE tranche, le perdant reçoit aussi la
+// commande existante. Création : l'heure de prise de la tablette (`priseLe`)
+// est retenue si plausible (lirePriseTablette) — tarif, R56 et règles du jour
+// de la saisie suivent CETTE date (LOI 1, R4).
 
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { reponseEchec, traiterErreur } from '@/lib/erreurBase';
-import { JOURS_AVANT_ANONYMISATION, MENTION_ANONYME, STATUTS, formaterNumero } from '@/lib/commandes';
+import { JOURS_AVANT_ANONYMISATION, MENTION_ANONYME, STATUTS, formaterNumero, lignesSurLeGateau, resumeEcritures } from '@/lib/commandes';
 import { dateDuJour } from '@/lib/dateProduction';
 import { exigerRole, gerantActif } from '@/lib/auth/garde';
 import { nomDeclare } from '@/lib/auth/identite';
@@ -55,8 +64,8 @@ import {
   type AccordRecu,
   type AccordsNonConfirmes,
 } from '@/components/commande/accords';
-import { decalerJours, estDateISO } from '@/domaine/calendrier';
-import { JOURS_AVANT_ARCHIVAGE, REGLES_FORME, SUPPLEMENT_ECRITURE, TAILLES_INTERDITES } from '@/domaine/constantes';
+import { decalerJours, estDateISO, validerDateRetrait } from '@/domaine/calendrier';
+import { JOURS_AVANT_ARCHIVAGE, REGLES_FORME, SUPPLEMENT_ECRITURE, SUPPLEMENT_PHOTO, TAILLES_INTERDITES } from '@/domaine/constantes';
 import { signaler } from '@/domaine/messages';
 import { changementsLisibles, detailModification, type Apres, type LigneTexte } from '@/components/commande/historique';
 import type { Echec } from '@/domaine/resultat';
@@ -66,6 +75,8 @@ import { GOUTS_SUR_COMMANDE } from '@/catalogue/goutsSurCommande';
 import { getPhotoModele } from '@/catalogue/serveur';
 import type { PhotoModele } from '@/catalogue/photosModeles';
 import { idsPhotosCites, lirePhotoDeLigne } from '@/components/commande/photosGestion';
+import { ecrireUneFois, lireIdClient, lirePriseTablette, TOLERANCE_HORLOGE_MS } from '@/lib/serveur/envoiUnique';
+import { journaliser } from '@/lib/journal';
 
 // Base de prix de chaque ligne (pièce / personne / kilo / forfait) : le bon imprime
 // « 1 gâteau — 20 PARTS » d'après la DONNÉE, jamais d'après le régime seul (LOI 6).
@@ -85,6 +96,19 @@ function refus(echec: Echec, route: string) {
 
 function introuvable(route: string) {
   return refus(signaler('ERR_DONNEE_INTROUVABLE', { reference: 'commande' }, { champ: 'id' }), route);
+}
+
+/**
+ * Lot 2 : écriture, « Pas d'écriture », photo à imprimer d'UNE ligne reçue.
+ * Champ absent → non transmis (ancien format) ; le domaine ne les garde que
+ * sur une ligne gâteau.
+ */
+function surLeGateauRecu(l: Record<string, unknown>): Pick<LigneSaisie, 'texteGateau' | 'sansEcriture' | 'photoImprimee'> {
+  const r: Pick<LigneSaisie, 'texteGateau' | 'sansEcriture' | 'photoImprimee'> = {};
+  if (typeof l.texteGateau === 'string') r.texteGateau = texte(l.texteGateau, 200) || null;
+  if (typeof l.sansEcriture === 'boolean') r.sansEcriture = l.sansEcriture;
+  if (typeof l.photoImprimee === 'boolean') r.photoImprimee = l.photoImprimee;
+  return r;
 }
 
 /** Nombre entier tel quel, sinon null (le domaine refuse ce qui n'est pas un entier). */
@@ -129,6 +153,27 @@ async function chargerPhotosCitees(
     else if (r.code !== 'ERR_SAISIE_INVALIDE') return { ok: false, echec: r };
   }
   return { ok: true, photos: { connues, dejaSurLaCommande } };
+}
+
+/** Réponse d'un envoi déjà reçu : la commande telle qu'elle est, rien n'a été refait. */
+function dejaRecue(commande: unknown) {
+  return NextResponse.json(commande, { status: 200, headers: { 'Idempotent-Replayed': 'true' } });
+}
+
+/** Commande déjà créée sous cet identifiant d'envoi (création), ou null. */
+function commandeParIdClient(idClient: string) {
+  return prisma.commande.findUnique({ where: { idClient }, include: inclusions });
+}
+
+/** Détail de l'événement de création : origine, et arrivée tardive d'une commande gardée sur la tablette. */
+function detailCreation(origine: string, priseLe: Date, maintenant: Date): string | null {
+  const morceaux: string[] = [];
+  if (origine === 'telephone') morceaux.push('Prise par téléphone');
+  if (maintenant.getTime() - priseLe.getTime() > TOLERANCE_HORLOGE_MS) {
+    const arrivee = priseBruxelles(maintenant);
+    morceaux.push(`Gardée sur la tablette (coupure réseau), arrivée au magasin le ${arrivee.datePrise} à ${arrivee.heurePrise}`);
+  }
+  return morceaux.length > 0 ? morceaux.join(' · ') : null;
 }
 
 /* -------------------------------------------------------------------- GET */
@@ -201,7 +246,7 @@ function lireAccord(brut: unknown): { par: string; le: string } | null {
   const b = brut as Record<string, unknown>;
   const par = nomDeclare(b.par);
   const le = typeof b.le === 'string' ? b.le : '';
-  return par || le ? { par: par || 'gérant', le } : null;
+  return par || le ? { par: par || 'manager', le } : null;
 }
 
 type Preparation =
@@ -328,6 +373,10 @@ function preparer(
       forme: texte(l.forme, 20) || null,
       deverrouillage: accord,
       deverrouillageTaille,
+      // Lot 2 (28/10/2026) : écriture et photo à imprimer PAR GÂTEAU. Absents
+      // (tablette pas à jour, file hors ligne) → ancien format : le domaine
+      // reporte l'écriture de la commande sur son premier gâteau.
+      ...surLeGateauRecu(l),
     });
     precisions.push(texte(l.precision, 200) || null);
     formes.push(texte(l.formes, 60) || null);
@@ -341,7 +390,8 @@ function preparer(
   const saisie: CommandeSaisie = {
     client: texte(corps.client, 80),
     telephone: texte(corps.telephone, 30),
-    // R56 : date et heure de prise posées par le serveur (Bruxelles), jamais lues du client.
+    // R56 : date et heure de prise (Bruxelles) choisies par la route : heure du serveur,
+    // ou heure de la tablette si plausible (lirePriseTablette) — jamais lues ici du corps.
     datePrise: prise.datePrise,
     heurePrise: prise.heurePrise,
     dateRetrait: texte(corps.dateRetrait, 10),
@@ -350,8 +400,10 @@ function preparer(
     acompteCentimes: entierOuNull(corps.acompteCentimes) ?? 0,
     totalConvenuCentimes: entierOuNull(corps.totalConvenuCentimes),
     remise,
+    // Ancien format seulement (aucune ligne ne porte son écriture) : repli du domaine.
     texteGateau: texte(corps.texteGateau, 200) || null,
     sansEcriture: corps.sansEcriture === true,
+    photoImprimee: corps.photoImprimee === true,
     demandeInhabituelle: corps.demandeInhabituelle === true,
   };
   return { ok: true, saisie, precisions, formes, decorations, photos, quand, remiseConservee, nonConfirmes };
@@ -367,7 +419,7 @@ function refusAccordManquant(prep: Extract<Preparation, { ok: true }>, r: Ok): E
   const manque = accordManquant(prep.nonConfirmes, r.donnees);
   if (!manque) return null;
   if (manque.type === 'remise') {
-    return signaler('ERR_DROIT_INSUFFISANT', { action: 'accorder une remise sur le total', role: 'gérant' }, { champ: 'total' });
+    return signaler('ERR_DROIT_INSUFFISANT', { action: 'accorder une réduction sur le total', role: 'gérant' }, { champ: 'total' });
   }
   const i = manque.ligne;
   if (manque.type === 'taille') {
@@ -380,7 +432,7 @@ function refusAccordManquant(prep: Extract<Preparation, { ok: true }>, r: Ok): E
   const libre = prep.saisie.lignes[i]?.produitId === null;
   return signaler(
     'ERR_DROIT_INSUFFISANT',
-    { action: libre ? 'fixer le prix d’une ligne libre' : 'déverrouiller un prix sous le plancher', role: 'gérant' },
+    { action: libre ? 'fixer le prix d’une ligne libre' : 'accepter un prix sous le prix « à partir de »', role: 'gérant' },
     { champ: `lignes[${i}].prixCentimes` },
   );
 }
@@ -397,7 +449,7 @@ async function controler(
   const { resoudre, fiches } = await resoudreServeur(ids, saisie.datePrise);
   // R60 : gâteau sur commande au prix du comptoir (correspondances contrôlées en base).
   const correspondances = await correspondancesServeur(ids, saisie.datePrise, contexte.reglement.taillesGateau, route);
-  if (!correspondances.ok) return { resultat: correspondances, fiches };
+  if (!correspondances.ok) return { resultat: correspondances, fiches, contexte };
   const resultat = controlerCommande(saisie, {
     resoudre,
     joursFermes: contexte.joursFermes,
@@ -410,11 +462,13 @@ async function controler(
     taillesInterdites: TAILLES_INTERDITES,
     // Écriture sur un gâteau = supplément Écriture au bon, toujours (28/10/2026).
     supplementEcriture: SUPPLEMENT_ECRITURE,
+    // Photo à imprimer sur un gâteau = supplément Photo, une fois par gâteau (28/10/2026).
+    supplementPhoto: SUPPLEMENT_PHOTO,
     aujourdhui,
     existante,
     joursAvantArchivage: JOURS_AVANT_ARCHIVAGE,
   });
-  return { resultat, fiches };
+  return { resultat, fiches, contexte };
 }
 
 type Controle = Awaited<ReturnType<typeof controler>>;
@@ -447,6 +501,10 @@ function lignesAEnregistrer(r: Ok, fiches: Controle['fiches'], prep: Extract<Pre
       decorations: prep.decorations[ordre],
       photoModele: prep.photos[ordre] ?? null,
       nbObjets: prep.saisie.lignes[ordre].nbObjets ?? null,
+      // Lot 2 : écriture et photo à imprimer de CE gâteau (domaine), NULL hors gâteau.
+      texteGateau: l.nbGateaux > 0 ? (l.texteGateau ?? null) : null,
+      sansEcriture: l.nbGateaux > 0 ? l.sansEcriture === true : null,
+      photoImprimee: l.nbGateaux > 0 ? l.photoImprimee === true : null,
       produitCatalogueId: fiche ? fiche.produit.idBase : null,
       prixProduitId: fiche ? fiche.prix.prixProduitId : null,
       sousPlancherAutorisePar: !libre && l.autorisation ? l.autorisation.par : null,
@@ -457,6 +515,21 @@ function lignesAEnregistrer(r: Ok, fiches: Controle['fiches'], prep: Extract<Pre
       tailleAutoriseeLe: tailleLe,
     };
   });
+}
+
+/**
+ * Champs « gâteau » de la COMMANDE, déduits des lignes contrôlées (lot 2) :
+ * `texteGateau` = résumé des écritures (« A · B »), encore lu par la liste des
+ * commandes ; `sansEcriture` = tous les gâteaux sans écriture ; `photoImprimee`
+ * = au moins un gâteau porte une photo à imprimer.
+ */
+function surLeGateauCommande(r: Ok) {
+  const gateaux = r.donnees.lignes.filter((l) => l.nbGateaux > 0);
+  return {
+    texteGateau: resumeEcritures(gateaux.map((l) => l.texteGateau)),
+    sansEcriture: gateaux.length > 0 && gateaux.every((l) => l.sansEcriture === true),
+    photoImprimee: gateaux.some((l) => l.photoImprimee === true),
+  };
 }
 
 /** Champs de la commande issus du contrôle (jamais des montants reçus). */
@@ -486,6 +559,17 @@ export async function POST(request: Request) {
   const route = 'POST /api/commandes';
   try {
     const corps = (await request.json()) as Record<string, unknown>;
+    // File hors ligne : déjà créée sous cet identifiant → renvoyée telle quelle,
+    // AVANT tout contrôle (le renvoi ne doit pas échouer sur une règle ou un
+    // réglage qui a changé depuis la première réception).
+    const id = lireIdClient(corps.idClient, request.headers.get('Idempotency-Key'));
+    if (!id.ok) return refus(id, route);
+    const idClient = id.idClient;
+    if (idClient) {
+      const existante = await commandeParIdClient(idClient);
+      if (existante) return dejaRecue(existante);
+    }
+
     // HYPOTHÈSE À VALIDER : identité déclarée par la tablette, pas de compte individuel (décision 15/10/2026)
     const vendeur = nomDeclare(corps.vendeur);
     if (!vendeur) {
@@ -493,16 +577,38 @@ export async function POST(request: Request) {
     }
 
     const maintenant = new Date();
-    const prise = priseBruxelles(maintenant);
+    // Heure de prise : celle de la tablette si plausible, sinon celle du serveur.
+    const priseLue = lirePriseTablette(corps.priseLe, maintenant);
+    if (!priseLue.ok) return refus(priseLue, route);
+    if (priseLue.source === 'futur') {
+      journaliser({
+        niveau: 'avertissement',
+        code: 'INFO_HYPOTHESE',
+        route,
+        piste: 'Heure de prise de la tablette dans le futur (horloge en avance) : heure du serveur retenue. Vérifier l’horloge de la tablette.',
+      });
+    }
+    const priseLe = priseLue.instant;
+    // Tarif (R4), date/heure de prise (R56) et « jour de la saisie » : date de PRISE.
+    const prise = priseBruxelles(priseLe);
     const photos = await chargerPhotosCitees(corps.lignes);
     if (!photos.ok) return refus(photos.echec, route);
     const prep = preparer(corps, prise, gerantActif(request, garde.tablette), maintenant, [], photos.photos);
     if (!prep.ok) return refus(prep.echec, route);
 
-    const { resultat, fiches } = await controler(prep.saisie, route, prise.datePrise, null);
+    const { resultat, fiches, contexte } = await controler(prep.saisie, route, prise.datePrise, null);
     if (!resultat.ok) return refus(resultat, route);
     const manque = refusAccordManquant(prep, resultat);
     if (manque) return refus(manque, route);
+    // Commande gardée sur la tablette : son jour de retrait a pu passer pendant
+    // la coupure. R53 rejoué au jour d'ARRIVÉE : elle reste « à reprendre » sur la
+    // tablette plutôt que d'arriver déjà en retard sans que personne ne l'ait produite.
+    // HYPOTHÈSE À VALIDER (docs/QUESTIONS-GERANT.md, question 91).
+    const jourArrivee = priseBruxelles(maintenant).datePrise;
+    if (jourArrivee !== prise.datePrise) {
+      const encore = validerDateRetrait(resultat.donnees.dateRetrait, contexte.joursFermes, jourArrivee);
+      if (!encore.ok) return refus(encore, route);
+    }
 
     const origine = corps.origine === 'telephone' ? 'telephone' : 'comptoir';
     const modePaiement = corps.modePaiement === 'virement' ? 'virement' : 'especes';
@@ -510,7 +616,9 @@ export async function POST(request: Request) {
 
     // Numérotation dans la transaction : deux vendeurs qui valident en même
     // temps n'obtiennent jamais le même numéro (communication du virement).
-    const commande = await prisma.$transaction(async (tx) => {
+    // Une seule fois par identifiant : course entre deux envois jumeaux → l'index
+    // UNIQUE "Commande_idClient_key" fait échouer le perdant, qui relit le gagnant.
+    const { resultat: commande, rejoue } = await ecrireUneFois(idClient, commandeParIdClient, () => prisma.$transaction(async (tx) => {
       const derniere = await tx.commande.findFirst({
         where: { annee },
         orderBy: { sequence: 'desc' },
@@ -527,14 +635,13 @@ export async function POST(request: Request) {
           telephone: prep.saisie.telephone,
           vendeur,
           origine,
-          priseLe: maintenant,
+          priseLe,
+          idClient,
           modePaiement,
-          // Au comptoir l'argent est là ; au téléphone il arrive par virement.
-          acompteRecuLe: modePaiement === 'especes' && resultat.donnees.acompteCentimes > 0 ? maintenant : null,
-          texteGateau: prep.saisie.texteGateau ?? null,
-          sansEcriture: prep.saisie.sansEcriture === true,
+          // Au comptoir l'argent est là (reçu à la prise) ; au téléphone il arrive par virement.
+          acompteRecuLe: modePaiement === 'especes' && resultat.donnees.acompteCentimes > 0 ? priseLe : null,
+          ...surLeGateauCommande(resultat),
           photoWhatsapp: corps.photoWhatsapp === true,
-          photoImprimee: corps.photoImprimee === true,
           demandeInhabituelle: prep.saisie.demandeInhabituelle === true,
           // Zone « dessin, précisions » sur les exemplaires internes : seulement si demandée (21/10/2026).
           zoneDessin: corps.zoneDessin === true,
@@ -542,14 +649,20 @@ export async function POST(request: Request) {
           ...champsCommande(resultat, prep),
           lignes: { create: lignesAEnregistrer(resultat, fiches, prep) },
           evenements: {
-            create: { auteur: vendeur, action: 'creation', detail: origine === 'telephone' ? 'Prise par téléphone' : null },
+            create: {
+              auteur: vendeur,
+              action: 'creation',
+              // Prise hors ligne : l'événement date de la prise, l'arrivée est notée.
+              quand: priseLe,
+              detail: detailCreation(origine, priseLe, maintenant),
+            },
           },
         },
         include: inclusions,
       });
-    });
+    }));
 
-    return NextResponse.json(commande, { status: 201 });
+    return rejoue ? dejaRecue(commande) : NextResponse.json(commande, { status: 201 });
   } catch (error) {
     const { corps, statut } = traiterErreur(error, route);
     return NextResponse.json(corps, { status: statut });
@@ -573,6 +686,26 @@ export async function PATCH(request: Request) {
     const action = texte(corps.action, 30);
 
     if (!Number.isSafeInteger(id) || id <= 0) return introuvable(route);
+    // File hors ligne : modification déjà appliquée sous cet identifiant → la
+    // commande telle qu'elle est, rien n'est refait (lignes, événement, statut).
+    const lu = lireIdClient(corps.idClient, request.headers.get('Idempotency-Key'));
+    if (!lu.ok) return refus(lu, route);
+    const idClient = lu.idClient;
+    const modificationParIdClient = async (cle: string) => {
+      const ev = await prisma.evenementCommande.findUnique({ where: { idClient: cle }, select: { commandeId: true } });
+      return ev && ev.commandeId === id ? prisma.commande.findUnique({ where: { id }, include: inclusions }) : null;
+    };
+    if (idClient) {
+      const ev = await prisma.evenementCommande.findUnique({ where: { idClient }, select: { commandeId: true } });
+      // Même identifiant sur une AUTRE commande : jamais appliqué à l'aveugle.
+      if (ev && ev.commandeId !== id) {
+        return refus(signaler('ERR_SAISIE_INVALIDE', { champLibelle: 'identifiant d’envoi de la tablette' }, { champ: 'idClient' }), route);
+      }
+      if (ev) {
+        const deja = await prisma.commande.findUnique({ where: { id }, include: inclusions });
+        if (deja) return dejaRecue(deja);
+      }
+    }
     const existante = await prisma.commande.findUnique({
       where: { id },
       include: { lignes: { orderBy: { ordre: 'asc' }, include: { produitCatalogue: { select: { cleCatalogue: true, categorie: true, nom: true, regimePrix: true } }, prixProduit: { select: { basePrix: true } } } } },
@@ -584,6 +717,8 @@ export async function PATCH(request: Request) {
     const donnees: Prisma.CommandeUpdateInput = {};
     let detail: string | null = null;
     let nouvellesLignes: ReturnType<typeof lignesAEnregistrer> | null = null;
+    // Commande à l'ancien tarif : seule l'écriture des gâteaux change sur les lignes (lot 2).
+    let majEcritures: { id: number; texteGateau: string | null; sansEcriture: boolean | null; photoImprimee: boolean | null }[] | null = null;
 
     const transition = (vers: StatutCommande, articles?: { id: string; remis: boolean }[]) => {
       const r = validerTransitionStatut(statut, vers, { articles });
@@ -677,16 +812,31 @@ export async function PATCH(request: Request) {
             contexte.reglement.horairesOuverture,
           );
           if (!heure.ok) return refus(heure, route);
-          const texteGateau = texte(corps.texteGateau, 200) || null;
+          // Lot 2 : écriture par gâteau reçue → mise sur les lignes en base (mêmes
+          // lignes, même ordre : `lignesIdentiques`). La photo à imprimer change
+          // le prix (supplément) : reprise de la base. Ancien format : champ de la commande.
+          const recues = lignesRecues.map((l) => surLeGateauRecu(l));
+          const parGateau = recues.some((l) => l.texteGateau != null || l.sansEcriture != null);
+          const avant = lignesSurLeGateau(existante);
+          const ecrites = existante.lignes.map((l, i) => {
+            if (!parGateau) return l;
+            const sans = recues[i]?.sansEcriture === true;
+            return { ...l, texteGateau: sans ? null : (recues[i]?.texteGateau ?? null), sansEcriture: sans, photoImprimee: avant[i]?.photoImprimee === true };
+          });
+          lignesApres = ecrites;
+          if (parGateau) {
+            majEcritures = ecrites.map((l) => ({ id: l.id, texteGateau: l.texteGateau, sansEcriture: l.sansEcriture, photoImprimee: l.photoImprimee }));
+          }
+          const texteGateau = parGateau ? resumeEcritures(ecrites.map((l) => l.texteGateau)) : texte(corps.texteGateau, 200) || null;
           Object.assign(donnees, {
             client: client.donnees,
             telephone: telephone.donnees,
             retraitHeure: heure.donnees,
             texteGateau,
-            sansEcriture: corps.sansEcriture === true,
+            sansEcriture: parGateau ? existante.sansEcriture : corps.sansEcriture === true,
             demandeInhabituelle: corps.demandeInhabituelle === true,
             photoWhatsapp: corps.photoWhatsapp === true,
-            photoImprimee: corps.photoImprimee === true,
+            photoImprimee: parGateau ? existante.photoImprimee : corps.photoImprimee === true,
             zoneDessin: corps.zoneDessin === true,
             remarques: texte(corps.remarques, 500) || null,
             modePaiement: corps.modePaiement === 'virement' ? 'virement' : 'especes',
@@ -698,10 +848,10 @@ export async function PATCH(request: Request) {
             dateRetrait: etatExistant.retraitLe,
             heureRetrait: heure.donnees,
             texteGateau,
+            photoImprimee: parGateau ? existante.photoImprimee : corps.photoImprimee === true,
             totalCentimes: existante.totalCentimes,
             acompteCentimes: existante.acompteCentimes,
           };
-          lignesApres = existante.lignes;
         } else {
           const accords: AccordEnregistre[] = [
             ...existante.lignes.flatMap((l): AccordEnregistre[] => {
@@ -750,7 +900,7 @@ export async function PATCH(request: Request) {
           ) {
             if (gerant && prep.saisie.remise) prep.quand.set(prep.saisie.remise, maintenant);
             else return refus(
-              signaler('ERR_DROIT_INSUFFISANT', { action: 'accorder une remise sur le total', role: 'gérant' }, { champ: 'total' }),
+              signaler('ERR_DROIT_INSUFFISANT', { action: 'accorder une réduction sur le total', role: 'gérant' }, { champ: 'total' }),
               route,
             );
           }
@@ -759,11 +909,9 @@ export async function PATCH(request: Request) {
           Object.assign(donnees, champsCommande(resultat, prep), {
             client: prep.saisie.client,
             telephone: prep.saisie.telephone,
-            texteGateau: prep.saisie.texteGateau ?? null,
-            sansEcriture: prep.saisie.sansEcriture === true,
+            ...surLeGateauCommande(resultat),
             demandeInhabituelle: prep.saisie.demandeInhabituelle === true,
             photoWhatsapp: corps.photoWhatsapp === true,
-            photoImprimee: corps.photoImprimee === true,
             zoneDessin: corps.zoneDessin === true,
             remarques: texte(corps.remarques, 500) || null,
             modePaiement: corps.modePaiement === 'virement' ? 'virement' : 'especes',
@@ -774,7 +922,8 @@ export async function PATCH(request: Request) {
             telephone: prep.saisie.telephone,
             dateRetrait: resultat.donnees.dateRetrait,
             heureRetrait: resultat.donnees.heureRetrait,
-            texteGateau: prep.saisie.texteGateau ?? null,
+            texteGateau: surLeGateauCommande(resultat).texteGateau,
+            photoImprimee: surLeGateauCommande(resultat).photoImprimee,
             demandeInhabituelle: prep.saisie.demandeInhabituelle === true,
             totalCentimes: resultat.donnees.totalCentimes,
             acompteCentimes: resultat.donnees.acompteCentimes,
@@ -782,7 +931,9 @@ export async function PATCH(request: Request) {
           lignesApres = nouvellesLignes;
         }
 
-        const changements = changementsLisibles(existante, apres, lignesApres);
+        // Commande ancienne : son écriture se lit sur son premier gâteau (même
+        // lecture que l'écran et le bon) — sinon tout passerait pour « changé ».
+        const changements = changementsLisibles({ ...existante, lignes: lignesSurLeGateau(existante) }, apres, lignesApres);
 
         // Une commande modifiée repasse par l'imprimante : le feuillet accroché ne dit plus la vérité.
         const aReimprimer = changements.length > 0 && statut === 'imprimee';
@@ -802,19 +953,26 @@ export async function PATCH(request: Request) {
     }
 
     const lignes = nouvellesLignes;
-    const commande = await prisma.$transaction(async (tx) => {
+    // Une seule fois par identifiant : l'événement porte l'idClient (index UNIQUE) ;
+    // un envoi jumeau perd au COMMIT, sa transaction (lignes comprises) est annulée.
+    const { resultat: commande, rejoue } = await ecrireUneFois(idClient, modificationParIdClient, () => prisma.$transaction(async (tx) => {
       if (lignes) {
         await tx.ligneCommande.deleteMany({ where: { commandeId: id } });
         await tx.ligneCommande.createMany({ data: lignes.map((l) => ({ ...l, commandeId: id })) });
       }
+      if (majEcritures) {
+        for (const { id: ligneId, ...ecriture } of majEcritures) {
+          await tx.ligneCommande.update({ where: { id: ligneId }, data: ecriture });
+        }
+      }
       return tx.commande.update({
         where: { id },
-        data: { ...donnees, evenements: { create: { auteur, action, detail } } },
+        data: { ...donnees, evenements: { create: { auteur, action, detail, idClient } } },
         include: inclusions,
       });
-    });
+    }));
 
-    return NextResponse.json(commande);
+    return rejoue ? dejaRecue(commande) : NextResponse.json(commande);
   } catch (error) {
     const { corps, statut } = traiterErreur(error, route);
     return NextResponse.json(corps, { status: statut });

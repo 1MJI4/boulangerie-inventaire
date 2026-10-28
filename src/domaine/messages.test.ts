@@ -10,7 +10,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { APPELER_LE_GERANT, CATALOGUE, estCodeCatalogue, messagePour, sortiePour, type CodeCatalogue } from './messages.ts';
+import { APPELER_LE_GERANT, CATALOGUE, estCodeCatalogue, messagePour, sortiePour, typographier, type CodeCatalogue } from './messages.ts';
 import { niveauDuCode } from './resultat.ts';
 import { statutHttp } from '../lib/erreurBase.ts';
 
@@ -76,6 +76,8 @@ const EXEMPLE_IMPORT = { ou: 'Ligne 12 « Croissant »', precision: '7 colonnes 
 
 const EXEMPLES: Partial<Record<CodeCatalogue, unknown>> = {
   ERR_ECRITURE_SANS_SUPPLEMENT: { produit: 'Écriture simple' },
+  ERR_PHOTO_SANS_SUPPLEMENT: { produit: 'Photo' },
+  ERR_SUPPLEMENT_EN_TROP: { attendus: 2, objet: 'une écriture', produit: 'Écriture simple' },
   ERR_JOUR_FERME: { jour: 'mardi' },
   ERR_PERIODE_CONGES: {},
   ERR_DATE_PASSEE: { premiereDate: 'jeudi 16 octobre' },
@@ -97,7 +99,7 @@ const EXEMPLES: Partial<Record<CodeCatalogue, unknown>> = {
   ERR_COMMANDE_VIDE: {},
   ERR_LIGNE_SANS_PRODUIT: {},
   ERR_PHOTO_EN_ATTENTE: { photo: 'G047' },
-  ERR_STATUT_INCOHERENT: { de: 'Remise au client', vers: 'À imprimer' },
+  ERR_STATUT_INCOHERENT: { de: 'Retirée par le client', vers: 'À imprimer' },
   ERR_COMMANDE_FIGEE: { etat: 'annulée' },
   AVERT_ACOMPTE_INSUFFISANT: { acompteFormate: 'A €', minimumFormate: 'M €', pourcentage: 50 },
   ERR_COMMANDE_LENDEMAIN: { dateRetrait: 'jeudi 16 octobre' },
@@ -117,6 +119,12 @@ const EXEMPLES: Partial<Record<CodeCatalogue, unknown>> = {
   ERR_SUPPLEMENT_NON_ADMIS: { produit: 'Pâte à sucre', gateaux: 'Layer Cake, Bavarois' },
   AVERT_TAILLE_NON_STANDARD_AUTORISEE: { par: 'Karim' },
   ERR_DECOMPTE_INCOMPLET: { restants: 2 },
+  ERR_BON_ILLISIBLE: {},
+  ERR_FORMAT_PHOTO: {},
+  ERR_PHOTO_TROP_LOURDE: { maxMo: 10 },
+  ERR_PHOTO_MASQUEE: { photo: 'G019' },
+  ERR_IMPRESSION_NON_ENVOYEE: {},
+  INFO_COMMANDE_GARDEE_SUR_TABLETTE: {},
   AVERT_COMMANDE_INHABITUELLE: {},
   AVERT_INVENTAIRE_AVANT_FERMETURE: { heureFermeture: 'Hh' },
   ERR_DROIT_INSUFFISANT: { action: 'modifier un tarif', role: 'gérant' },
@@ -165,12 +173,34 @@ function exemple(code: CodeCatalogue): unknown {
   return code in EXEMPLES ? EXEMPLES[code] : EXEMPLE_IMPORT;
 }
 
-const JARGON = /prisma|database|http|\b[45]\d\d\b|undefined|null|NaN|error|failed|validation|\btu\b|\bton\b|\bta\b/i;
+// Jargon et vocabulaire interdits à l'écran (propriétaire, 28/10/2026) : le chef
+// est « le manager », le papier est « le bon », « remise » ne désigne plus le
+// retrait, et l'employé ne lit jamais « serveur », « requête », « URL »,
+// « déverrouiller » ni un code HTTP.
+const JARGON =
+  /prisma|database|http|\b[45]\d\d\b|undefined|null|NaN|error|failed|fetch|validation|\btu\b|\bton\b|\bta\b|serveur|\bURL\b|requête|déverrouill|gérant|responsable|remise au client|cloudprnt|\btickets?\b|exemplaire/i;
+
+/**
+ * Longueur raisonnable, lisible debout (audit 28/10/2026, 3.10 : 208 caractères
+ * pour « demande inhabituelle »). Le rapport d'import, lu au calme par le
+ * manager et complété du repère et de la précision, n'est pas concerné.
+ */
+const LONGUEUR_MAX = 170;
+const LONGUEUR_MAX_BOUTON = 40;
 
 test('tous les messages : français, sans « ! », sans jargon, terminés, niveau = préfixe', () => {
   for (const [code, entree] of Object.entries(CATALOGUE)) {
     const m = (entree.message as (p: unknown) => string)(exemple(code as CodeCatalogue));
     assert.ok(m.length > 10, code);
+    const auComptoir = !/^Import du catalogue/.test(entree.cas);
+    if (auComptoir) {
+      assert.ok(m.length <= LONGUEUR_MAX, `${code} : ${m.length} caractères, trop long pour être lu debout`);
+    }
+    const sortie = sortiePour(code as CodeCatalogue, exemple(code as CodeCatalogue) as never);
+    if (sortie && auComptoir) {
+      assert.ok(sortie.libelle.length <= LONGUEUR_MAX_BOUTON, `${code} : bouton trop long « ${sortie.libelle} »`);
+      assert.doesNotMatch(sortie.libelle, JARGON, `${code} : bouton`);
+    }
     assert.ok(!m.includes('!'), `${code} : pas de point d’exclamation`);
     assert.ok(/[.]$/.test(m), `${code} : phrase terminée`);
     assert.doesNotMatch(m, JARGON, code);
@@ -200,28 +230,26 @@ test('tout bloquant propose une sortie : correction, sinon autre issue (LOI 7/8)
 
 test('sorties en un geste relevées par design-ux', () => {
   const correction = (code: CodeCatalogue) => sortiePour(code, exemple(code) as never);
-  assert.deepEqual(correction('ERR_DROIT_INSUFFISANT'), { type: 'correction', libelle: 'Saisir le code gérant' });
-  assert.deepEqual(correction('ERR_SESSION_EXPIREE'), { type: 'correction', libelle: 'Réinstaller la tablette' });
+  assert.deepEqual(correction('ERR_DROIT_INSUFFISANT'), { type: 'correction', libelle: 'Saisir le code du manager' });
+  assert.deepEqual(correction('ERR_SESSION_EXPIREE'), { type: 'correction', libelle: 'Saisir le code de la tablette' });
   assert.deepEqual(correction('ERR_PRODUIT_INCONNU'), { type: 'correction', libelle: 'Choisir un autre produit' });
   assert.deepEqual(correction('ERR_TARIF_ABSENT'), { type: 'correction', libelle: 'Choisir un autre produit' });
   assert.deepEqual(correction('ERR_SAISIE_INVALIDE'), { type: 'correction', libelle: 'Corriger « Téléphone »' });
   for (const c of ['ERR_UNITE_FIGEE', 'ERR_REGIME_FIGE', 'ERR_TARIF_IMMUABLE', 'ERR_TARIF_PASSE', 'ERR_TARIF_CHEVAUCHEMENT', 'ERR_TARIF_INCOHERENT'] as const) {
     assert.equal(correction(c)?.type, 'correction', c);
   }
-  // Aucune action possible depuis l'écran : l'écran affiche « Appeler le gérant ».
+  // Aucune action possible depuis l'écran : l'écran affiche « Appeler le manager ».
+  assert.equal(APPELER_LE_GERANT, 'Appeler le manager');
   for (const c of ['ERR_CONFIGURATION_SERVEUR', 'ERR_CATALOGUE_ABSENT', 'ERR_TROP_DE_TENTATIVES'] as const) {
     assert.deepEqual(correction(c), { type: 'autre', libelle: APPELER_LE_GERANT }, c);
   }
 });
 
 test('accès : messages du catalogue (anciennement locaux à codes.ts et proxy.ts)', () => {
-  assert.equal(
-    messagePour('ERR_SESSION_EXPIREE', {}),
-    'Cette tablette doit être réinstallée : saisissez le code de la tablette.',
-  );
-  assert.equal(messagePour('ERR_TROP_DE_TENTATIVES', { minutes: 1 }), 'Trop d’essais. Réessayez dans 1 minute, ou demandez au gérant.');
+  assert.equal(messagePour('ERR_SESSION_EXPIREE', {}), 'Saisissez le code de la tablette pour continuer, s’il vous plaît.');
+  assert.equal(messagePour('ERR_TROP_DE_TENTATIVES', { minutes: 1 }), 'Trop d’essais. Réessayez dans 1 minute, ou demandez au manager.');
   assert.match(messagePour('ERR_TROP_DE_TENTATIVES', { minutes: 7 }), /dans 7 minutes/);
-  assert.match(messagePour('ERR_CODE_INCORRECT', {}), /gérant/);
+  assert.match(messagePour('ERR_CODE_INCORRECT', {}), /manager/);
   assert.match(messagePour('ERR_ORIGINE_REFUSEE', {}), /Rouvrez l’application/);
 });
 
@@ -291,7 +319,7 @@ test('règlement intérieur (LOI 11) : un exemple par code, sortie et statut', (
   assert.equal(niveauDuCode('INFO_COMMANDE_LENDEMAIN'), 'information');
   assert.ok(!estCodeCatalogue('AVERT_COMMANDE_LENDEMAIN_AUTORISEE'), 'plus d’accord gérant pour le lendemain');
   // ERR_COMMANDE_LENDEMAIN : obsolète, gardé tant que la base le produit encore.
-  assert.match(messagePour('ERR_COMMANDE_LENDEMAIN', { dateRetrait: 'jeudi 16 octobre' }), /^Retrait le jeudi 16 octobre : .*responsable/);
+  assert.match(messagePour('ERR_COMMANDE_LENDEMAIN', { dateRetrait: 'jeudi 16 octobre' }), /^Retrait le jeudi 16 octobre : .*accord du manager/);
 
   // R54 (18/10/2026) : heures d'ouverture du magasin, pour tous les produits.
   const horaires = { ouverture: 'Ho', fermeture: 'Hf', jour: 'le samedi', heureProposee: 'Hp' };
@@ -305,7 +333,7 @@ test('règlement intérieur (LOI 11) : un exemple par code, sortie et statut', (
   // Tailles standard : les deux tailles proches citées, sortie vers la supérieure.
   assert.equal(
     messagePour('ERR_TAILLE_NON_STANDARD', { parts: 7, inferieure: 6, superieure: 8 }),
-    'Ce gâteau se fait en 6 ou 8 parts, pas en 7. Choisissez une taille standard ou demandez au gérant de déverrouiller.',
+    'Ce gâteau se fait en 6 ou 8 parts, pas en 7. Choisissez une de ces tailles, ou demandez l’accord du manager.',
   );
   assert.deepEqual(sortiePour('ERR_TAILLE_NON_STANDARD', { parts: 7, inferieure: 6, superieure: 8 }), {
     type: 'correction',
@@ -318,13 +346,13 @@ test('règlement intérieur (LOI 11) : un exemple par code, sortie et statut', (
   });
   assert.equal(CATALOGUE.ERR_TAILLE_NON_STANDARD.niveau, 'bloquant');
   assert.equal(CATALOGUE.AVERT_TAILLE_NON_STANDARD_AUTORISEE.niveau, 'avertissement');
-  assert.match(messagePour('AVERT_TAILLE_NON_STANDARD_AUTORISEE', { par: 'Karim' }), /autorisée par Karim.*enregistré/);
+  assert.match(messagePour('AVERT_TAILLE_NON_STANDARD_AUTORISEE', { par: 'Karim' }), /acceptée par Karim.*accord du manager est enregistré/);
 
   assert.deepEqual(sortiePour('AVERT_COMMANDE_INHABITUELLE', {}), {
     type: 'autre',
-    libelle: 'Appeler le responsable ou proposer WhatsApp',
+    libelle: 'Appeler le manager ou proposer WhatsApp',
   });
-  assert.match(messagePour('AVERT_COMMANDE_INHABITUELLE', {}), /responsable.*WhatsApp/);
+  assert.match(messagePour('AVERT_COMMANDE_INHABITUELLE', {}), /accord du manager.*WhatsApp/);
 
   const inventaire = messagePour('AVERT_INVENTAIRE_AVANT_FERMETURE', { heureFermeture: 'Hf' });
   assert.equal(inventaire, 'L’inventaire se fait à partir de Hf, pour un comptage juste. Vous pouvez continuer si c’est voulu.');
@@ -332,10 +360,11 @@ test('règlement intérieur (LOI 11) : un exemple par code, sortie et statut', (
 
   assert.equal(
     messagePour('ERR_DECOMPTE_INCOMPLET', { restants: 1 }),
-    'Il reste 1 article à remettre au client. Faites le décompte devant lui avant de valider.',
+    'Il reste 1 article à cocher. Vérifiez-le devant le client avant de valider.',
   );
   assert.match(messagePour('ERR_DECOMPTE_INCOMPLET', { restants: 3 }), /Il reste 3 articles/);
-  assert.deepEqual(sortiePour('ERR_DECOMPTE_INCOMPLET', { restants: 3 }), { type: 'correction', libelle: 'Cocher les articles remis' });
+  assert.doesNotMatch(messagePour('ERR_DECOMPTE_INCOMPLET', { restants: 3 }), /remise|remettre/, '« remise » ne désigne plus le retrait');
+  assert.deepEqual(sortiePour('ERR_DECOMPTE_INCOMPLET', { restants: 3 }), { type: 'correction', libelle: 'Aller aux articles à cocher' });
 
   // Aucun chiffre en dur : sans chiffre dans les paramètres, aucun chiffre dans le texte.
   for (const m of [
@@ -370,16 +399,18 @@ test('refus venus de la base : paramètres absents → variante générique, jam
     const s = sortiePour(code, {});
     assert.ok(s && s.libelle.length > 3 && !/undefined/.test(s.libelle), code);
   }
-  assert.equal(messagePour('ERR_QUANTITE_MIN', { minimum: 20 }), 'Minimum 20 pour ce produit. Passez à 20 pour continuer.');
+  // Le bouton « Passer à 20 » est à côté : le message ne le répète pas (audit 28/10/2026, 3.10).
+  assert.equal(messagePour('ERR_QUANTITE_MIN', { minimum: 20 }), 'Minimum 20 pour ce produit.');
   assert.deepEqual(sortiePour('ERR_QUANTITE_MIN', { minimum: 20 }), { type: 'correction', libelle: 'Passer à 20' });
   // Paramètres complets : textes historiques inchangés.
   assert.equal(
     messagePour('ERR_QUANTITE_MIN', { produit: 'Layer Cake', minimum: 20, unite: 'parts' }),
-    'Minimum 20 parts pour « Layer Cake ». Passez à 20 parts pour continuer.',
+    'Minimum 20 parts pour « Layer Cake ».',
   );
+  // Le rôle technique « gérant » se dit « manager » (propriétaire, 28/10/2026).
   assert.equal(
     messagePour('ERR_DROIT_INSUFFISANT', { action: 'modifier un tarif', role: 'gérant' }),
-    'Seul le gérant peut modifier un tarif. Demandez-lui de le faire ou de saisir son code.',
+    'Seul le manager peut modifier un tarif. Demandez-lui de saisir son code, s’il vous plaît.',
   );
 });
 
@@ -434,4 +465,36 @@ test('champ obligatoire : accord correct quel que soit le libellé (masculin, f�
     type: 'correction',
     libelle: 'Remplir « heure de retrait »',
   });
+});
+
+test('typographie : espaces insécables avant « : ; ? % € », dans « … », ordinal 2ᵉ ; idempotent', () => {
+  assert.equal(
+    typographier('Essayez d’obtenir 50 % : « Bavarois » ; 12,00 € ? Ajoutez un 2e pain.'),
+    'Essayez d’obtenir 50 % : « Bavarois » ; 12,00 € ? Ajoutez un 2ᵉ pain.',
+  );
+  assert.equal(typographier('Commande n° 2026-0016'), 'Commande n° 2026-0016');
+  for (const [code, entree] of Object.entries(CATALOGUE)) {
+    const m = typographier((entree.message as (p: unknown) => string)(exemple(code as CodeCatalogue)));
+    assert.doesNotMatch(m, / [:;?!%»]|« /, `${code} : espace sécable restante dans « ${m} »`);
+    assert.equal(typographier(m), m, `${code} : typographier est idempotent`);
+  }
+});
+
+test('panne réseau : le vendeur sait que rien n’est enregistré, sans « serveur » ni délai irréaliste', () => {
+  const avec = messagePour('ERR_SERVEUR_INDISPONIBLE', { reference: 'K7Q-3MD' });
+  assert.match(avec, /^Pas de connexion : rien n’a été enregistré\./);
+  assert.match(avec, /manager \(référence K7Q-3MD\)\.$/);
+  assert.doesNotMatch(avec, /quelques minutes|serveur/i);
+  // Sans référence (réseau coupé avant toute réponse) : jamais de « référence . ».
+  const sans = messagePour('ERR_SERVEUR_INDISPONIBLE', { reference: '' });
+  assert.equal(sans, 'Pas de connexion : rien n’a été enregistré. Réessayez dans un instant.');
+  assert.ok(!sans.includes(' ; '), 'modele.ts coupe au « ; » : la variante sans référence n’en a pas');
+  assert.match(messagePour('ERR_CONFIGURATION_SERVEUR', { reference: '' }), /Prévenez le manager\.$/);
+  // Commande gardée sur la tablette (texte posé par le formulaire, lot 3).
+  assert.equal(
+    messagePour('INFO_COMMANDE_GARDEE_SUR_TABLETTE', {}),
+    'Pas de connexion : la commande est gardée sur cette tablette et sera envoyée dès le retour du réseau.',
+  );
+  // Impression : la commande reste enregistrée, les bons ne sont pas partis.
+  assert.match(messagePour('ERR_IMPRESSION_NON_ENVOYEE', {}), /bons ne sont pas partis.*reste enregistrée/);
 });

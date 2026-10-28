@@ -24,7 +24,7 @@ import {
   consignesDeLigne,
   dateRetraitTicket,
   demandeAConfirmer,
-  formaterLigneTicket,
+  lignesDuBon,
   mentionHeureRetrait,
   zoneDessinImprimee,
 } from '@/lib/ticketCanvas';
@@ -101,7 +101,8 @@ export function Ticket({
       </div>
 
       <div className="tk-titre">Produits commandés</div>
-      {commande.lignes.map((l) => formaterLigneTicket(l, destination)).map((ligne, index) => (
+      {/* Écriture et photo à imprimer SOUS leur gâteau (lot 2, 28/10/2026). */}
+      {lignesDuBon(commande, destination).map((ligne, index) => (
         <div className="tk-ligne" key={index}>
           {/* Prix par personne : pas de « N × », les parts sont dites dessous. */}
           <span className="q">{ligne.quantite}</span>
@@ -125,24 +126,10 @@ export function Ticket({
         </div>
       ))}
 
-      {commande.texteGateau ? (
-        <div className="tk-mention">
-          <span>Sur le gâteau</span>
-          <b>{commande.texteGateau}</b>
-        </div>
-      ) : null}
-
       {demandeAConfirmer(commande, destination) ? (
         <div className="tk-mention">
           <span>Demande inhabituelle</span>
           <b>À CONFIRMER — PRIX ET FAISABILITÉ</b>
-        </div>
-      ) : null}
-
-      {commande.photoImprimee ? (
-        <div className="tk-mention">
-          <span>Photo</span>
-          <b>À IMPRIMER SUR LE GÂTEAU</b>
         </div>
       ) : null}
 

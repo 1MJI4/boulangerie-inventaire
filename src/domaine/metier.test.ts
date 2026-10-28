@@ -386,15 +386,18 @@ test('R7 : deux gâteaux → deux photos permises, Photo + Écriture sur un mêm
   assert.ok(photoEtEcriture.ok, JSON.stringify(photoEtEcriture));
 });
 
-test('R7 : gâteaux du comptoir (A, famille pâtisserie) = un par pièce ; kilo et salé = aucun', () => {
+test('R7 : gâteaux du comptoir (A, famille gâteau) = un par LIGNE ; kilo et salé = aucun', () => {
+  // Une ligne par gâteau (28/10/2026) : deux Bavarois 6P = deux lignes, deux photos possibles.
   const ok = controlerCommande(
     commande([
-      { produitId: ID.bavarois6pComptoir, quantite: 2 },
+      { produitId: ID.bavarois6pComptoir, quantite: 1 },
+      { produitId: ID.bavarois6pComptoir, quantite: 1 },
       { produitId: ID.photo, quantite: 2 },
     ], { sansEcriture: true }),
     ctx,
   );
   assert.ok(ok.ok, JSON.stringify(ok));
+  assert.ok(!ok.signalements.some((s) => s.code === 'AVERT_PRODUIT_EN_DOUBLE'), 'deux gâteaux, jamais « à fusionner »');
   const r = controlerCommande(
     commande([
       { produitId: ID.halwa, quantite: 1000 },

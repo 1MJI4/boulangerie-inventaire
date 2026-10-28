@@ -14,7 +14,7 @@
 //
 // Imports relatifs avec extension : module exécuté tel quel par `node --test`.
 
-import { bloquant, type Echec } from '../../domaine/resultat.ts';
+import type { Echec } from '../../domaine/resultat.ts';
 import { signaler } from '../../domaine/messages.ts';
 import { FORMAT_ID_PHOTO, FORMAT_FICHIER_PHOTO, type PhotoModele } from '../../catalogue/photosModeles.ts';
 
@@ -31,28 +31,20 @@ export const TAILLE_MAX_IMAGE = 10 * 1024 * 1024;
 /** Enveloppe multipart (champs texte, bornes) tolérée en plus de l'image. */
 export const MARGE_ENVELOPPE = 256 * 1024;
 
-// Codes hors du catalogue des messages (src/domaine/messages.ts, `gestion-erreurs`) :
-// à y reprendre ; d'ici là, texte unique ici, jamais redit dans un écran.
+// Codes du catalogue des messages (src/domaine/messages.ts, `gestion-erreurs`,
+// repris le 28/10/2026) : le texte vit là-bas, jamais redit dans un écran.
 export const ERR_FORMAT_PHOTO = 'ERR_FORMAT_PHOTO';
 export const ERR_PHOTO_TROP_LOURDE = 'ERR_PHOTO_TROP_LOURDE';
 export const ERR_PHOTO_MASQUEE = 'ERR_PHOTO_MASQUEE';
 
 /** HEIC/HEIF, fichier qui n'est pas une image, image illisible. */
 export function refusFormatPhoto(): Echec {
-  return bloquant(
-    ERR_FORMAT_PHOTO,
-    'Format de photo non pris en charge : prenez la photo en JPEG ou faites une capture d’écran.',
-    { champ: 'image' },
-  );
+  return signaler(ERR_FORMAT_PHOTO, {}, { champ: 'image' });
 }
 
 /** Image au-delà de TAILLE_MAX_IMAGE. */
 export function refusPhotoTropLourde(): Echec {
-  return bloquant(
-    ERR_PHOTO_TROP_LOURDE,
-    `Photo trop lourde (plus de ${Math.round(TAILLE_MAX_IMAGE / (1024 * 1024))} Mo) : reprenez-la avec l’appareil photo de la tablette ou faites une capture d’écran.`,
-    { champ: 'image' },
-  );
+  return signaler(ERR_PHOTO_TROP_LOURDE, { maxMo: Math.round(TAILLE_MAX_IMAGE / (1024 * 1024)) }, { champ: 'image' });
 }
 
 /** Aucune image jointe à l'ajout. */
@@ -65,11 +57,7 @@ export function refusImageManquante(): Echec {
  * Sortie en un geste : « Retirer la photo » (valeurProposee null = plus de photo).
  */
 export function refusPhotoMasquee(id: string, champ: string): Echec {
-  return bloquant(
-    ERR_PHOTO_MASQUEE,
-    `La photo ${id} a été retirée de la galerie par le gérant : retirez-la de la ligne ou choisissez-en une autre.`,
-    { champ, valeurProposee: null },
-  );
+  return signaler(ERR_PHOTO_MASQUEE, { photo: id }, { champ, valeurProposee: null });
 }
 
 /**

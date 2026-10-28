@@ -8,18 +8,15 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide, LienBouton, Puce } from '@/components/ui';
+import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide, LienBouton } from '@/components/ui';
 import { useEquipe } from '@/lib/vendeurs';
-import { attendUnVirement, depuisApi, LIBELLE_STATUT, type Commande, type CommandeApi } from '@/lib/commandes';
-import { dateDuJour, formatDateRelative } from '@/lib/dateProduction';
-import { formaterEuros, resteDu } from '@/domaine/argent';
-import { formaterQuantite } from '@/domaine/unites';
-import { validerTransitionStatut } from '@/domaine/coherence';
-import type { Echec } from '@/domaine/resultat';
+import { depuisApi, typesDeCommande, type Commande, type CommandeApi } from '@/lib/commandes';
+import { dateDuJour } from '@/lib/dateProduction';
 import { RappelChargement } from '@/components/rappels';
-import { ListeSignalements } from '@/components/signalement';
 import { echecReseau, lireReponse } from '@/components/commande/modele';
-import { sortieDe } from '@/components/commande/sorties';
+import { FicheCommande } from '@/components/FicheCommande';
+import { CelluleCommande, ListeGroupee } from '@/components/fiche/ElementsCommande';
+import { chercherCommandes, GROUPES, grouperCommandes, type CleGroupe } from '@/components/fiche/presentationCommande';
 
 /** `useSearchParams` impose une frontière Suspense : l'écran attend l'adresse lue. */
 export default function PageCommandes() {
@@ -41,6 +38,8 @@ function EcranCommandes() {
   const [nouveauNom, setNouveauNom] = useState('');
   // Filtre sous la recherche (propriétaire, 28/10/2026) : un groupe à la fois, ou tout.
   const [filtre, setFiltre] = useState<CleGroupe | null>(null);
+  // Toucher une commande ouvre sa fiche sur place (propriétaire, 28/10/2026).
+  const [ouverteId, setOuverteId] = useState<number | null>(null);
   const aujourdhui = dateDuJour();
 
   const charger = useCallback(async () => {
@@ -77,26 +76,11 @@ function EcranCommandes() {
     };
   }, [vendeur, charger]);
 
-  const groupes = useMemo(() => {
-    const liste = commandes ?? [];
-    const filtre = recherche.trim().toLowerCase();
-    const visibles = filtre
-      ? liste.filter(
-          (c) =>
-            c.client.toLowerCase().includes(filtre) ||
-            c.telephone.includes(filtre) ||
-            c.numero.toLowerCase().includes(filtre)
-        )
-      : liste;
-
-    return {
-      aImprimer: visibles.filter((c) => c.statut === 'a_imprimer'),
-      virements: visibles.filter(attendUnVirement),
-      duJour: visibles.filter((c) => c.retraitLe === aujourdhui && c.statut !== 'a_imprimer'),
-      aVenir: visibles.filter((c) => c.retraitLe > aujourdhui && c.statut !== 'a_imprimer'),
-      enRetard: visibles.filter((c) => c.retraitLe < aujourdhui && c.statut !== 'a_imprimer'),
-    };
-  }, [commandes, recherche, aujourdhui]);
+  const groupes = useMemo(
+    () => grouperCommandes(chercherCommandes(commandes ?? [], recherche), aujourdhui),
+    [commandes, recherche, aujourdhui],
+  );
+  const ouverte = (commandes ?? []).find((c) => c.id === ouverteId) ?? null;
 
   /* ----------------------------------------- Qui prend la commande ? */
 
@@ -206,10 +190,12 @@ function EcranCommandes() {
 
       <div className="mb-5">
         <input
+          type="search"
           value={recherche}
           onChange={(e) => setRecherche(e.target.value)}
-          placeholder="Chercher un nom, un téléphone, un numéro…"
-          className="min-h-11 w-full rounded-lg border border-line-fort bg-surface px-3 text-sm text-ink placeholder:text-ink-3"
+          aria-label="Chercher une commande"
+          placeholder="Nom, téléphone ou numéro"
+          className="min-h-11 w-full rounded-xl bg-segment-fond px-4 text-base text-ink placeholder:text-ink-2"
         />
         {commandes && commandes.length > 0 ? (
           // Sur deux lignes si besoin : tous les filtres visibles, sans barre de défilement.
@@ -238,47 +224,45 @@ function EcranCommandes() {
         <Carte>
           <EtatVide
             titre="Aucune commande en cours"
-            detail="Les commandes remises ou annulées sortent de cette liste, et s’archivent d’elles-mêmes deux jours après le retrait."
+            detail="Les commandes retirées par le client ou annulées sortent de cette liste. Elles s’archivent d’elles-mêmes deux jours après le retrait."
             action={<LienBouton href="/commandes/nouvelle" variante="principal">Nouvelle commande</LienBouton>}
           />
         </Carte>
       ) : (
         <div className="grid gap-6">
           {GROUPES.filter((g) => filtre === null || filtre === g.cle).map((g) => (
-            <Groupe key={g.cle} titre={g.titre} ton={g.ton} commandes={groupes[g.cle]} vendeur={vendeur} onChange={charger} />
+            <Groupe
+              key={g.cle}
+              titre={g.titre}
+              commandes={groupes[g.cle]}
+              aujourdhui={aujourdhui}
+              avecDate={g.cle !== 'duJour'}
+              onOuvrir={(c) => setOuverteId(c.id)}
+            />
           ))}
           {filtre !== null && groupes[filtre].length === 0 ? (
-            <p className="text-sm text-ink-2">
-              Aucune commande ici.{' '}
-              <button type="button" onClick={() => setFiltre(null)} className="underline underline-offset-2">
+            <div className="rounded-2xl bg-surface px-4 py-6 text-center">
+              <p className="text-base text-ink-2">Aucune commande ici.</p>
+              <button type="button" onClick={() => setFiltre(null)} className="mt-2 min-h-11 px-3 text-base font-medium text-accent">
                 Voir toutes les commandes
               </button>
-            </p>
+            </div>
           ) : null}
         </div>
       )}
+
+      <FicheCommande commande={ouverte} onFermer={() => setOuverteId(null)} onChange={charger} />
     </>
   );
 }
 
 /* ------------------------------------------------------------- Les groupes */
 
-type CleGroupe = 'aImprimer' | 'virements' | 'enRetard' | 'duJour' | 'aVenir';
-
-/** Ordre d'affichage des groupes, et des filtres sous la recherche. */
-const GROUPES: readonly { cle: CleGroupe; titre: string; ton?: 'accent' | 'attention' | 'alerte' }[] = [
-  { cle: 'aImprimer', titre: 'À imprimer', ton: 'accent' },
-  { cle: 'virements', titre: 'Virements à vérifier', ton: 'attention' },
-  { cle: 'enRetard', titre: 'Retraits en retard', ton: 'alerte' },
-  { cle: 'duJour', titre: 'Retraits d’aujourd’hui' },
-  { cle: 'aVenir', titre: 'À venir' },
-];
-
 const BULLE: Record<'accent' | 'attention' | 'alerte' | 'neutre', string> = {
-  accent: 'bg-accent text-white',
-  attention: 'bg-attention text-white',
-  alerte: 'bg-alerte text-white',
-  neutre: 'bg-surface-2 text-ink-2',
+  accent: 'bg-accent text-accent-texte',
+  attention: 'bg-avertissement text-surface',
+  alerte: 'bg-bloquant text-surface',
+  neutre: 'bg-segment-fond text-ink-2',
 };
 
 /** Un filtre en pastille ; la bulle porte le nombre (colorée seulement s'il y a quelque chose). */
@@ -301,14 +285,14 @@ function Filtre({
       aria-pressed={actif}
       onClick={onClick}
       className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-medium ${
-        actif ? 'border-ink bg-ink text-surface' : 'border-line-fort bg-surface text-ink'
+        actif ? 'border-ink bg-ink text-surface' : 'border-transparent bg-surface text-ink'
       }`}
     >
       {libelle}
       {nombre !== undefined ? (
         <span
           className={`chiffres min-w-5 rounded-full px-1.5 text-center text-xs leading-5 ${
-            nombre > 0 ? BULLE[ton ?? 'neutre'] : 'bg-surface-2 text-ink-3'
+            nombre > 0 ? BULLE[ton ?? 'neutre'] : 'bg-segment-fond text-ink-2'
           }`}
         >
           {nombre}
@@ -320,188 +304,45 @@ function Filtre({
 
 /* ------------------------------------------------------------- Un groupe */
 
+/**
+ * Un groupe en liste façon iOS : titre discret, cellules blanches arrondies.
+ * Chaque cellule dit l'heure et le client d'abord, puis le détail court, puis
+ * le statut ; un toucher ouvre la fiche (Modifier, Imprimer le bon, Marquer
+ * retirée y sont réunis, au lieu de trois boutons sur chaque carte).
+ */
 function Groupe({
   titre,
   commandes,
-  vendeur,
-  onChange,
-  ton,
+  aujourdhui,
+  avecDate,
+  onOuvrir,
 }: {
   titre: string;
   commandes: Commande[];
-  vendeur: string;
-  onChange: () => void;
-  ton?: 'accent' | 'attention' | 'alerte';
+  aujourdhui: string;
+  avecDate: boolean;
+  onOuvrir: (c: Commande) => void;
 }) {
   if (commandes.length === 0) return null;
 
   return (
     <section>
-      <h2 className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-ink-3">
-        {titre}
-        <Puce ton={ton ?? 'neutre'}>{commandes.length}</Puce>
+      <h2 className="mb-1.5 px-4 text-sm font-semibold text-ink-2">
+        {titre} · <span className="chiffres">{commandes.length}</span>
       </h2>
-      <ul className="grid gap-2">
+      <ListeGroupee>
         {commandes.map((commande) => (
-          <li key={commande.id}>
-            <LigneCommandeCarte commande={commande} vendeur={vendeur} onChange={onChange} />
-          </li>
+          <CelluleCommande
+            key={commande.id}
+            commande={commande}
+            types={typesDeCommande(commande)}
+            aujourdhui={aujourdhui}
+            avecDate={avecDate}
+            avecStatut
+            onOuvrir={onOuvrir}
+          />
         ))}
-      </ul>
+      </ListeGroupee>
     </section>
-  );
-}
-
-function LigneCommandeCarte({
-  commande,
-  vendeur,
-  onChange,
-}: {
-  commande: Commande;
-  vendeur: string;
-  onChange: () => void;
-}) {
-  const [occupe, setOccupe] = useState(false);
-  const [refus, setRefus] = useState<Echec | null>(null);
-  // R58 : décompte des articles devant le client avant de passer à « remise ».
-  const [decompte, setDecompte] = useState<Record<string, boolean> | null>(null);
-
-  const agir = async (action: string, enPlus: Record<string, unknown> = {}) => {
-    setOccupe(true);
-    setRefus(null);
-    try {
-      const r = await lireReponse(
-        await fetch('/api/commandes', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: commande.id, action, auteur: vendeur, ...enPlus }),
-        }),
-      );
-      if (!r.ok) {
-        setRefus(r);
-        return;
-      }
-      setDecompte(null);
-      onChange();
-    } catch {
-      const e = echecReseau();
-      if (!e.ok) setRefus(e);
-    } finally {
-      setOccupe(false);
-    }
-  };
-
-  const articles = commande.lignes.map((l, k) => ({ id: String(l.id ?? k), remis: decompte?.[String(l.id ?? k)] === true }));
-  const validerRemise = () => {
-    // Même règle que le serveur (validerTransitionStatut → validerRemise) : refus immédiat.
-    const r = validerTransitionStatut(commande.statut, 'remise', { articles });
-    if (!r.ok) {
-      setRefus(r);
-      return;
-    }
-    void agir('remise', { articles });
-  };
-
-  const reste = resteDu(commande.totalCentimes, commande.acompteCentimes);
-
-  return (
-    <Carte className="p-3.5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-baseline gap-2">
-            <span className="chiffres text-sm font-semibold text-accent">{commande.numero}</span>
-            <span className="text-base font-medium text-ink">{commande.client}</span>
-            {commande.origine === 'telephone' ? <Puce>téléphone</Puce> : null}
-          </div>
-          <p className="mt-1 text-sm text-ink-2">
-            {formatDateRelative(commande.retraitLe)} à{' '}
-            <span className="chiffres">{commande.retraitHeure ?? '—'}</span> · {commande.lignes.length}{' '}
-            ligne{commande.lignes.length > 1 ? 's' : ''} ·{' '}
-            <span className="chiffres">{formaterEuros(commande.totalCentimes)}</span>
-            {reste > 0 ? (
-              <>
-                {' '}
-                — reste <span className="chiffres">{formaterEuros(reste)}</span>
-              </>
-            ) : null}
-          </p>
-          {commande.texteGateau ? (
-            <p className="mt-1 text-sm text-ink">« {commande.texteGateau} »</p>
-          ) : null}
-          {attendUnVirement(commande) ? (
-            <p className="mt-1 text-xs text-attention">
-              Virement à vérifier — communication « {commande.numero} »
-            </p>
-          ) : null}
-        </div>
-
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Puce ton={commande.statut === 'a_imprimer' ? 'accent' : 'neutre'}>
-            {LIBELLE_STATUT[commande.statut]}
-          </Puce>
-          <LienBouton href={`/commandes/${commande.id}/modifier`} variante="secondaire">
-            Modifier
-          </LienBouton>
-          <LienBouton href={`/commandes/${commande.id}/imprimer`} variante="secondaire">
-            Imprimer
-          </LienBouton>
-          {attendUnVirement(commande) ? (
-            <Bouton variante="secondaire" disabled={occupe} onClick={() => agir('acompte')}>
-              Virement reçu
-            </Bouton>
-          ) : null}
-          {commande.statut === 'imprimee' ? (
-            <Bouton variante="principal" disabled={occupe} onClick={() => setDecompte(decompte ? null : {})}>
-              Remise
-            </Bouton>
-          ) : null}
-        </div>
-      </div>
-
-      {decompte ? (
-        <div className="mt-3 rounded-xl border-2 border-accent p-3">
-          <p className="mb-2 text-base font-semibold text-ink">Cochez chaque article devant le client</p>
-          <ul className="grid gap-1">
-            {commande.lignes.map((l, k) => {
-              const cle = String(l.id ?? k);
-              return (
-                <li key={cle}>
-                  <label className="flex min-h-12 items-center gap-3 text-base text-ink">
-                    <input
-                      type="checkbox"
-                      checked={decompte[cle] === true}
-                      onChange={(e) => setDecompte({ ...decompte, [cle]: e.target.checked })}
-                      className="h-6 w-6 shrink-0 accent-[var(--accent)]"
-                    />
-                    <span className="chiffres">{formaterQuantite(l.unite === 'kg' ? 'kg' : 'piece', l.quantite)} ×</span>
-                    <span>{l.libelle}</span>
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Bouton variante="principal" disabled={occupe} onClick={validerRemise}>
-              Valider la remise
-            </Bouton>
-            <Bouton onClick={() => setDecompte(null)}>Annuler</Bouton>
-          </div>
-        </div>
-      ) : null}
-
-      {refus ? (
-        <ListeSignalements
-          className="mt-3"
-          signalements={[refus]}
-          autreSortiePour={(sig) => {
-            const so = sortieDe(sig);
-            const libelle = so.libelle ?? so.autre;
-            return libelle ? (
-              <span className="inline-flex min-h-14 items-center rounded-xl border-2 border-line-fort px-4 text-base text-ink">{libelle}</span>
-            ) : undefined;
-          }}
-        />
-      ) : null}
-    </Carte>
   );
 }

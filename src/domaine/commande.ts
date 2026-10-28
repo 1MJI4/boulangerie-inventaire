@@ -31,7 +31,8 @@ import { validerForme } from './formes.ts';
 import { validerTailleAutorisee } from './taillesInterdites.ts';
 import { controlerSupplementsParPersonne, estSupplementParPersonne } from './supplementsParPersonne.ts';
 import { libelleProduitFiche } from './libelles.ts';
-import { controlerSupplementEcriture, controlerSupplements, gateauxDeLigne } from './supplements.ts';
+import { controlerSupplementEcriture, controlerSupplementPhoto, controlerSupplements, gateauxDeLigne } from './supplements.ts';
+import { controlerUnGateauParLigne } from './unGateauParLigne.ts';
 import { symbolesDuTexte, validerQuantiteMin, validerMaximum, validerTailleGateau } from './minimums.ts';
 import { GOUT_AU_CHOIX, validerGouts, type ChoixGout } from './gouts.ts';
 import { deverrouillageValide, prixLigne } from './regimes.ts';
@@ -132,6 +133,18 @@ export type LigneSaisie = {
    * Distinct de `deverrouillage` : autoriser un prix n'autorise pas une taille.
    */
   deverrouillageTaille?: Deverrouillage | null;
+  /**
+   * Lot 2 (propriétaire, 28/10/2026 : « une écriture par gâteau ») : ce qui
+   * s'écrit sur CE gâteau, orthographe comprise. Gardé seulement si la ligne
+   * est un gâteau (`nbGateaux` > 0). Une saisie dont AUCUNE ligne ne porte
+   * `texteGateau` / `sansEcriture` / `photoImprimee` est à l'ancien format :
+   * l'écriture de la commande va alors au premier gâteau (`CommandeSaisie.texteGateau`).
+   */
+  texteGateau?: string | null;
+  /** Lot 2 : « Pas d'écriture » coché pour CE gâteau (choix explicite). */
+  sansEcriture?: boolean | null;
+  /** Lot 2 : photo à imprimer SUR ce gâteau (supplément Photo, une fois par gâteau). */
+  photoImprimee?: boolean | null;
 };
 
 export type LigneControlee = {
@@ -158,6 +171,13 @@ export type LigneControlee = {
   forme?: Forme;
   /** R64 : la ligne est un supplément par personne (Pâte à sucre), pas un gâteau. */
   supplementParPersonne?: true;
+  /**
+   * Lot 2 (28/10/2026) : écriture de CE gâteau (null : aucune), « Pas
+   * d'écriture », photo à imprimer. Présents seulement sur une ligne gâteau.
+   */
+  texteGateau?: string | null;
+  sansEcriture?: boolean;
+  photoImprimee?: boolean;
 };
 
 export type CommandeSaisie = {
@@ -184,8 +204,17 @@ export type CommandeSaisie = {
   totalConvenuCentimes?: number | null;
   /** Accord du gérant pour une remise sur le total. */
   remise?: Deverrouillage | null;
+  /**
+   * @deprecated lot 2 (28/10/2026) : l'écriture est une donnée de LIGNE
+   * (`LigneSaisie.texteGateau`). Lu seulement pour une saisie à l'ancien
+   * format (aucune ligne ne porte d'écriture : tablette pas encore à jour,
+   * file hors ligne) : il devient l'écriture du PREMIER gâteau.
+   */
   texteGateau?: string | null;
+  /** @deprecated lot 2 : « Pas d'écriture » de l'ancien format, même repli que `texteGateau`. */
   sansEcriture?: boolean;
+  /** @deprecated lot 2 : photo à imprimer de l'ancien format (niveau commande), même repli. */
+  photoImprimee?: boolean;
   /** Case « demande inhabituelle » (ingrédients, moules spéciaux…) — R55. */
   demandeInhabituelle?: boolean;
   /** @deprecated ancien nom de `demandeInhabituelle` (données existantes), même effet. */
@@ -234,6 +263,12 @@ export type ContexteCommande = {
    * bon (décision du propriétaire, 28/10/2026). Absent → non contrôlé, comme R62.
    */
   supplementEcriture?: string | null;
+  /**
+   * Clé catalogue du supplément « Photo » (SUPPLEMENT_PHOTO de constantes.ts) :
+   * une photo à imprimer sur un gâteau EXIGE ce supplément, une fois par
+   * gâteau (28/10/2026). Absent → non contrôlé.
+   */
+  supplementPhoto?: string | null;
 };
 
 export type CommandeControlee = {
@@ -314,7 +349,27 @@ export function controlerLigne(
   const p = `lignes[${index}].`;
   const r = controlerLigneSansPrefixe(saisie, index, datePrise, ctx);
   if (!r.ok) return prefixerEchec(r, p);
-  return succes(r.donnees, ...r.signalements.map((s) => prefixerSignalement(s, p)));
+  return succes(surLeGateau(r.donnees, saisie), ...r.signalements.map((s) => prefixerSignalement(s, p)));
+}
+
+/**
+ * Lot 2 (propriétaire, 28/10/2026) : écriture, « Pas d'écriture » et photo à
+ * imprimer sont gardés sur une ligne qui EST un gâteau (`nbGateaux` > 0,
+ * définition de supplements.ts), jamais ailleurs. « Pas d'écriture » vide le texte.
+ */
+function surLeGateau(
+  l: LigneControlee,
+  s: Pick<LigneSaisie, 'texteGateau' | 'sansEcriture' | 'photoImprimee'>,
+): LigneControlee {
+  if (!(l.nbGateaux > 0)) return l;
+  const sans = s.sansEcriture === true;
+  const texte = sans ? '' : (s.texteGateau ?? '').trim();
+  return { ...l, texteGateau: texte === '' ? null : texte, sansEcriture: sans, photoImprimee: s.photoImprimee === true };
+}
+
+/** true : au moins une ligne dit son écriture ou sa photo (format « une écriture par gâteau », lot 2). */
+export function saisieParGateau(c: Pick<CommandeSaisie, 'lignes'>): boolean {
+  return c.lignes.some((l) => l.texteGateau != null || l.sansEcriture != null || l.photoImprimee != null);
 }
 
 function controlerLigneSansPrefixe(
@@ -342,6 +397,20 @@ function controlerLigneSansPrefixe(
 
   const q = validerQuantite(fiche.produit.unite, saisie.quantite);
   if (!q.ok) return q;
+
+  // Une ligne par gâteau (propriétaire, 28/10/2026) : « 2 × Bavarois 6P » est
+  // refusé, sortie « Séparer en 2 gâteaux » (chacun son goût, son écriture…).
+  const unGateau = controlerUnGateauParLigne(
+    {
+      regimePrix: fiche.produit.regimePrix,
+      basePrix: fiche.prix.basePrix,
+      famille: fiche.produit.famille,
+      quantite: saisie.quantite,
+      produit: libelleProduit(fiche),
+    },
+    ctx.reglement.famillesGateau ?? FAMILLES_GATEAU,
+  );
+  if (unGateau) return unGateau;
 
   // R65 : taille qui ne se fait pas (Matadi chocolat 4P) — avant le minimum.
   if (ctx.taillesInterdites) {
@@ -627,6 +696,13 @@ function analyser(c: CommandeSaisie, ctx: ContexteCommande): Analyse {
   }
 
   const resultatsLignes = c.lignes.map((l, i) => controlerLigne(l, i, c.datePrise, ctx));
+  // Ancien format (tablette pas à jour, file hors ligne) : l'écriture et la photo
+  // de la COMMANDE deviennent celles de son premier gâteau (lot 2, 28/10/2026).
+  if (!saisieParGateau(c) && (c.texteGateau || c.sansEcriture || c.photoImprimee)) {
+    const k = resultatsLignes.findIndex((r) => r.ok && r.donnees.nbGateaux > 0);
+    const r = resultatsLignes[k];
+    if (r && r.ok) resultatsLignes[k] = { ...r, donnees: surLeGateau(r.donnees, c) };
+  }
 
   if (c.lignes.length === 0) {
     blocages.push(signaler('ERR_COMMANDE_VIDE', {}, { champ: 'lignes' }));
@@ -647,9 +723,20 @@ function analyser(c: CommandeSaisie, ctx: ContexteCommande): Analyse {
     const r = ctx.resoudre(cle, c.datePrise);
     blocages.push(
       ...controlerSupplementEcriture({
-        texteGateau: c.texteGateau,
         lignes,
         supplementEcriture: cle,
+        libelleSupplement: r.ok ? libelleProduit(r.donnees) : undefined,
+      }),
+    );
+  }
+  // Photo à imprimer sur un gâteau = supplément Photo, une fois par gâteau (28/10/2026).
+  if (lignesOk && ctx.supplementPhoto) {
+    const cle = ctx.supplementPhoto;
+    const r = ctx.resoudre(cle, c.datePrise);
+    blocages.push(
+      ...controlerSupplementPhoto({
+        lignes,
+        supplementPhoto: cle,
         libelleSupplement: r.ok ? libelleProduit(r.donnees) : undefined,
       }),
     );
@@ -676,7 +763,8 @@ function analyser(c: CommandeSaisie, ctx: ContexteCommande): Analyse {
       ),
     );
   }
-  signalements.push(...reperesDoublons(lignes.map((l) => ({ produitId: l.produitId, libelle: l.libelle }))));
+  // Deux lignes du même gâteau = deux gâteaux (28/10/2026) : jamais « à fusionner ».
+  signalements.push(...reperesDoublons(lignes.map((l) => ({ produitId: l.produitId, libelle: l.libelle, nbGateaux: l.nbGateaux }))));
 
   // Délai (n°17) puis jour même / lendemain (R53b, R53). Délai 0 par défaut
   // (jour même autorisé, décision du propriétaire du 18/10/2026) ; seul un
@@ -704,15 +792,22 @@ function analyser(c: CommandeSaisie, ctx: ContexteCommande): Analyse {
 
   // Gâteau sur commande = ligne vendue par personne (régime C), ou gâteau du
   // comptoir qui le remplace (R60) : lu dans les données, jamais dans le libellé.
-  const contientGateau = lignes.some(
-    (l) =>
-      (l.regimePrix === 'C' && l.basePrix === 'personne' && l.supplementParPersonne !== true) ||
-      gateauSurCommandeDe(l.produitId, ctx.correspondancesComptoir) !== null ||
-      // Ligne libre déclarée gâteau (« C'est un gâteau ? » : oui).
-      (l.produitId === null && l.nbGateaux > 0),
-  );
+  // L'écriture se demande PAR GÂTEAU (lot 2, 28/10/2026) : champ `lignes[i].texteGateau`.
+  const estGateauSurCommande = (l: LigneControlee) =>
+    (l.regimePrix === 'C' && l.basePrix === 'personne' && l.supplementParPersonne !== true) ||
+    gateauSurCommandeDe(l.produitId, ctx.correspondancesComptoir) !== null ||
+    // Ligne libre déclarée gâteau (« C'est un gâteau ? » : oui).
+    (l.produitId === null && l.nbGateaux > 0);
+  resultatsLignes.forEach((r, i) => {
+    if (!r.ok || !estGateauSurCommande(r.donnees)) return;
+    const l = r.donnees;
+    signalements.push(
+      ...controlerEcriture({ contientGateau: true, texteGateau: l.texteGateau, sansEcriture: l.sansEcriture }).map((s) =>
+        prefixerSignalement(s, `lignes[${i}].`),
+      ),
+    );
+  });
   signalements.push(
-    ...controlerEcriture({ contientGateau, texteGateau: c.texteGateau, sansEcriture: c.sansEcriture }),
     ...controlerCommandeInhabituelle({
       demandeInhabituelle: c.demandeInhabituelle === true || c.gateauComplexe === true,
       contientLigneLibre: lignes.some((l) => l.produitId === null),

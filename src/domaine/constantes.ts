@@ -171,11 +171,20 @@ export const FAMILLE_SUPPLEMENT = 'supplement';
 
 /**
  * Clé catalogue du supplément « Écriture » (forfait). Décision du propriétaire
- * (28/10/2026) : une écriture sur un gâteau = ce supplément au bon, toujours ;
- * le retirer à la main n'est pas autorisé (`controlerSupplementEcriture`,
+ * (28/10/2026) : une écriture sur un gâteau = ce supplément au bon, toujours,
+ * une fois PAR GÂTEAU qui porte une écriture (lot 2 du 28/10/2026 : « une
+ * écriture par gâteau ») ; le retirer à la main n'est pas autorisé (`controlerSupplementEcriture`,
  * passé au domaine par `ContexteCommande.supplementEcriture`).
  */
 export const SUPPLEMENT_ECRITURE = 'gateaux-sur-commande/supplement-ecriture-simple';
+
+/**
+ * Clé catalogue du supplément « Photo » (forfait) : photo à imprimer SUR le
+ * gâteau. Même règle que l'Écriture (propriétaire, 28/10/2026) : autant de
+ * suppléments que de gâteaux qui portent une photo à imprimer, automatique
+ * (`controlerSupplementPhoto`, passé par `ContexteCommande.supplementPhoto`).
+ */
+export const SUPPLEMENT_PHOTO = 'gateaux-sur-commande/supplement-photo';
 
 /** R63 — forme (carré ou rond) d'un gâteau simple sur commande. */
 export type ReglesForme = {

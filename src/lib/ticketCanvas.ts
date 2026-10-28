@@ -15,6 +15,7 @@
 // états, et un gris tramé sort baveux.
 
 import type { Commande, LigneCommande } from './commandes';
+import { lignesSurLeGateau } from './commandes.ts';
 import { formaterEuros } from '../domaine/argent.ts';
 import { formaterQuantite, totalLigne } from '../domaine/unites.ts';
 import { formaterHeure, lireHeure, nomJour } from '../domaine/reglement.ts';
@@ -73,6 +74,15 @@ export type LigneTicket = {
   gouts: string[] | null;
   /** R62 : décorations facultatives, « Oreo, Kinder Bueno ». */
   decorations: string | null;
+  /**
+   * Lot 2 (propriétaire, 28/10/2026 : « une écriture par gâteau ») :
+   * « ÉCRITURE : JOYEUX ANNIVERSAIRE LINA », SOUS son gâteau, texte tel que
+   * saisi (orthographe comprise). null sans écriture — « pas d'écriture »
+   * n'imprime rien (décision du 26/10/2026).
+   */
+  ecriture: string | null;
+  /** Lot 2 : « PHOTO À IMPRIMER SUR CE GÂTEAU », sous son gâteau ; null sinon. */
+  photoImprimee: string | null;
   /** Total formaté par le domaine, ou « à confirmer » si le total ne peut pas être calculé. */
   prix: string;
   /** Ligne libre (hors catalogue) : son prix doit être validé par le pâtissier.
@@ -130,7 +140,7 @@ export function bandeauModification(
   const quand = modifieeApresImpression(commande);
   if (!quand) return null;
   if (destination === 'CLIENT') return { titre: `Version du ${dateHeureCourte(quand)}`, consigne: null };
-  return { titre: `MODIFIÉE le ${dateHeureCourte(quand)}`, consigne: 'Jetez l’ancien ticket' };
+  return { titre: `MODIFIÉE le ${dateHeureCourte(quand)}`, consigne: 'Jetez l’ancien bon' };
 }
 
 /**
@@ -315,6 +325,8 @@ export function formaterLigneTicket(ligne: LigneCommande, destination: Destinati
     photoModele: collerApresDeuxPoints(photoModeleDeLigne(ligne)),
     gouts: nomSelonGout ? null : goutsLignesAImprimer(ligne.gouts),
     decorations: ligne.decorations?.length ? collerEtiquette('Déco :', ligne.decorations.join(', ')) : null,
+    ecriture: ecritureAImprimer(ligne),
+    photoImprimee: ligne.photoImprimee === true ? MENTION_PHOTO_A_IMPRIMER : null,
     // Un total incalculable ne s'imprime jamais comme un montant : on préfère
     // un trou visible à un chiffre faux sur un bon remis au client.
     prix: total.ok ? formaterEuros(total.donnees) : 'à confirmer',
@@ -322,11 +334,38 @@ export function formaterLigneTicket(ligne: LigneCommande, destination: Destinati
   };
 }
 
+/** Mention de la photo à imprimer, sous le gâteau qui la porte (lot 2, 28/10/2026). */
+export const MENTION_PHOTO_A_IMPRIMER = 'PHOTO À IMPRIMER SUR CE GÂTEAU';
+
+/**
+ * « ÉCRITURE : JOYEUX ANNIVERSAIRE LINA » (étiquette collée au premier mot),
+ * ou null : pas de texte, ou « Pas d'écriture » coché — rien n'est imprimé.
+ * Le texte reste tel que saisi (orthographe et casse comprises).
+ */
+export function ecritureAImprimer(ligne: Pick<LigneCommande, 'texteGateau' | 'sansEcriture'>): string | null {
+  const t = (ligne.texteGateau ?? '').trim();
+  return t && ligne.sansEcriture !== true ? collerEtiquette('ÉCRITURE :', t) : null;
+}
+
+/**
+ * Lignes du bon, prêtes à imprimer, avec l'écriture et la photo à imprimer de
+ * CHAQUE gâteau. Commande ancienne (écriture au niveau de la commande) : elle
+ * s'imprime sous son premier gâteau (`lignesSurLeGateau`). Même source pour
+ * les trois rendus (Star, ticket navigateur, A6).
+ */
+export function lignesDuBon(
+  commande: Pick<Commande, 'lignes' | 'texteGateau' | 'sansEcriture' | 'photoImprimee'>,
+  destination: Destination,
+): LigneTicket[] {
+  return lignesSurLeGateau(commande).map((l) => formaterLigneTicket(l, destination));
+}
+
 /**
  * Consignes d'atelier d'une ligne, dans l'ordre de lecture du pâtissier —
  * même ordre sur les trois rendus (Star, ticket navigateur, A6) :
  * chiffres ou lettres, goût(s) (un étage par ligne), forme, photo modèle,
- * décoration, précision. Toutes en gras : en maigre, elles se perdaient.
+ * décoration, ÉCRITURE (en grand, lot 2), photo à imprimer, précision.
+ * Toutes en gras : en maigre, elles se perdaient.
  */
 export function consignesDeLigne(ligne: LigneTicket): Consigne[] {
   const c: Consigne[] = [];
@@ -335,6 +374,8 @@ export function consignesDeLigne(ligne: LigneTicket): Consigne[] {
   if (ligne.forme) c.push({ texte: ligne.forme });
   if (ligne.photoModele) c.push({ texte: ligne.photoModele });
   if (ligne.decorations) c.push({ texte: ligne.decorations });
+  if (ligne.ecriture) c.push({ texte: ligne.ecriture, grand: true });
+  if (ligne.photoImprimee) c.push({ texte: ligne.photoImprimee });
   if (ligne.precision) c.push({ texte: ligne.precision });
   return c;
 }
@@ -626,7 +667,7 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
   plume.bandeau(destination);
   plume.espace(14);
 
-  // Nouvelle version d'une commande déjà imprimée : l'atelier doit jeter l'ancien ticket.
+  // Nouvelle version d'une commande déjà imprimée : l'atelier doit jeter l'ancien bon.
   const modification = bandeauModification(commande, destination);
   if (modification) {
     if (!modification.consigne) {
@@ -688,7 +729,8 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
   // colonne s'élargit pour tout le ticket, pour garder les libellés alignés.
   // Les colonnes sont mesurées sur la plus large des quantités (« 0,750 kg »,
   // « 120 × ») et des prix : les libellés restent alignés sur tout le ticket.
-  const lignes = commande.lignes.map((l) => formaterLigneTicket(l, destination));
+  // Écriture et photo à imprimer SOUS leur gâteau (lot 2, 28/10/2026).
+  const lignes = lignesDuBon(commande, destination);
   const colQuantite = Math.ceil(
     Math.max(48, ...lignes.filter((l) => l.quantite).map((l) => plume.mesurer(l.quantite, TAILLE_PRODUIT, true))) + 10
   );
@@ -698,13 +740,9 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
   }
   plume.espace(8);
 
-  if (commande.texteGateau) {
-    mention(plume, 'Sur le gâteau', commande.texteGateau);
-  }
-  // Pas d'écriture : rien d'imprimé, même « sans écriture » demandé (propriétaire, 26/10/2026).
-  if (commande.photoImprimee) {
-    mention(plume, 'Photo', 'À IMPRIMER SUR LE GÂTEAU');
-  }
+  // Écriture et photo à imprimer : sous CHAQUE gâteau (consignes de la ligne),
+  // plus de bloc « Sur le gâteau » global (propriétaire, 28/10/2026). Pas
+  // d'écriture : rien d'imprimé (26/10/2026).
   // « À confirmer » n'a de sens qu'en interne (voir estExemplaireInterne).
   if (demandeAConfirmer(commande, destination)) {
     mention(plume, 'Demande inhabituelle', 'À CONFIRMER — PRIX ET FAISABILITÉ');
