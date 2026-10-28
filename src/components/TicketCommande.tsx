@@ -20,6 +20,8 @@
 import { formaterEuros, type Commande } from '@/lib/commandes';
 import {
   MENTION_LIGNE_LIBRE,
+  bandeauModification,
+  consignesDeLigne,
   dateRetraitTicket,
   demandeAConfirmer,
   formaterLigneTicket,
@@ -45,6 +47,8 @@ export function Ticket({
   const reste = commande.totalCentimes - commande.acompteCentimes;
   const heure = mentionHeureRetrait(commande.retraitHeure);
   const avecKg = commande.lignes.some((l) => l.unite === 'kg');
+  // Même règle que le ticket Star : une version modifiée le dit, pour qu'on jette l'ancien bon.
+  const modification = bandeauModification(commande, destination);
 
   return (
     <div className={`ticket tk-p${rang}${avecKg ? ' tk-avec-kg' : ''}`}>
@@ -58,6 +62,13 @@ export function Ticket({
       </div>
 
       <div className="tk-dest">{destination}</div>
+
+      {modification ? (
+        <div className={modification.consigne ? 'tk-modifiee' : 'tk-version'}>
+          <b>{modification.titre}</b>
+          {modification.consigne ? <span>{modification.consigne}</span> : null}
+        </div>
+      ) : null}
 
       {/* Numéro en petit (19/10/2026) : toujours présent, la place va au retrait. */}
       <div className="tk-numero">
@@ -92,21 +103,25 @@ export function Ticket({
       <div className="tk-titre">Produits commandés</div>
       {commande.lignes.map((l) => formaterLigneTicket(l, destination)).map((ligne, index) => (
         <div className="tk-ligne" key={index}>
+          {/* Prix par personne : pas de « N × », les parts sont dites dessous. */}
           <span className="q">{ligne.quantite}</span>
           <span className="n">
             {ligne.libelle}
-            {/* Number Cake : formes en gras, espacées (« 2  5 ») — espaces conservés. */}
-            {ligne.formes ? <b style={{ display: 'block', whiteSpace: 'pre-wrap', fontSize: '13pt' }}>FORMES : {ligne.formes}</b> : null}
-            {/* R63 : forme du gâteau, « FORME : CARRÉ » — même corps que le goût. */}
-            {ligne.forme ? <b style={{ display: 'block', fontSize: '12pt' }}>{ligne.forme}</b> : null}
-            {/* Galerie de modèles : le code seul, jamais l'image (imprimante monochrome). */}
-            {ligne.photoModele ? <b style={{ display: 'block', fontSize: '12pt' }}>{ligne.photoModele}</b> : null}
-            {ligne.gouts ? <b style={{ display: 'block', fontSize: '12pt' }}>{ligne.gouts}</b> : null}
-            {ligne.decorations ? <em>Déco : {ligne.decorations}</em> : null}
-            {ligne.precision ? <em>{ligne.precision}</em> : null}
-            {ligne.aConfirmer ? <strong>{MENTION_LIGNE_LIBRE}</strong> : null}
+            {ligne.complementLibelle ? ` ${ligne.complementLibelle}` : ''}
           </span>
           <span className="p">{ligne.prix}</span>
+          {/* Consignes SOUS le produit, sur toute la largeur (propriétaire, 28/10/2026) :
+              jamais coupées par la colonne des prix. Espaces conservés (« 2  5 »). */}
+          <div className="c">
+            {ligne.parts ? <b className="parts">{ligne.parts}</b> : null}
+            {ligne.prixUnitaire ? <small>{ligne.prixUnitaire}</small> : null}
+            {consignesDeLigne(ligne).map((consigne, k) => (
+              <b key={k} className={consigne.grand ? 'grand' : undefined}>
+                {consigne.texte}
+              </b>
+            ))}
+            {ligne.aConfirmer ? <strong>{MENTION_LIGNE_LIBRE}</strong> : null}
+          </div>
         </div>
       ))}
 
@@ -235,6 +250,12 @@ export const CSS_TICKET = `
   font-size: 13pt; letter-spacing: .2em; padding: 1.4mm 0; margin-top: 2mm;
 }
 
+.tk-modifiee { border: .8mm solid #000; margin-top: 2mm; padding: 1.4mm 2mm; text-align: center; }
+.tk-modifiee b { display: block; font-size: 12pt; font-weight: 800; }
+.tk-modifiee span { display: block; font-size: 10pt; font-weight: 700; }
+.tk-version { text-align: center; font-size: 9pt; font-weight: 700; margin-top: 1.6mm; }
+.tk-version b { font-weight: 700; }
+
 .tk-numero { font-size: 9pt; margin-top: 2.5mm; }
 .tk-numero b { font-weight: 700; }
 .tk-meta { font-size: 7pt; margin-top: .4mm; }
@@ -253,8 +274,13 @@ export const CSS_TICKET = `
 .tk-avec-kg .tk-ligne { grid-template-columns: 18mm minmax(0, 1fr) 19mm; }
 .tk-ligne .q { font-weight: 700; white-space: nowrap; }
 .tk-ligne .n { overflow-wrap: break-word; }
-.tk-ligne .n strong { display: block; font-size: 9pt; font-weight: 700; text-transform: uppercase; }
-.tk-ligne .n em { display: block; font-style: normal; font-size: 9pt; }
+.tk-ligne .c { grid-column: 1 / -1; padding-left: 1.5mm; }
+.tk-ligne .c:empty { display: none; }
+.tk-ligne .c b { display: block; font-size: 11pt; font-weight: 700; line-height: 1.25; white-space: pre-wrap; overflow-wrap: break-word; }
+.tk-ligne .c b.parts { font-size: 12pt; }
+.tk-ligne .c b.grand { font-size: 13pt; }
+.tk-ligne .c small { display: block; font-size: 9pt; font-weight: 700; }
+.tk-ligne .c strong { display: block; font-size: 9pt; font-weight: 700; text-transform: uppercase; }
 .tk-ligne .p { text-align: right; white-space: nowrap; font-size: 10.5pt; font-variant-numeric: tabular-nums; }
 
 .tk-mention { border: .4mm solid #000; padding: 1.2mm 1.6mm; margin-top: 1.6mm; }

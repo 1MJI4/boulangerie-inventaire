@@ -19,6 +19,7 @@ import { formaterEuros } from '../domaine/argent.ts';
 import { formaterQuantite, totalLigne } from '../domaine/unites.ts';
 import { formaterHeure, lireHeure, nomJour } from '../domaine/reglement.ts';
 import { LIBELLES_FORME } from '../domaine/messages.ts';
+import { baseDuSupplement, familleDuProduit } from '../catalogue/familles.ts';
 
 export const DESTINATIONS = ['CLIENT', 'BUREAU', 'MAGASIN', 'ATELIER'] as const;
 export type Destination = (typeof DESTINATIONS)[number];
@@ -38,21 +39,36 @@ type Contexte = CanvasRenderingContext2D;
 
 /* ------------------------------------------- Formatage pur (testé seul) */
 
+/** Une consigne d'atelier, imprimée SOUS le produit, sur toute la largeur. */
+export type Consigne = {
+  texte: string;
+  /** Number Cake : les chiffres ou lettres, imprimés plus grand. */
+  grand?: boolean;
+};
+
 /** Une ligne de produit prête à imprimer, sans aucun calcul côté gabarit. */
 export type LigneTicket = {
-  /** « 12 × » à la pièce, « 0,750 kg » au kilo (LOI 2). */
+  /** « 12 × » à la pièce, « 0,750 kg » au kilo (LOI 2), VIDE pour un prix
+      par personne : le nombre de parts est dit en toutes lettres (`parts`). */
   quantite: string;
+  /** Libellé du catalogue, à la lettre (LOI 5). */
   libelle: string;
+  /** Supplément par personne : « — 20 parts », imprimé à la suite du libellé. */
+  complementLibelle: string | null;
+  /** Gâteau vendu par personne : « 1 gâteau — 20 PARTS » (propriétaire, 28/10/2026). */
+  parts: string | null;
+  /** Prix par personne appliqué (« … € par personne »), lu sur la ligne, jamais recalculé. */
+  prixUnitaire: string | null;
   precision: string | null;
-  /** Number Cake : « FORMES : 2  5 », déjà mis en forme (`formesAImprimer`). */
+  /** Number Cake : « CHIFFRES OU LETTRES : 2  5 », déjà mis en forme (`chiffresOuLettresAImprimer`). */
   formes: string | null;
   /** R63 : « FORME : CARRÉ » / « FORME : ROND » (`formeAImprimer`), null sans forme. */
   forme: string | null;
   /** Galerie de modèles (propriétaire, 26/10/2026) : « Photo sélectionnée : G043 »
       (`photoModeleAImprimer`), null sans photo. Texte seul, jamais l'image. */
   photoModele: string | null;
-  /** R62 : « GOÛT : FRAMBOISE », ou un goût par étage (`goutsAImprimer`). */
-  gouts: string | null;
+  /** R62 : « GOÛT : FRAMBOISE », ou une ligne par étage (`goutsLignesAImprimer`). */
+  gouts: string[] | null;
   /** R62 : décorations facultatives, « Oreo, Kinder Bueno ». */
   decorations: string | null;
   /** Total formaté par le domaine, ou « à confirmer » si le total ne peut pas être calculé. */
@@ -61,6 +77,19 @@ export type LigneTicket = {
       Mention interne : toujours false sur l'exemplaire CLIENT. */
   aConfirmer: boolean;
 };
+
+/**
+ * Espace insécable : colle une étiquette (« GOÛT : », « ÉTAGE 1 : ») à son
+ * premier mot, pour qu'aucune découpe ne la coupe en deux (« ÉTAGE / 1 : »).
+ * `couperTexte` ne coupe jamais sur une insécable.
+ */
+export const INSECABLE = '\u00a0';
+
+/** « ÉTAGE 1 : » + « MOUSSE CHOCOLAT » → « ÉTAGE␣1␣:␣MOUSSE CHOCOLAT » (␣ = insécable). */
+export function collerEtiquette(etiquette: string, valeur: string): string {
+  const colle = etiquette.trim().replace(/ +/g, INSECABLE);
+  return `${colle}${INSECABLE}${valeur.replace(/^ +/, '')}`;
+}
 
 export const MENTION_LIGNE_LIBRE = 'à confirmer par le pâtissier';
 
@@ -87,14 +116,54 @@ export function dateHeureCourte(iso: string): string {
 }
 
 /**
+ * Bandeau « commande modifiée » commun aux trois rendus (Star, ticket
+ * navigateur, A6) : une seule règle, pour qu'un format de secours ne laisse
+ * jamais deux bons valables en apparence (audit du 28/10/2026, point 2.9).
+ * Exemplaire CLIENT : simple « Version du … », sans consigne interne.
+ */
+export function bandeauModification(
+  commande: Pick<Commande, 'evenements'>,
+  destination: Destination
+): { titre: string; consigne: string | null } | null {
+  const quand = modifieeApresImpression(commande);
+  if (!quand) return null;
+  if (destination === 'CLIENT') return { titre: `Version du ${dateHeureCourte(quand)}`, consigne: null };
+  return { titre: `MODIFIÉE le ${dateHeureCourte(quand)}`, consigne: 'Jetez l’ancien ticket' };
+}
+
+/**
  * Goût(s) d'un gâteau sur commande (R62), en capitales pour l'atelier :
  * « GOÛT : FRAMBOISE » ; pièce montée : « ÉTAGE 1 : CHOCOLAT · ÉTAGE 2 : VANILLE ».
+ * Forme sur une ligne, gardée pour les écrans ; le bon imprime une ligne par
+ * étage (`goutsLignesAImprimer`).
  */
 export function goutsAImprimer(gouts: readonly string[] | null | undefined): string | null {
   const g = (gouts ?? []).map((x) => x.trim()).filter(Boolean);
   if (g.length === 0) return null;
   if (g.length === 1) return `GOÛT : ${g[0].toUpperCase()}`;
   return g.map((x, i) => `ÉTAGE ${i + 1} : ${x.toUpperCase()}`).join(' · ');
+}
+
+/**
+ * Goût(s) pour le bon (propriétaire, 28/10/2026) : une ligne par étage,
+ * « ÉTAGE 1 : CHOCOLAT » puis « ÉTAGE 2 : VANILLE », étiquette collée au goût
+ * par des insécables — jamais « ÉTAGE / 1 : ». null sans goût.
+ */
+export function goutsLignesAImprimer(gouts: readonly string[] | null | undefined): string[] | null {
+  const g = (gouts ?? []).map((x) => x.trim()).filter(Boolean);
+  if (g.length === 0) return null;
+  if (g.length === 1) return [collerEtiquette('GOÛT :', g[0].toUpperCase())];
+  return g.map((x, i) => collerEtiquette(`ÉTAGE ${i + 1} :`, x.toUpperCase()));
+}
+
+/**
+ * Number Cake sur le bon (propriétaire, 28/10/2026 : « chiffres ou lettres »
+ * partout, « formes » prêtait à confusion avec carré / rond) :
+ * « CHIFFRES OU LETTRES : 2  5 », double espace conservé. null sans valeur.
+ */
+export function chiffresOuLettresAImprimer(formes: string | null | undefined): string | null {
+  const t = formesAImprimer(formes);
+  return t ? collerEtiquette('CHIFFRES OU LETTRES :', t) : null;
 }
 
 /**
@@ -152,6 +221,64 @@ export function photoModeleDeLigne(ligne: object): string | null {
   return photoModeleAImprimer((ligne as { photoModele?: unknown }).photoModele);
 }
 
+/** Bases de prix connues (`BasePrix` du catalogue). */
+const BASES_PRIX = ['piece', 'kg', 'personne', 'forfait'] as const;
+type BaseLigne = (typeof BASES_PRIX)[number];
+
+/**
+ * Base de prix de la ligne (pièce, kilo, personne, forfait), lue dans les
+ * DONNÉES, jamais dans le nom (LOI 6) :
+ *   1. la base de la version de tarif appliquée, si l'API la transmet avec la
+ *      ligne (`prixProduit.basePrix`, ou `basePrix` à plat) ;
+ *   2. sinon, pour un supplément, la base DÉCLARÉE au catalogue
+ *      (`baseDuSupplement`, table explicite de familles.ts) ;
+ *   3. sinon null : inconnue.
+ */
+export function basePrixDeLigne(ligne: LigneCommande): BaseLigne | null {
+  if (ligne.unite === 'kg') return 'kg';
+  const brute = ligne as { basePrix?: unknown; prixProduit?: { basePrix?: unknown } | null };
+  const transmise = brute.prixProduit?.basePrix ?? brute.basePrix;
+  if (typeof transmise === 'string' && (BASES_PRIX as readonly string[]).includes(transmise)) {
+    return transmise as BaseLigne;
+  }
+  const p = ligne.produitCatalogue;
+  if (p?.categorie && p.nom && p.regimePrix) {
+    return baseDuSupplement(p.regimePrix === 'A' ? 'comptoir' : 'sur-commande', p.categorie, p.nom);
+  }
+  return null;
+}
+
+/** Supplément déclaré au catalogue (Pâte à sucre, Photo, Écriture), lu dans la table, jamais dans le nom. */
+function estLigneSupplement(ligne: LigneCommande): boolean {
+  const p = ligne.produitCatalogue;
+  if (!p?.categorie || !p.nom || !p.regimePrix) return false;
+  return familleDuProduit(p.regimePrix === 'A' ? 'comptoir' : 'sur-commande', p.categorie, p.nom) === 'supplement';
+}
+
+/**
+ * Comment s'imprime la quantité (propriétaire, 28/10/2026) :
+ *   « 10 × » à la pièce · « 0,750 kg » au kilo, sans « × » orphelin ·
+ *   « 1 gâteau — 20 PARTS » pour un gâteau vendu par personne ·
+ *   « Pâte à sucre — 20 parts » pour un supplément par personne.
+ * Base inconnue (l'API ne la transmet pas) : « N × », l'impression d'avant —
+ * on ne devine jamais le régime d'après le nom.
+ */
+export function lectureQuantite(
+  ligne: LigneCommande
+): 'piece' | 'kg' | 'gateau-par-personne' | 'supplement-par-personne' {
+  const base = basePrixDeLigne(ligne);
+  if (base === 'kg') return 'kg';
+  if (base === 'personne') return estLigneSupplement(ligne) ? 'supplement-par-personne' : 'gateau-par-personne';
+  return 'piece';
+}
+
+/** « FORME : CARRÉ » → étiquette collée à sa valeur par des insécables. */
+function collerApresDeuxPoints(texte: string | null): string | null {
+  if (!texte) return null;
+  const i = texte.indexOf(' : ');
+  return i < 0 ? texte : collerEtiquette(`${texte.slice(0, i)} :`, texte.slice(i + 3));
+}
+
 /**
  * Formate une ligne : le total passe par `totalLigne` (domaine), jamais par
  * une multiplication locale — au kilo, la quantité est en grammes et le prix
@@ -162,20 +289,49 @@ export function formaterLigneTicket(ligne: LigneCommande, destination: Destinati
   // à la pièce (même défaut qu'en base).
   const unite = ligne.unite ?? 'piece';
   const total = totalLigne(unite, ligne.quantite, ligne.prixCentimes);
+  const lecture = lectureQuantite(ligne);
+  const parts = formaterQuantite('piece', ligne.quantite);
   return {
-    quantite: unite === 'kg' ? formaterQuantite(unite, ligne.quantite) : `${formaterQuantite(unite, ligne.quantite)} ×`,
+    quantite:
+      lecture === 'kg'
+        ? formaterQuantite('kg', ligne.quantite)
+        : lecture === 'piece'
+          ? `${formaterQuantite('piece', ligne.quantite)} ×`
+          : '',
     libelle: ligne.libelle,
-    precision: ligne.precision || null,
-    formes: formesAImprimer(ligne.formes),
-    forme: formeDeLigne(ligne),
-    photoModele: photoModeleDeLigne(ligne),
-    gouts: goutsAImprimer(ligne.gouts),
-    decorations: ligne.decorations?.length ? ligne.decorations.join(', ') : null,
+    complementLibelle: lecture === 'supplement-par-personne' ? `—${INSECABLE}${parts}${INSECABLE}parts` : null,
+    parts: lecture === 'gateau-par-personne' ? ['1', 'gâteau', '—', parts, 'PARTS'].join(INSECABLE) : null,
+    // Prix unitaire FIGÉ sur la ligne (prixCentimes), seulement formaté : le
+    // bon montre « 20 PARTS · … € par personne », jamais un total nu.
+    prixUnitaire: lecture === 'piece' || lecture === 'kg' ? null : `${formaterEuros(ligne.prixCentimes)} par personne`,
+    precision: ligne.precision?.trim() || null,
+    formes: chiffresOuLettresAImprimer(ligne.formes),
+    forme: collerApresDeuxPoints(formeDeLigne(ligne)),
+    photoModele: collerApresDeuxPoints(photoModeleDeLigne(ligne)),
+    gouts: goutsLignesAImprimer(ligne.gouts),
+    decorations: ligne.decorations?.length ? collerEtiquette('Déco :', ligne.decorations.join(', ')) : null,
     // Un total incalculable ne s'imprime jamais comme un montant : on préfère
     // un trou visible à un chiffre faux sur un bon remis au client.
     prix: total.ok ? formaterEuros(total.donnees) : 'à confirmer',
     aConfirmer: Boolean(ligne.ligneLibreAutoriseePar) && estExemplaireInterne(destination),
   };
+}
+
+/**
+ * Consignes d'atelier d'une ligne, dans l'ordre de lecture du pâtissier —
+ * même ordre sur les trois rendus (Star, ticket navigateur, A6) :
+ * chiffres ou lettres, goût(s) (un étage par ligne), forme, photo modèle,
+ * décoration, précision. Toutes en gras : en maigre, elles se perdaient.
+ */
+export function consignesDeLigne(ligne: LigneTicket): Consigne[] {
+  const c: Consigne[] = [];
+  if (ligne.formes) c.push({ texte: ligne.formes, grand: true });
+  for (const g of ligne.gouts ?? []) c.push({ texte: g });
+  if (ligne.forme) c.push({ texte: ligne.forme });
+  if (ligne.photoModele) c.push({ texte: ligne.photoModele });
+  if (ligne.decorations) c.push({ texte: ligne.decorations });
+  if (ligne.precision) c.push({ texte: ligne.precision });
+  return c;
 }
 
 /**
@@ -216,20 +372,27 @@ export function dateRetraitTicket(date: string): { longue: string; courte: strin
  * `mesurer` est injecté : le canvas en vrai, une approximation dans les tests.
  */
 export function couperTexte(texte: string, largeurMax: number, mesurer: (s: string) => number): string[] {
-  const mots = texte
-    .split(/\s+/)
-    .filter(Boolean)
-    .flatMap((mot) => scinderMot(mot, largeurMax, mesurer));
+  // Coupe sur les espaces ordinaires SEULEMENT : une insécable (étiquette
+  // « ÉTAGE 1 : » collée à son goût) ne se coupe jamais. Les espaces entre
+  // deux mots sont conservés tels quels (Number Cake « 2  5 », propriétaire
+  // 22/10/2026) ; tabulation et retour à la ligne valent une espace.
+  const morceaux = texte.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, '').split(/([ \t\r\n]+)/);
   const lignes: string[] = [];
   let courante = '';
-  for (const mot of mots) {
-    const essai = courante ? `${courante} ${mot}` : mot;
-    if (!courante || mesurer(essai) <= largeurMax) {
-      courante = essai;
-    } else {
-      lignes.push(courante);
-      courante = mot;
-    }
+  for (let i = 0; i < morceaux.length; i += 2) {
+    const mot = morceaux[i];
+    if (!mot) continue;
+    const brut = i > 0 ? morceaux[i - 1] : '';
+    const separateur = /[\t\r\n]/.test(brut) ? ' ' : brut;
+    scinderMot(mot, largeurMax, mesurer).forEach((morceau, k) => {
+      const essai = courante ? `${courante}${k === 0 ? separateur : ''}${morceau}` : morceau;
+      if (!courante || mesurer(essai) <= largeurMax) {
+        courante = essai;
+      } else {
+        lignes.push(courante);
+        courante = morceau;
+      }
+    });
   }
   if (courante) lignes.push(courante);
   return lignes.length ? lignes : [''];
@@ -459,16 +622,16 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
   plume.espace(14);
 
   // Nouvelle version d'une commande déjà imprimée : l'atelier doit jeter l'ancien ticket.
-  const modifieeLe = modifieeApresImpression(commande);
-  if (modifieeLe) {
-    if (pourLeClient) {
-      plume.texte(`Version du ${dateHeureCourte(modifieeLe)}`, { taille: 18, gras: true, align: 'centre', interligne: 24 });
+  const modification = bandeauModification(commande, destination);
+  if (modification) {
+    if (!modification.consigne) {
+      plume.texte(modification.titre, { taille: 18, gras: true, align: 'centre', interligne: 24 });
       plume.espace(8);
     } else {
       const haut = plume.y;
       plume.espace(10);
-      plume.texte(`MODIFIÉE le ${dateHeureCourte(modifieeLe)}`, { taille: 28, gras: true, align: 'centre', interligne: 34 });
-      plume.texte('Jetez l’ancien ticket', { taille: 22, gras: true, align: 'centre', interligne: 28 });
+      plume.texte(modification.titre, { taille: 28, gras: true, align: 'centre', interligne: 34 });
+      plume.texte(modification.consigne, { taille: 22, gras: true, align: 'centre', interligne: 28 });
       plume.espace(8);
       plume.cadre(haut, plume.y, 5);
       plume.espace(14);
@@ -522,7 +685,7 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
   // « 120 × ») et des prix : les libellés restent alignés sur tout le ticket.
   const lignes = commande.lignes.map((l) => formaterLigneTicket(l, destination));
   const colQuantite = Math.ceil(
-    Math.max(48, ...lignes.map((l) => plume.mesurer(l.quantite, TAILLE_PRODUIT, true))) + 10
+    Math.max(48, ...lignes.filter((l) => l.quantite).map((l) => plume.mesurer(l.quantite, TAILLE_PRODUIT, true))) + 10
   );
   const colPrix = Math.ceil(Math.max(100, ...lignes.map((l) => plume.mesurer(l.prix, TAILLE_PRODUIT - 2))) + 8);
   for (const ligne of lignes) {
@@ -597,90 +760,55 @@ function champ(plume: Plume, etiquette: string, valeur: string | null | undefine
   plume.espace(8);
 }
 
+/** Retrait des consignes sous le produit : assez pour les rattacher au produit, sans voler la largeur. */
+const RETRAIT_CONSIGNE = 12;
+
 function produit(plume: Plume, ligne: LigneTicket, colQuantite: number, colPrix: number) {
-  const colNom = UTILE - colQuantite - colPrix - 8;
+  // Prix par personne : pas de colonne quantité (les parts sont dites en
+  // dessous), le libellé prend toute la place jusqu'au prix — « Pièce montée
+  // 2 étages » tient sur une ligne.
+  const decalage = ligne.quantite ? colQuantite : 0;
+  const colNom = UTILE - decalage - colPrix - 8;
+  const titre = ligne.complementLibelle ? `${ligne.libelle} ${ligne.complementLibelle}` : ligne.libelle;
   const haut = plume.y;
   // Un mot plus large que la colonne réduit d'abord le corps de la ligne
   // (jusqu'à TAILLE_PRODUIT_MIN), avant toute coupure en milieu de mot.
   let taille = TAILLE_PRODUIT;
   const motLePlusLong = (texte: string, t: number) =>
-    Math.max(0, ...texte.split(/\s+/).map((mot) => plume.mesurer(mot, t)));
-  while (taille > TAILLE_PRODUIT_MIN && motLePlusLong(ligne.libelle, taille) > colNom) taille -= 1;
+    Math.max(0, ...texte.split(/[ \t\r\n]+/).map((mot) => plume.mesurer(mot, t)));
+  while (taille > TAILLE_PRODUIT_MIN && motLePlusLong(titre, taille) > colNom) taille -= 1;
   const interligne = Math.round(taille * 1.2);
 
-  plume.texte(ligne.quantite, { taille: TAILLE_PRODUIT, gras: true, interligne: 0 });
-  plume.y = haut;
-  plume.texte(ligne.libelle, {
-    taille,
-    x: MARGE + colQuantite,
-    largeurMax: colNom,
-    interligne,
-  });
-  if (ligne.formes) {
-    plume.texte(`FORMES : ${ligne.formes}`, {
-      taille: 26,
+  if (ligne.quantite) {
+    plume.texte(ligne.quantite, { taille: TAILLE_PRODUIT, gras: true, interligne: 0 });
+    plume.y = haut;
+  }
+  plume.texte(titre, { taille, x: MARGE + decalage, largeurMax: colNom, interligne });
+  const basTitre = plume.y;
+  // Le prix reste sur la ligne du produit (exemplaires ATELIER compris,
+  // propriétaire 28/10/2026) ; les consignes, elles, passent dessous.
+  plume.y = haut + 2;
+  plume.texte(ligne.prix, { taille: TAILLE_PRODUIT - 2, align: 'droite', interligne: 0 });
+  plume.y = Math.max(basTitre, haut + Math.round(TAILLE_PRODUIT * 1.2));
+
+  // Consignes d'atelier : SOUS le produit, sur toute la largeur du papier —
+  // plus jamais « GOÛT : MOUSSE / CHOCOLAT » coupé par la colonne des prix.
+  const x = MARGE + RETRAIT_CONSIGNE;
+  const largeurMax = UTILE - RETRAIT_CONSIGNE;
+  if (ligne.parts) plume.texte(ligne.parts, { taille: TAILLE_PRODUIT, gras: true, x, largeurMax, interligne: 34 });
+  if (ligne.prixUnitaire) plume.texte(ligne.prixUnitaire, { taille: 20, gras: true, x, largeurMax, interligne: 26 });
+  for (const consigne of consignesDeLigne(ligne)) {
+    plume.texte(consigne.texte, {
+      taille: consigne.grand ? 28 : 24,
       gras: true,
-      x: MARGE + colQuantite,
-      largeurMax: colNom,
-      interligne: 32,
-    });
-  }
-  if (ligne.forme) {
-    plume.texte(ligne.forme, {
-      taille: 24,
-      gras: true,
-      x: MARGE + colQuantite,
-      largeurMax: colNom,
-      interligne: 30,
-    });
-  }
-  if (ligne.photoModele) {
-    plume.texte(ligne.photoModele, {
-      taille: 24,
-      gras: true,
-      x: MARGE + colQuantite,
-      largeurMax: colNom,
-      interligne: 30,
-    });
-  }
-  if (ligne.gouts) {
-    plume.texte(ligne.gouts, {
-      taille: 24,
-      gras: true,
-      x: MARGE + colQuantite,
-      largeurMax: colNom,
-      interligne: 30,
-    });
-  }
-  if (ligne.decorations) {
-    plume.texte(`Déco : ${ligne.decorations}`, {
-      taille: 20,
-      x: MARGE + colQuantite,
-      largeurMax: colNom,
-      interligne: 25,
-    });
-  }
-  if (ligne.precision) {
-    plume.texte(ligne.precision, {
-      taille: 20,
-      x: MARGE + colQuantite,
-      largeurMax: colNom,
-      interligne: 25,
+      x,
+      largeurMax,
+      interligne: consigne.grand ? 34 : 30,
     });
   }
   if (ligne.aConfirmer) {
-    plume.texte(MENTION_LIGNE_LIBRE.toUpperCase(), {
-      taille: 18,
-      gras: true,
-      x: MARGE + colQuantite,
-      largeurMax: colNom,
-      interligne: 23,
-    });
+    plume.texte(MENTION_LIGNE_LIBRE.toUpperCase(), { taille: 18, gras: true, x, largeurMax, interligne: 23 });
   }
-  const bas = plume.y;
-  plume.y = haut + 2;
-  plume.texte(ligne.prix, { taille: TAILLE_PRODUIT - 2, align: 'droite', interligne: 0 });
-  plume.y = Math.max(bas, haut + Math.round(TAILLE_PRODUIT * 1.2));
   plume.espace(4);
   plume.trait(1, true);
   plume.espace(7);

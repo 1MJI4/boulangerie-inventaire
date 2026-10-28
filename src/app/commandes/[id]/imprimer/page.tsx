@@ -17,29 +17,21 @@ import { useMemoireLocale } from '@/lib/memoireLocale';
 import { CSS_TICKET, Ticket, reglesPagesTicket } from '@/components/TicketCommande';
 import { ApercuReseau } from '@/components/ApercuReseau';
 import {
+  MENTION_LIGNE_LIBRE,
+  bandeauModification,
+  consignesDeLigne,
   dateRetraitTicket,
   demandeAConfirmer,
-  estExemplaireInterne,
-  formeDeLigne,
-  photoModeleDeLigne,
-  formesAImprimer,
-  goutsAImprimer,
+  formaterLigneTicket,
   mentionHeureRetrait,
   zoneDessinImprimee,
 } from '@/lib/ticketCanvas';
 import { depuisApi, messageConfirmation, type Commande, type CommandeApi, type ModePaiement } from '@/lib/commandes';
 import { formaterEuros, resteDu } from '@/domaine/argent';
-import { formaterQuantite, totalLigne } from '@/domaine/unites';
 import { RappelChargement } from '@/components/rappels';
 import { ListeSignalements } from '@/components/signalement';
 import { echecReseau, lireReponse } from '@/components/commande/modele';
 import type { Echec } from '@/domaine/resultat';
-
-/** Montant d'une ligne du bon : pièces × prix, ou poids × prix au kilo (LOI 2), par le domaine. */
-function montantLigne(l: Commande['lignes'][number]): string {
-  const r = totalLigne(l.unite === 'kg' ? 'kg' : 'piece', l.quantite, l.prixCentimes);
-  return r.ok ? formaterEuros(r.donnees) : '';
-}
 
 /** Les quatre destinations, dans l'ordre où elles sortent de l'imprimante. */
 const DESTINATIONS = ['CLIENT', 'BUREAU', 'MAGASIN', 'ATELIER'] as const;
@@ -374,10 +366,14 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
   const pourLeClient = destination === 'CLIENT';
   const nombreLignes = commande.lignes.length;
   const densite = nombreLignes > 16 ? ' tres-dense' : nombreLignes > 10 ? ' dense' : '';
+  // « 0,750 kg » est plus large que « 12 × » : la colonne s'élargit pour tout le bon.
+  const avecKg = commande.lignes.some((l) => l.unite === 'kg') ? ' avec-kg' : '';
   const reste = resteDu(commande.totalCentimes, commande.acompteCentimes);
+  // Même règle que le ticket Star : une version modifiée le dit (audit 28/10/2026).
+  const modification = bandeauModification(commande, destination);
 
   return (
-    <div className={`bon${densite}`}>
+    <div className={`bon${densite}${avecKg}`}>
       <div className="bon-bandeau">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.png" alt="PAin PAtisserie" />
@@ -389,6 +385,13 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
       </div>
       <div className="bon-dest">{destination}</div>
       <div className="bon-adresse">Chaussée de Louvain 906 — 1140 Evere</div>
+
+      {modification ? (
+        <div className={modification.consigne ? 'bon-modifiee' : 'bon-version'}>
+          <b>{modification.titre}</b>
+          {modification.consigne ? <span> — {modification.consigne}</span> : null}
+        </div>
+      ) : null}
 
       <div className="bon-id">
         <div>
@@ -435,25 +438,31 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
 
       <div className="bon-produits">
         <div className="bon-soustitre">Produits commandés</div>
-        {commande.lignes.map((ligne, index) => (
+        {/* Même mise en forme que le ticket Star (formaterLigneTicket) : « 10 × » à la
+            pièce, « 0,750 kg » sans « × », « 1 gâteau — 20 PARTS » par personne,
+            consignes sous le produit sur toute la largeur (propriétaire, 28/10/2026). */}
+        {commande.lignes.map((l) => formaterLigneTicket(l, destination)).map((ligne, index) => (
           <div className="bon-ligne" key={index}>
-            <span>{formaterQuantite(ligne.unite === 'kg' ? 'kg' : 'piece', ligne.quantite)} ×</span>
+            <span>{ligne.quantite}</span>
             <span>
               {ligne.libelle}
-              {formesAImprimer(ligne.formes) ? (
-                <b style={{ whiteSpace: 'pre-wrap' }}> — FORMES : {formesAImprimer(ligne.formes)}</b>
-              ) : null}
-              {/* R63 : « FORME : CARRÉ » / « FORME : ROND », rien sans forme. */}
-              {formeDeLigne(ligne) ? <b> — {formeDeLigne(ligne)}</b> : null}
-              {/* Galerie de modèles : « Photo sélectionnée : G043 », rien sans photo. */}
-              {photoModeleDeLigne(ligne) ? <b> — {photoModeleDeLigne(ligne)}</b> : null}
-              {goutsAImprimer(ligne.gouts) ? <b> — {goutsAImprimer(ligne.gouts)}</b> : null}
-              {ligne.decorations?.length ? ` — Déco : ${ligne.decorations.join(', ')}` : ''}
-              {ligne.precision ? ` — ${ligne.precision}` : ''}
-              {/* Ligne libre (hors catalogue) : prix fixé avec le gérant, à confirmer. */}
-              {ligne.ligneLibreAutoriseePar && estExemplaireInterne(destination) ? ' — à confirmer par le pâtissier' : ''}
+              {ligne.complementLibelle ? ` ${ligne.complementLibelle}` : ''}
             </span>
-            <span>{montantLigne(ligne)}</span>
+            <span>{ligne.prix}</span>
+            <div className="bon-consignes">
+              {ligne.parts ? (
+                <b className="parts">
+                  {ligne.parts}
+                  {ligne.prixUnitaire ? <small> · {ligne.prixUnitaire}</small> : null}
+                </b>
+              ) : ligne.prixUnitaire ? (
+                <small>{ligne.prixUnitaire}</small>
+              ) : null}
+              {consignesDeLigne(ligne).map((consigne, k) => (
+                <b key={k}>{consigne.texte}</b>
+              ))}
+              {ligne.aConfirmer ? <b>{MENTION_LIGNE_LIBRE}</b> : null}
+            </div>
           </div>
         ))}
         {/* A6 de taille fixe : le bloc reste comme espaceur ; l'intitulé n'apparaît
@@ -587,8 +596,19 @@ const CSS_IMPRESSION = `
 .bon-produits { flex:1 1 auto; display:flex; flex-direction:column; margin-top:2mm; }
 .bon-soustitre { font-size:5.4pt; font-weight:700; letter-spacing:.14em; text-transform:uppercase; border-bottom:.25mm solid #000; padding-bottom:.5mm; margin-bottom:1mm; }
 .bon-ligne { display:grid; grid-template-columns:9mm 1fr 13mm; gap:1mm; font-size:8pt; padding:.35mm 0; align-items:baseline; }
-.bon-ligne span:first-child { font-weight:700; }
-.bon-ligne span:last-child { text-align:right; }
+.bon-ligne > span:first-child { font-weight:700; white-space:nowrap; }
+.bon.avec-kg .bon-ligne { grid-template-columns:13mm 1fr 13mm; }
+.bon-ligne > span:nth-child(3) { text-align:right; white-space:nowrap; }
+.bon-consignes { grid-column:1 / -1; padding-left:2mm; }
+.bon-consignes:empty { display:none; }
+.bon-consignes b { display:block; font-size:8pt; font-weight:700; line-height:1.25; white-space:pre-wrap; }
+.bon-consignes b.parts { font-size:9pt; }
+.bon-consignes small { font-size:7pt; font-weight:700; }
+
+.bon-modifiee { border:.6mm solid #000; margin-top:1.2mm; padding:.8mm 1.6mm; text-align:center; font-size:8pt; }
+.bon-modifiee b { font-weight:800; font-size:9pt; }
+.bon-modifiee span { font-weight:700; }
+.bon-version { text-align:center; font-size:6.5pt; font-weight:700; margin-top:.8mm; }
 .bon-libre { flex:1 1 auto; min-height:0; font-size:5.2pt; color:#999; letter-spacing:.1em; text-transform:uppercase; padding-top:1mm; }
 
 .bon-mention { display:flex; gap:2mm; align-items:baseline; margin-top:1mm; border:.25mm solid #000; padding:1mm 1.6mm; }
@@ -612,10 +632,12 @@ const CSS_IMPRESSION = `
 
 /* Au-delà d'une dizaine de lignes, le bon se resserre plutôt que de déborder. */
 .bon.dense .bon-ligne { font-size:7pt; padding:.1mm 0; }
+.bon.dense .bon-consignes b { font-size:7pt; }
 .bon.dense .bon-champ b { font-size:7.5pt; min-height:3mm; }
 .bon.dense .bon-retrait { padding:1mm 2mm; }
 .bon.dense .bon-retrait b { font-size:10pt; }
 .bon.tres-dense .bon-ligne { font-size:6pt; padding:0; line-height:1.25; }
+.bon.tres-dense .bon-consignes b { font-size:6.5pt; }
 .bon.tres-dense .bon-champ b { font-size:7pt; min-height:2.6mm; }
 .bon.tres-dense .bon-mention { padding:.6mm 1.4mm; }
 .bon.tres-dense .bon-mention b { font-size:7pt; }
