@@ -9,13 +9,14 @@
 // canvas, le même fichier. Ce que le vendeur voit avant de cliquer est ce
 // qu'il ira décrocher du rouleau.
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alerte, Bouton, Puce } from '@/components/ui';
 import { DESTINATIONS, dessinerTicket, type Destination } from '@/lib/ticketCanvas';
 import { enBase64, pngMonochrome, zlibNavigateur } from '@/lib/pngMonochrome';
 import type { Commande } from '@/lib/commandes';
 import { suivreImpression } from '@/lib/suiviImpression';
-import { ImprimanteTicket, SORTIE_TICKET_MS } from '@/components/ImprimanteTicket';
+import { ImprimanteTicket, type LotImprime } from '@/components/ImprimanteTicket';
+import { apprendreVitesse, lireMsParLigne } from '@/lib/vitesseImpression';
 
 type Travail = {
   id: number;
@@ -73,7 +74,12 @@ export function ApercuReseau({
   const [vuEnDirect, setVuEnDirect] = useState(false);
   // Les PNG noir et blanc qui partent à l'imprimante, montrés tels quels dans
   // l'imprimante animée : le papier à l'écran est le papier du rouleau.
-  const [papiers, setPapiers] = useState<Partial<Record<string, string>>>({});
+  const [papiers, setPapiers] = useState<Partial<Record<string, Papier>>>({});
+  const papiersRef = useRef<Partial<Record<string, Papier>>>({});
+  // Le lot dans l'imprimante (les exemplaires pris ensemble), pour l'animation.
+  const [lot, setLot] = useState<LotSuivi | null>(null);
+  const lotRef = useRef<LotSuivi | null>(null);
+  const vusRef = useRef(new Set<number>());
 
   // Le dessin se fait une fois, à l'affichage. Les canvas sont insérés tels
   // quels dans la page : aucune conversion, donc aucune occasion de diverger.
@@ -94,9 +100,13 @@ export function ApercuReseau({
     const canvases = Array.from(hote.querySelectorAll('canvas'));
     const preparation = encoderTickets(canvases);
     preparation
-      .then((tickets) =>
-        setPapiers(Object.fromEntries(tickets.map((t) => [t.destination, `data:image/png;base64,${t.png}`]))),
-      )
+      .then((tickets) => {
+        const tous = Object.fromEntries(
+          tickets.map((t) => [t.destination, { image: `data:image/png;base64,${t.png}`, hauteur: t.hauteur }]),
+        );
+        papiersRef.current = tous;
+        setPapiers(tous);
+      })
       .catch(() => undefined);
     ticketsPrets.current = preparation;
   }, [commande]);
@@ -125,14 +135,47 @@ export function ApercuReseau({
     });
   }, [rafraichir]);
 
-  // Tant que tout n'est pas sorti, on regarde chaque seconde (un ticket sort
-  // en quelques secondes : à 2 s l'écran paraissait en retard sur le papier).
+  // Ce que l'imprimante a pris ensemble forme un lot ; sa sortie complète est
+  // chronométrée pour apprendre la vitesse réelle de l'imprimante.
+  const suivreLot = useCallback((liste: Travail[]) => {
+    const maintenant = Date.now();
+    let courant = lotRef.current;
+    if (courant && !courant.fini && courant.ids.every((id) => liste.find((t) => t.id === id)?.statut === 'imprime')) {
+      apprendreVitesse(maintenant - courant.debut, courant.lignes);
+      courant = { ...courant, fini: true };
+    }
+    const remis = liste.filter((t) => t.statut === 'remis' && !vusRef.current.has(t.id));
+    // Sortis sans qu'on les ait vus partir (impression plus rapide qu'un tour) : on les montre quand même.
+    const surpris = liste.filter((t) => t.statut === 'imprime' && !vusRef.current.has(t.id));
+    const nouveaux = remis.length ? remis : (!courant || courant.fini) && surpris.length ? surpris : [];
+    if (nouveaux.length) {
+      for (const t of nouveaux) vusRef.current.add(t.id);
+      const lignes = nouveaux.reduce((n, t) => n + (papiersRef.current[t.destination]?.hauteur ?? LIGNES_PAR_DEFAUT), 0);
+      courant = {
+        cle: nouveaux.map((t) => t.id).join(','),
+        ids: nouveaux.map((t) => t.id),
+        destinations: nouveaux.map((t) => t.destination),
+        lignes,
+        debut: maintenant,
+        dureeMs: lignes * lireMsParLigne(),
+        fini: !remis.length,
+      };
+    }
+    if (courant !== lotRef.current) {
+      lotRef.current = courant;
+      setLot(courant);
+    }
+  }, []);
+
+  // Tant que tout n'est pas sorti, on regarde souvent : l'animation se cale sur
+  // le moment où l'imprimante prend les tickets et sur celui où elle confirme.
   // Une fois terminé, on arrête : la tablette reste allumée toute la journée.
   useEffect(() => {
     if (!suivi) return;
     let avancementAvant = -1;
     const minuteur = setInterval(async () => {
       const liste = await rafraichir();
+      suivreLot(liste);
       // en file → en train d'imprimer → sorti : chaque pas compte comme un progrès.
       const avancement = liste.reduce((n, t) => n + (t.statut === 'imprime' ? 2 : t.statut === 'remis' ? 1 : 0), 0);
       if (avancement !== avancementAvant) {
@@ -144,9 +187,9 @@ export function ApercuReseau({
         setSuivi(false);
         onImprime?.();
       }
-    }, 1000);
+    }, 600);
     return () => clearInterval(minuteur);
-  }, [suivi, rafraichir, onImprime]);
+  }, [suivi, rafraichir, onImprime, suivreLot]);
 
   // Un double toucher rapide arrive avant que le bouton soit désactivé à l'écran.
   const envoiEnVol = useRef(false);
@@ -161,6 +204,9 @@ export function ApercuReseau({
     // toucher, pendant que les images se préparent et partent.
     setTravaux(enFile());
     setVuEnDirect(true);
+    lotRef.current = null;
+    vusRef.current = new Set();
+    setLot(null);
     try {
       // Déjà prêtes le plus souvent ; sinon (préparation échouée) on refait.
       const tickets = await (ticketsPrets.current ?? Promise.reject(new Error())).catch(() =>
@@ -205,7 +251,11 @@ export function ApercuReseau({
   const deposes = vuEnDirect && travaux.length > 0 && !envoi && !bloque;
   const clientSorti = travaux.some((t) => t.destination === 'CLIENT' && t.statut === 'imprime');
   const remplissage = envoi ? 0.04 : progression(travaux, dernierProgres, horloge);
-  const papier = papierSousLaFente(travaux, papiers, tousSortis, dernierProgres, horloge);
+  const lotAffiche = useMemo<LotImprime | null>(() => {
+    if (!lot) return null;
+    const tickets = lot.destinations.map((d) => papiers[d]).filter((t): t is Papier => !!t);
+    return tickets.length ? { cle: lot.cle, tickets, debut: lot.debut, dureeMs: lot.dureeMs, fini: lot.fini } : null;
+  }, [lot, papiers]);
 
   return (
     // Centré (22/10/2026) : bouton, état d'impression et tickets dans une colonne au milieu.
@@ -266,7 +316,7 @@ export function ApercuReseau({
             }
             sortis={sortis}
             total={travaux.length}
-            ticket={papier}
+            lot={lotAffiche}
           />
           {/* Une barre qui ne s'arrête jamais : entre deux étapes réelles, elle
               avance doucement vers la suivante sans jamais la dépasser. */}
@@ -366,7 +416,20 @@ export function ApercuReseau({
   );
 }
 
-type TicketEncode = { destination: Destination; png: string };
+type TicketEncode = { destination: Destination; png: string; hauteur: number };
+type Papier = { image: string; hauteur: number };
+type LotSuivi = {
+  cle: string;
+  ids: number[];
+  destinations: string[];
+  lignes: number;
+  debut: number;
+  dureeMs: number;
+  fini: boolean;
+};
+
+/** Longueur supposée d'un ticket dont on n'a pas l'image (page rouverte pendant l'impression). */
+const LIGNES_PAR_DEFAUT = 1000;
 
 /**
  * PNG noir et blanc 1 bit, pas toDataURL (couleur 32 bits) : décodé, un long
@@ -380,7 +443,7 @@ function encoderTickets(canvases: HTMLCanvasElement[]): Promise<TicketEncode[]> 
       if (!ctx) throw new Error('Ticket illisible : rechargez la page.');
       const points = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
       const png = await pngMonochrome(points, canvas.width, canvas.height, zlibNavigateur);
-      return { destination: DESTINATIONS[index] as Destination, png: enBase64(png) };
+      return { destination: DESTINATIONS[index] as Destination, png: enBase64(png), hauteur: canvas.height };
     }),
   );
 }
@@ -399,32 +462,6 @@ function progression(travaux: Travail[], dernierProgres: number, maintenant: num
   const ecoule = dernierProgres > 0 && maintenant > dernierProgres ? maintenant - dernierProgres : 0;
   const glisse = 0.85 * (1 - Math.exp(-ecoule / 3000));
   return Math.max(0.04, (faites + glisse) / etapes);
-}
-
-/**
- * Le ticket qui dépasse de la fente. Celui que l'imprimante a pris sort en
- * s'animant ; pris à plusieurs (envoi groupé), ils sortent l'un après l'autre
- * au rythme de l'animation. Entre deux, le dernier sorti reste posé ; à la
- * fin, c'est le ticket client qui reste visible.
- */
-function papierSousLaFente(
-  travaux: Travail[],
-  papiers: Partial<Record<string, string>>,
-  tousSortis: boolean,
-  dernierProgres: number,
-  maintenant: number,
-): { cle: string; image: string; sort: boolean } | null {
-  const montrer = (t: Travail | undefined, sort: boolean) => {
-    const image = t ? papiers[t.destination] : undefined;
-    return t && image ? { cle: `${t.destination}-${sort ? 'sort' : 'pose'}`, image, sort } : null;
-  };
-  if (tousSortis) return montrer(travaux.find((t) => t.destination === 'CLIENT') ?? travaux[0], false);
-  const remis = travaux.filter((t) => t.statut === 'remis');
-  if (remis.length) {
-    const ecoule = dernierProgres > 0 && maintenant > dernierProgres ? maintenant - dernierProgres : 0;
-    return montrer(remis[Math.min(remis.length - 1, Math.floor(ecoule / SORTIE_TICKET_MS))], true);
-  }
-  return montrer([...travaux].reverse().find((t) => t.statut === 'imprime'), false);
 }
 
 /** Les 4 exemplaires « en file », affichés sans attendre le premier tour de suivi. */
