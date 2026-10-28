@@ -432,3 +432,28 @@ l'avez pas confirmé ici.
     « 2-5 » et « 25 » comptent tous 2 (15 parts chacun).
     *(en attendant, l'application fait : espaces, tirets, points, virgules et barres ne
     comptent pas ; « + » compte comme un symbole.)*
+
+84. **« Retrait en retard » : à partir de quand ?** Aujourd'hui, une commande est en retard
+    le lendemain de son jour de retrait. Faut-il la marquer en retard dès le jour même, une
+    fois l'heure de retrait passée ?
+
+85. **« Mettre en vente » une commande non retirée : comment ?** (demande du propriétaire,
+    28/10/2026, pour que les retards ne s'accumulent pas)
+    - Qui peut le faire : tout vendeur, ou le manager seulement ?
+    - Quand : seulement en fin de journée (après la fermeture), ou à tout moment pour une
+      commande en retard ?
+    - Ensuite : la commande sort de la liste et garde la trace « mise en vente le … par … » ?
+
+86. **L'acompte d'une commande mise en vente** : il est gardé par le magasin ? Et si le client
+    revient après la mise en vente, que lui dit-on ?
+
+87. **Bavarois goût Fraisier en 10 parts** : le comptoir ne fait le Fraisier qu'en 4P, 6P et
+    8P. Un Bavarois commandé en 10 parts au goût Fraisier se fait-il, et à quel prix ?
+    *(en attendant, l'application fait : il se vend comme le Bavarois 10P du comptoir, à son
+    prix, et s'écrit « Fraisier 10P » à l'écran et sur le bon. Les autres goûts du comptoir
+    (framboise, mangue, passion, Matadi, mousse chocolat) en 10 parts : Bavarois 10P avec le
+    goût sur le bon.)*
+
+88. **Bavarois goût Matadi chocolat en 4 parts** : le Matadi commence à 6P (votre décision du
+    26/10). *(en attendant, l'application fait : refus avec deux boutons, « Passer en Matadi
+    chocolat 6P » ou « Prendre Mousse chocolat 4P », comme au comptoir.)*

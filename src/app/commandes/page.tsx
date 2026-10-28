@@ -39,6 +39,8 @@ function EcranCommandes() {
   // « /commandes?q=2026-0016 » (depuis l'accueil vendeur) : liste déjà filtrée sur la commande.
   const [recherche, setRecherche] = useState(parametres.get('q') ?? '');
   const [nouveauNom, setNouveauNom] = useState('');
+  // Filtre sous la recherche (propriétaire, 28/10/2026) : un groupe à la fois, ou tout.
+  const [filtre, setFiltre] = useState<CleGroupe | null>(null);
   const aujourdhui = dateDuJour();
 
   const charger = useCallback(async () => {
@@ -209,6 +211,21 @@ function EcranCommandes() {
           placeholder="Chercher un nom, un téléphone, un numéro…"
           className="min-h-11 w-full rounded-lg border border-line-fort bg-surface px-3 text-sm text-ink placeholder:text-ink-3"
         />
+        {commandes && commandes.length > 0 ? (
+          <div role="group" aria-label="Filtrer les commandes" className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+            <Filtre actif={filtre === null} onClick={() => setFiltre(null)} libelle="Toutes" />
+            {GROUPES.map((g) => (
+              <Filtre
+                key={g.cle}
+                actif={filtre === g.cle}
+                onClick={() => setFiltre(filtre === g.cle ? null : g.cle)}
+                libelle={g.titre}
+                nombre={groupes[g.cle].length}
+                ton={g.ton}
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
 
       {commandes === null ? (
@@ -226,14 +243,77 @@ function EcranCommandes() {
         </Carte>
       ) : (
         <div className="grid gap-6">
-          <Groupe titre="À imprimer" ton="accent" commandes={groupes.aImprimer} vendeur={vendeur} onChange={charger} />
-          <Groupe titre="Virements à vérifier" ton="attention" commandes={groupes.virements} vendeur={vendeur} onChange={charger} />
-          <Groupe titre="Retraits en retard" ton="alerte" commandes={groupes.enRetard} vendeur={vendeur} onChange={charger} />
-          <Groupe titre="Retraits d’aujourd’hui" commandes={groupes.duJour} vendeur={vendeur} onChange={charger} />
-          <Groupe titre="À venir" commandes={groupes.aVenir} vendeur={vendeur} onChange={charger} />
+          {GROUPES.filter((g) => filtre === null || filtre === g.cle).map((g) => (
+            <Groupe key={g.cle} titre={g.titre} ton={g.ton} commandes={groupes[g.cle]} vendeur={vendeur} onChange={charger} />
+          ))}
+          {filtre !== null && groupes[filtre].length === 0 ? (
+            <p className="text-sm text-ink-2">
+              Aucune commande ici.{' '}
+              <button type="button" onClick={() => setFiltre(null)} className="underline underline-offset-2">
+                Voir toutes les commandes
+              </button>
+            </p>
+          ) : null}
         </div>
       )}
     </>
+  );
+}
+
+/* ------------------------------------------------------------- Les groupes */
+
+type CleGroupe = 'aImprimer' | 'virements' | 'enRetard' | 'duJour' | 'aVenir';
+
+/** Ordre d'affichage des groupes, et des filtres sous la recherche. */
+const GROUPES: readonly { cle: CleGroupe; titre: string; ton?: 'accent' | 'attention' | 'alerte' }[] = [
+  { cle: 'aImprimer', titre: 'À imprimer', ton: 'accent' },
+  { cle: 'virements', titre: 'Virements à vérifier', ton: 'attention' },
+  { cle: 'enRetard', titre: 'Retraits en retard', ton: 'alerte' },
+  { cle: 'duJour', titre: 'Retraits d’aujourd’hui' },
+  { cle: 'aVenir', titre: 'À venir' },
+];
+
+const BULLE: Record<'accent' | 'attention' | 'alerte' | 'neutre', string> = {
+  accent: 'bg-accent text-white',
+  attention: 'bg-attention text-white',
+  alerte: 'bg-alerte text-white',
+  neutre: 'bg-surface-2 text-ink-2',
+};
+
+/** Un filtre en pastille ; la bulle porte le nombre (colorée seulement s'il y a quelque chose). */
+function Filtre({
+  libelle,
+  nombre,
+  ton,
+  actif,
+  onClick,
+}: {
+  libelle: string;
+  nombre?: number;
+  ton?: 'accent' | 'attention' | 'alerte';
+  actif: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={actif}
+      onClick={onClick}
+      className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-medium ${
+        actif ? 'border-ink bg-ink text-surface' : 'border-line-fort bg-surface text-ink'
+      }`}
+    >
+      {libelle}
+      {nombre !== undefined ? (
+        <span
+          className={`chiffres min-w-5 rounded-full px-1.5 text-center text-xs leading-5 ${
+            nombre > 0 ? BULLE[ton ?? 'neutre'] : 'bg-surface-2 text-ink-3'
+          }`}
+        >
+          {nombre}
+        </span>
+      ) : null}
+    </button>
   );
 }
 
