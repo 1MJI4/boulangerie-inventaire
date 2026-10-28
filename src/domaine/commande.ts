@@ -35,7 +35,7 @@ import { controlerSupplementEcriture, controlerSupplements, gateauxDeLigne } fro
 import { symbolesDuTexte, validerQuantiteMin, validerMaximum, validerTailleGateau } from './minimums.ts';
 import { GOUT_AU_CHOIX, validerGouts, type ChoixGout } from './gouts.ts';
 import { deverrouillageValide, prixLigne } from './regimes.ts';
-import { gateauSurCommandeDe, validerPrixComptoir } from './prixComptoir.ts';
+import { gateauSurCommandeDe, validerComptoirSelonGout, validerPrixComptoir } from './prixComptoir.ts';
 import type { CorrespondanceComptoir } from './prixComptoir.ts';
 import { validerQuantite } from './unites.ts';
 import {
@@ -357,8 +357,16 @@ function controlerLigneSansPrefixe(
   signalements.push(...taille.signalements);
 
   // R60 : taille qui existe au comptoir → la ligne doit être le gâteau du comptoir.
-  const comptoir = validerPrixComptoir(fiche, saisie.quantite, ctx.correspondancesComptoir);
+  // Le goût choisit le produit du comptoir (28/10/2026) : Bavarois goût
+  // Framboise en 6 parts = « Bavarois framboise 6P ».
+  const comptoir = validerPrixComptoir(fiche, saisie.quantite, ctx.correspondancesComptoir, saisie.gouts);
   if (!comptoir.ok) return comptoir;
+  if (saisie.origineSurCommande) {
+    const o = ctx.resoudre(saisie.origineSurCommande, datePrise);
+    const libelleOrigine = o.ok ? o.donnees.produit.produit : fiche.produit.produit;
+    const auGout = validerComptoirSelonGout(fiche.produit.id, saisie.origineSurCommande, saisie.gouts, ctx.correspondancesComptoir, libelleOrigine);
+    if (!auGout.ok) return auGout;
+  }
 
   // R62 : goût du gâteau sur commande (un par étage), après la taille. Une
   // ligne devenue gâteau du comptoir (R60) garde le goût du gâteau commandé.

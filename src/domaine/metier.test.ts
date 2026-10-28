@@ -907,10 +907,17 @@ test('R62 + R60 : Bavarois commandé en 6 parts devenu le 6P du comptoir → son
   assert.equal(sansGout.ok, false);
   if (!sansGout.ok) assert.equal(sansGout.code, 'ERR_GOUT_MANQUANT');
   const avecGout = controlerLigne(
-    { produitId: ID.bavarois6pComptoir, quantite: 1, origineSurCommande: ID.bavaroisC, gouts: ['Framboise'] },
+    { produitId: ID.bavarois6pComptoir, quantite: 1, origineSurCommande: ID.bavaroisC, gouts: ['Vanille'] },
     0, PRISE, ctxGouts,
   );
   assert.equal(avecGout.ok, true);
+  // Goût Framboise : le comptoir a son Bavarois framboise 6P → c'est lui (28/10/2026).
+  const framboise = controlerLigne(
+    { produitId: ID.bavarois6pComptoir, quantite: 1, origineSurCommande: ID.bavaroisC, gouts: ['Framboise'] },
+    0, PRISE, ctxGouts,
+  );
+  assert.equal(framboise.ok, false);
+  if (!framboise.ok) assert.equal(framboise.valeurProposee, 'gateaux-et-tartes/bavarois-framboise/6p');
   // Origine qui ne correspond pas au produit du comptoir : ignorée (achat au rayon).
   const fausse = controlerLigne({ produitId: ID.bavarois6pComptoir, quantite: 1, origineSurCommande: ID.layer }, 0, PRISE, ctxGouts);
   assert.equal(fausse.ok, true);

@@ -85,7 +85,8 @@ function fiche(id: string, date = PRISE): FicheTarifee {
 }
 const prixDe = (id: string) => fiche(id).prix.prixCentimes;
 
-const G = ['Framboise'];
+// Goût sans Bavarois du comptoir à son nom (Framboise choisirait « Bavarois framboise NP », 28/10/2026).
+const G = ['Vanille'];
 const ligne = (produitId: string, quantite: number, extra: Partial<LigneSaisie> = {}): LigneSaisie => ({
   produitId,
   quantite,

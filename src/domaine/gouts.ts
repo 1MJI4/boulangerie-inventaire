@@ -20,10 +20,10 @@ import type { FicheTarifee } from './types.ts';
  *  - `entremet` : UNE recette d'entremet (Saint-Michel, Javanais…) ;
  *  - `parEtage` : un goût PAR ÉTAGE (pièces montées : des gâteaux posés l'un
  *    sur l'autre), le nombre d'étages venant du tarif ;
- *  - `goutsProposes` : goûts propres à ce gâteau, à la place de la liste du
- *    gérant (Bavarois : mousse chocolat ou Matadi chocolat, 28/10/2026).
+ *  - `goutsEnTete` : goûts que le magasin fait DÉJÀ pour ce gâteau, montrés en
+ *    premier ; la liste du manager suit (Bavarois, propriétaire 28/10/2026).
  */
-export type ChoixGout = { liste: 'parfum' | 'entremet'; parEtage: boolean; goutsProposes?: readonly string[] };
+export type ChoixGout = { liste: 'parfum' | 'entremet'; parEtage: boolean; goutsEnTete?: readonly string[] };
 
 /** Sortie en un geste quand le client hésite : la vente n'est jamais perdue. */
 export const GOUT_AU_CHOIX = 'Au choix du pâtissier';
@@ -63,4 +63,21 @@ export function validerGouts(
     },
     { champ: 'gouts', valeurProposee: GOUT_AU_CHOIX },
   );
+}
+
+/**
+ * Ordre des goûts proposés : ceux du gâteau d'abord (`goutsEnTete`, dans leur
+ * ordre), puis la liste du manager sans doublon (comparaison sans casse ni
+ * espaces en trop). Le libellé affiché est celui de la donnée, à la lettre (LOI 5).
+ */
+export function ordonnerGouts(enTete: readonly string[] | undefined, liste: readonly string[]): string[] {
+  const cle = (g: string) => g.trim().toLocaleLowerCase('fr');
+  const vus = new Set<string>();
+  const sortie: string[] = [];
+  for (const g of [...(enTete ?? []), ...liste]) {
+    if (!g.trim() || vus.has(cle(g))) continue;
+    vus.add(cle(g));
+    sortie.push(g);
+  }
+  return sortie;
 }

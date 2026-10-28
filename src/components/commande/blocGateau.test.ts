@@ -151,7 +151,9 @@ test('total affiché = somme des lignes : Bavarois 6P + photo + écriture, prix 
 test('dernier gâteau retiré : précisions neutralisées à l’enregistrement, suppléments refusés par le domaine (pas retirés en silence)', () => {
   const p = { texteGateau: 'BRAVO', sansEcriture: false, photoWhatsapp: true, photoImprimee: true };
   assert.deepEqual(precisionsAEnregistrer(p, 1), p);
-  assert.deepEqual(precisionsAEnregistrer(p, 0), { texteGateau: '', sansEcriture: false, photoWhatsapp: false, photoImprimee: false });
+  assert.deepEqual(precisionsAEnregistrer(p, 0), { texteGateau: '', sansEcriture: false, photoWhatsapp: true, photoImprimee: false });
+  // Photo WhatsApp : gardée sans gâteau (commande salée, propriétaire 28/10/2026).
+  assert.equal(precisionsAEnregistrer({ ...p, photoWhatsapp: false }, 0).photoWhatsapp, false);
   assert.equal(precisionsAEnregistrer({ ...p, sansEcriture: true }, 1).texteGateau, '', '« pas d’écriture » l’emporte');
 
   let lignes = [bavarois6()];

@@ -83,8 +83,9 @@ import {
   TAILLES_INTERDITES,
 } from '@/domaine/constantes';
 import { CORRESPONDANCES_COMPTOIR } from '@/catalogue/correspondancesComptoir';
+import { LIBELLES_SELON_GOUT } from '@/catalogue/libellesSelonGout';
 import { GOUTS_SUR_COMMANDE } from '@/catalogue/goutsSurCommande';
-import { GOUT_AU_CHOIX, goutsAttendus, type ChoixGout } from '@/domaine/gouts';
+import { GOUT_AU_CHOIX, goutsAttendus, ordonnerGouts, type ChoixGout } from '@/domaine/gouts';
 import { gateauSurCommandeDe } from '@/domaine/prixComptoir';
 import type { Echec, Resultat } from '@/domaine/resultat';
 import type { Deverrouillage, FicheTarifee, Forme, SortieRemplacement } from '@/domaine/types';
@@ -94,6 +95,8 @@ import {
   echecReseau,
   ficheComptoirPourTaille,
   gateauDeLaLigne,
+  libelleLigneEcran,
+  suivreGout,
   tailleChoisie,
   estLigneAncienTarif,
   ficheDe,
@@ -347,7 +350,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   const iBlocGateau = indexBlocGateau(lignes, catalogue, famillesGateau);
   const ficheBlocGateau = iBlocGateau === null ? null : ficheDe(catalogue, lignes[iBlocGateau]?.produitId ?? null);
   const photoImprimee = photoHeritee || aSupplement(lignes, SUPPLEMENT_PHOTO);
-  // Sans gâteau, aucune précision « gâteau » ne part en base (bloc absent).
+  // Sans gâteau, aucune précision « gâteau » ne part en base (bloc absent),
+  // sauf la photo WhatsApp (case alors dans les Remarques).
   const precisionsGateau = precisionsAEnregistrer({ texteGateau, sansEcriture, photoWhatsapp, photoImprimee }, nbGateaux);
 
   const etat: EtatFormulaire = {
@@ -462,8 +466,16 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   }, [lignes, texteGateau, sansEcriture, catalogue, famillesGateau, setLignes]);
 
   // --- Actions -----------------------------------------------------------------
+  // Un goût changé APRÈS la taille : la ligne passe au gâteau du comptoir de ce
+  // goût (Bavarois framboise 6P), ou revient au Bavarois 6P (28/10/2026).
   const majLigne = (i: number, partiel: Partial<LigneEcran>) =>
-    setLignes((ls) => ls.map((l, j) => (j === i ? majLigneEcran(l, partiel) : l)));
+    setLignes((ls) =>
+      ls.map((l, j) => {
+        if (j !== i) return l;
+        const suivante = majLigneEcran(l, partiel);
+        return 'gouts' in partiel ? suivreGout(suivante, catalogue, CORRESPONDANCES_COMPTOIR) : suivante;
+      }),
+    );
   // Le bloc « Sur le gâteau » est sous la ligne du premier gâteau : sur tablette,
   // hors de vue une fois la taille et le goût affichés (28/10/2026). Tous les
   // goûts choisis : l'écriture est l'étape suivante, on la fait venir.
@@ -473,7 +485,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   const retirerLigne = (i: number) => setLignes((ls) => ls.filter((_, j) => j !== i));
   /** R63 / R65 : la ligne devient le produit proposé par le domaine (un geste). */
   const remplacer = (i: number, r: SortieRemplacement) =>
-    setLignes((ls) => ls.map((l, j) => (j === i ? appliquerRemplacement(l, r, GOUTS_SUR_COMMANDE) : l)));
+    setLignes((ls) => ls.map((l, j) => (j === i ? appliquerRemplacement(l, r, GOUTS_SUR_COMMANDE, CORRESPONDANCES_COMPTOIR) : l)));
   /** Goûts attendus sur une ligne : donnée du gâteau commandé, ou 1 pour un gâteau libre. */
   const goutsDeLaLigne = (l: LigneEcran): number => {
     if (l.produitId === null) return l.gateauLibre === true ? 1 : 0;
@@ -647,7 +659,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       }
       // R60 : la taille existe au comptoir → la ligne devient le gâteau du comptoir.
       if (s.code === 'ERR_PRIX_COMPTOIR' && ligne.quantite !== null) {
-        const parts = ligne.quantite;
+        // Ligne déjà au comptoir mais pas au bon goût : sa taille, pas sa quantité 1.
+        const parts = tailleChoisie(ligne, CORRESPONDANCES_COMPTOIR) ?? ligne.quantite;
         return setLignes((ls) => ls.map((l, j) => (j === i ? choisirTaille(l, parts, catalogue, CORRESPONDANCES_COMPTOIR) : l)));
       }
       if ((champ === 'quantite') && typeof v === 'number') return majLigne(i, { quantite: v });
@@ -1174,7 +1187,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                     ficheGateau={ficheDe(catalogue, gateauDeLaLigne(ligne))}
                     tailleCourante={tailleChoisie(ligne, CORRESPONDANCES_COMPTOIR)}
                     prixTaille={(t) =>
-                      ficheComptoirPourTaille(gateauDeLaLigne(ligne), t, catalogue, CORRESPONDANCES_COMPTOIR)?.prix.prixCentimes ?? null
+                      ficheComptoirPourTaille(gateauDeLaLigne(ligne), t, catalogue, CORRESPONDANCES_COMPTOIR, ligne.gouts)?.prix.prixCentimes ?? null
                     }
                     onTaille={(t) =>
                       setLignes((ls) => ls.map((l, j) => (j === i ? choisirTaille(l, t, catalogue, CORRESPONDANCES_COMPTOIR) : l)))
@@ -1312,6 +1325,12 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       <Case compact coche={zoneDessin} onChange={setZoneDessin}>
         <span className="text-sm text-ink-2">Zone pour dessiner sur le bon (dessin, croquis du client)</span>
       </Case>
+      {/* Commande sans gâteau (salé…) : la case du bloc « Sur le gâteau » vient ici (28/10/2026). */}
+      {sansGateau ? (
+        <Case compact coche={photoWhatsapp} onChange={setPhotoWhatsapp}>
+          <span className="text-sm text-ink-2">Photo d’exemple envoyée sur WhatsApp</span>
+        </Case>
+      ) : null}
     </>
   );
 
@@ -1773,7 +1792,7 @@ function PaveDeLigne({
   const libre = ligne.produitId === null;
   const unite = uniteDe(fiche, ligne);
   const plancher = fiche?.produit.regimePrix === 'C' && fiche.prix.prixEstPlancher === true;
-  const nom = fiche ? libelleProduit(fiche) : ligne.libelleLibre || 'Autre demande';
+  const nom = fiche ? libelleLigneEcran(ligne, fiche, LIBELLES_SELON_GOUT) : ligne.libelleLibre || 'Autre demande';
 
   if (champ === 'symboles') {
     return (
@@ -1938,9 +1957,8 @@ function BlocGouts({
   onGoutChoisi?: () => void;
 }) {
   const liste = (choix.liste === 'entremet' ? options?.entremets : options?.parfums) ?? [];
-  // Un gâteau à goûts propres (Bavarois) ne montre que les siens, sans « Autre… ».
-  const fermes = choix.goutsProposes !== undefined;
-  const noms = choix.goutsProposes ? [...choix.goutsProposes] : liste.filter((o) => o.actif !== false).map((o) => o.nom);
+  // Bavarois : les goûts que le magasin fait déjà d'abord, puis la liste du manager.
+  const noms = ordonnerGouts(choix.goutsEnTete, liste.filter((o) => o.actif !== false).map((o) => o.nom));
   const [tout, setTout] = useState(false);
   const [libre, setLibre] = useState<number | null>(null);
   const [deco, setDeco] = useState(decorations.length > 0);
@@ -1983,11 +2001,9 @@ function BlocGouts({
                   {tout ? 'Moins' : `+ ${noms.length - GOUTS_VISIBLES} autres`}
                 </button>
               ) : null}
-              {fermes ? null : (
-                <button type="button" onClick={() => setLibre(libre === etage ? null : etage)} className="min-h-11 rounded-lg px-2.5 text-sm text-ink-2 underline underline-offset-2">
-                  Autre…
-                </button>
-              )}
+              <button type="button" onClick={() => setLibre(libre === etage ? null : etage)} className="min-h-11 rounded-lg px-2.5 text-sm text-ink-2 underline underline-offset-2">
+                Autre…
+              </button>
               <button
                 type="button"
                 aria-pressed={choisi === GOUT_AU_CHOIX}
@@ -2261,7 +2277,7 @@ function LigneDuBon({
               className={CHAMP_TEXTE}
             />
           ) : (
-            <p className="break-words text-base font-semibold leading-snug text-ink">{fiche ? libelleProduit(fiche) : 'Produit absent du tarif'}</p>
+            <p className="break-words text-base font-semibold leading-snug text-ink">{fiche ? libelleLigneEcran(ligne, fiche, LIBELLES_SELON_GOUT) : 'Produit absent du tarif'}</p>
           )}
           <p className="text-xs text-ink-2">{libelleRegime(fiche, libre)}</p>
           {ligne.photoModele ? (

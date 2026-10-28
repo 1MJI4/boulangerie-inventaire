@@ -20,6 +20,8 @@ import { formaterQuantite, totalLigne } from '../domaine/unites.ts';
 import { formaterHeure, lireHeure, nomJour } from '../domaine/reglement.ts';
 import { LIBELLES_FORME } from '../domaine/messages.ts';
 import { baseDuSupplement, familleDuProduit } from '../catalogue/familles.ts';
+import { LIBELLES_SELON_GOUT } from '../catalogue/libellesSelonGout.ts';
+import { libelleSelonGout } from '../domaine/libelles.ts';
 
 export const DESTINATIONS = ['CLIENT', 'BUREAU', 'MAGASIN', 'ATELIER'] as const;
 export type Destination = (typeof DESTINATIONS)[number];
@@ -291,6 +293,9 @@ export function formaterLigneTicket(ligne: LigneCommande, destination: Destinati
   const total = totalLigne(unite, ligne.quantite, ligne.prixCentimes);
   const lecture = lectureQuantite(ligne);
   const parts = formaterQuantite('piece', ligne.quantite);
+  // Bavarois goût Fraisier → « Fraisier » (propriétaire, 28/10/2026) : le nom
+  // dit le goût, pas de « GOÛT : FRAISIER » en plus. Donnée explicite.
+  const nomSelonGout = libelleSelonGout(ligne.produitCatalogue?.cleCatalogue, ligne.gouts, LIBELLES_SELON_GOUT);
   return {
     quantite:
       lecture === 'kg'
@@ -298,7 +303,7 @@ export function formaterLigneTicket(ligne: LigneCommande, destination: Destinati
         : lecture === 'piece'
           ? `${formaterQuantite('piece', ligne.quantite)} ×`
           : '',
-    libelle: ligne.libelle,
+    libelle: nomSelonGout ?? ligne.libelle,
     complementLibelle: lecture === 'supplement-par-personne' ? `—${INSECABLE}${parts}${INSECABLE}parts` : null,
     parts: lecture === 'gateau-par-personne' ? ['1', 'gâteau', '—', parts, 'PARTS'].join(INSECABLE) : null,
     // Prix unitaire FIGÉ sur la ligne (prixCentimes), seulement formaté : le
@@ -308,7 +313,7 @@ export function formaterLigneTicket(ligne: LigneCommande, destination: Destinati
     formes: chiffresOuLettresAImprimer(ligne.formes),
     forme: collerApresDeuxPoints(formeDeLigne(ligne)),
     photoModele: collerApresDeuxPoints(photoModeleDeLigne(ligne)),
-    gouts: goutsLignesAImprimer(ligne.gouts),
+    gouts: nomSelonGout ? null : goutsLignesAImprimer(ligne.gouts),
     decorations: ligne.decorations?.length ? collerEtiquette('Déco :', ligne.decorations.join(', ')) : null,
     // Un total incalculable ne s'imprime jamais comme un montant : on préfère
     // un trou visible à un chiffre faux sur un bon remis au client.

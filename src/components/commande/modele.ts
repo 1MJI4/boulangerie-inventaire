@@ -16,7 +16,8 @@ import { gateauxDeLigneLibre, resoudreDepuisCatalogue } from '../../domaine/comm
 import { signaler } from '../../domaine/messages.ts';
 import { gateauxDeLigne } from '../../domaine/supplements.ts';
 import { estGateauSimpleSurCommande, symbolesDuTexte } from '../../domaine/minimums.ts';
-import { gateauSurCommandeDe, produitComptoirPourTaille, type CorrespondanceComptoir } from '../../domaine/prixComptoir.ts';
+import { gateauSurCommandeDe, goutDeLaLigne, produitComptoirPourTaille, type CorrespondanceComptoir } from '../../domaine/prixComptoir.ts';
+import { libelleProduitFiche, libelleSelonGout, type LibelleSelonGout } from '../../domaine/libelles.ts';
 import type { JourFerme } from '../../domaine/calendrier.ts';
 import { decalerJours, estDateISO } from '../../domaine/calendrier.ts';
 import { heureChamp, lireHeure } from '../../domaine/reglement.ts';
@@ -486,21 +487,27 @@ export function tailleChoisie(l: LigneEcran, table: readonly CorrespondanceCompt
   return l.quantite;
 }
 
-/** Fiche du gâteau du comptoir qui remplace (gâteau, parts), si elle est au catalogue reçu. */
+/**
+ * Fiche du gâteau du comptoir qui remplace (gâteau, parts, goût), si elle est
+ * au catalogue reçu. `gouts` : ceux de la ligne (Bavarois goût Framboise →
+ * « Bavarois framboise NP »).
+ */
 export function ficheComptoirPourTaille(
   produitId: string | null,
   parts: number,
   catalogue: CatalogueCommande | null,
   table: readonly CorrespondanceComptoir[],
+  gouts?: readonly string[] | null,
 ): FicheCatalogue | null {
-  const cle = produitComptoirPourTaille(produitId, parts, table);
+  const cle = produitComptoirPourTaille(produitId, parts, table, goutDeLaLigne(gouts));
   return cle && catalogue ? (catalogue.fiches.find((f) => f.produit.id === cle) ?? null) : null;
 }
 
 /**
- * Toucher d'une taille : si le gâteau du comptoir existe à cette taille, la
- * ligne DEVIENT ce produit (quantité 1, prix du catalogue, accords retirés) ;
- * sinon elle redevient le gâteau sur commande à ce nombre de parts.
+ * Toucher d'une taille : si le gâteau du comptoir existe à cette taille (et à
+ * ce goût, 28/10/2026), la ligne DEVIENT ce produit (quantité 1, prix du
+ * catalogue, accords retirés) ; sinon elle redevient le gâteau sur commande à
+ * ce nombre de parts. Goût, photo, précision, décorations : gardés.
  */
 export function choisirTaille(
   l: LigneEcran,
@@ -509,7 +516,7 @@ export function choisirTaille(
   table: readonly CorrespondanceComptoir[],
 ): LigneEcran {
   const origine = gateauDeLaLigne(l);
-  const comptoir = ficheComptoirPourTaille(origine, parts, catalogue, table);
+  const comptoir = ficheComptoirPourTaille(origine, parts, catalogue, table, l.gouts);
   if (comptoir) {
     return {
       ...l,
@@ -525,6 +532,36 @@ export function choisirTaille(
     return { ...l, produitId: origine, origineSurCommande: null, quantite: parts, prixUnitaireCentimes: null, deverrouillage: null, deverrouillageTaille: null };
   }
   return majLigneEcran(l, { quantite: parts });
+}
+
+/**
+ * Le goût choisit le gâteau du comptoir (propriétaire, 28/10/2026) : après un
+ * changement de goût, la ligne d'un gâteau à correspondances passe au bon
+ * produit pour la taille déjà choisie (« Bavarois 6P » → « Bavarois framboise
+ * 6P », retour à « Bavarois 6P » pour un autre goût). Un gâteau resté au prix
+ * par personne (15 parts…) n'est pas touché. Rien d'autre ne change (goût,
+ * photo, précision, décorations, quantité 1). Retourne la même ligne sinon.
+ */
+export function suivreGout(
+  l: LigneEcran,
+  catalogue: CatalogueCommande | null,
+  table: readonly CorrespondanceComptoir[],
+): LigneEcran {
+  const origine = gateauDeLaLigne(l);
+  if (!origine || !table.some((c) => c.surCommande === origine)) return l;
+  const parts = tailleChoisie(l, table);
+  if (parts === null) return l;
+  if (!l.origineSurCommande && !ficheComptoirPourTaille(origine, parts, catalogue, table, l.gouts)) return l;
+  const suivante = choisirTaille(l, parts, catalogue, table);
+  return suivante.produitId === l.produitId && suivante.origineSurCommande === l.origineSurCommande ? l : suivante;
+}
+
+/**
+ * Nom de la ligne à l'écran : celui du catalogue (LOI 5), sauf quand le goût
+ * change le nom (donnée LIBELLES_SELON_GOUT : Bavarois goût Fraisier → « Fraisier »).
+ */
+export function libelleLigneEcran(l: LigneEcran, fiche: FicheTarifee, table: readonly LibelleSelonGout[]): string {
+  return libelleSelonGout(l.produitId, l.gouts, table) ?? libelleProduitFiche(fiche);
 }
 
 /**
@@ -716,13 +753,15 @@ export type PrecisionsGateau = {
  * Précisions « gâteau » réellement enregistrées. Sans gâteau au bon (dernier
  * gâteau retiré), le bloc n'existe plus : rien ne part en base (texte null,
  * cases à false) — la saisie reste en mémoire sur l'écran et réapparaît si un
- * gâteau est remis au bon. Les lignes de supplément ne sont PAS retirées en
+ * gâteau est remis au bon. Sauf « Photo d'exemple envoyée sur WhatsApp » :
+ * utile aussi pour une commande salée (propriétaire, 28/10/2026), la case est
+ * alors dans les Remarques et part en base telle quelle. Les lignes de supplément ne sont PAS retirées en
  * silence : le domaine les refuse (ERR_SUPPLEMENT_SANS_GATEAU) avec le bouton
  * « Retirer la ligne », visible du vendeur.
  */
 export function precisionsAEnregistrer(p: PrecisionsGateau, nbGateaux: number): PrecisionsGateau {
   if (nbGateaux > 0) return { ...p, texteGateau: p.sansEcriture ? '' : p.texteGateau };
-  return { texteGateau: '', sansEcriture: false, photoWhatsapp: false, photoImprimee: false };
+  return { texteGateau: '', sansEcriture: false, photoWhatsapp: p.photoWhatsapp, photoImprimee: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -817,8 +856,24 @@ export function appliquerRemplacement(
   l: LigneEcran,
   r: Pick<SortieRemplacement, 'produitId' | 'quantite'>,
   gouts: Readonly<Record<string, ChoixGout>>,
+  table: readonly CorrespondanceComptoir[] = [],
 ): LigneEcran {
   const avant = gateauDeLaLigne(l);
+  // Remplaçant qui est lui-même un gâteau du comptoir du MÊME gâteau commandé
+  // (Bavarois goût Matadi chocolat 4P → « Passer en Matadi chocolat 6P ») : la
+  // ligne reste ce gâteau commandé, au goût de ce produit.
+  const meme = l.origineSurCommande ? gateauSurCommandeDe(r.produitId, table) : null;
+  if (meme && meme.surCommande === l.origineSurCommande) {
+    return {
+      ...l,
+      produitId: r.produitId,
+      quantite: r.quantite,
+      prixUnitaireCentimes: null,
+      deverrouillage: null,
+      deverrouillageTaille: null,
+      gouts: meme.gout ? [meme.gout] : [...l.gouts],
+    };
+  }
   const a = avant ? gouts[avant] : undefined;
   const b = gouts[r.produitId];
   const memeListe = !!a && !!b && a.liste === b.liste && a.parEtage === b.parEtage;

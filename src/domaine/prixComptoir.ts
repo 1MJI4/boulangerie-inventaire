@@ -25,19 +25,45 @@ export type CorrespondanceComptoir = {
   parts: number;
   /** Clé catalogue du produit du comptoir (régime A, à la pièce). */
   comptoir: string;
+  /**
+   * Goût du gâteau commandé qui choisit CE produit du comptoir (propriétaire,
+   * 28/10/2026 : Bavarois goût Framboise en 6 parts = « Bavarois framboise
+   * 6P »). Absent : l'entrée vaut pour tout autre goût (ou aucun).
+   */
+  gout?: string;
 };
 
+/** Comparaison de goûts : sans casse ni espaces en trop (« framboise » = « Framboise »). */
+function memeGout(a: string, b: string): boolean {
+  return a.trim().toLocaleLowerCase('fr') === b.trim().toLocaleLowerCase('fr');
+}
+
 /**
- * Clé du produit du comptoir qui remplace (gâteau sur commande, nb de parts),
- * ou null s'il n'y a pas d'équivalent (la ligne reste au prix par personne).
+ * Le goût qui peut choisir un produit du comptoir : le goût UNIQUE de la ligne
+ * (un gâteau à un seul étage). Aucun goût, plusieurs étages, « Autre » vide :
+ * null (l'entrée sans goût s'applique).
+ */
+export function goutDeLaLigne(gouts: readonly string[] | null | undefined): string | null {
+  const g = (gouts ?? []).map((x) => x.trim()).filter(Boolean);
+  return g.length === 1 ? g[0] : null;
+}
+
+/**
+ * Clé du produit du comptoir qui remplace (gâteau sur commande, nb de parts,
+ * goût), ou null s'il n'y a pas d'équivalent (la ligne reste au prix par
+ * personne). L'entrée AU GOÛT de la ligne d'abord (« Bavarois framboise 6P »),
+ * sinon l'entrée sans goût (« Bavarois 6P »).
  */
 export function produitComptoirPourTaille(
   produitId: string | null | undefined,
   parts: number | null | undefined,
   table: readonly CorrespondanceComptoir[],
+  gout?: string | null,
 ): string | null {
   if (!produitId || typeof parts !== 'number') return null;
-  return table.find((c) => c.surCommande === produitId && c.parts === parts)?.comptoir ?? null;
+  const taille = table.filter((c) => c.surCommande === produitId && c.parts === parts);
+  const auGout = gout ? taille.find((c) => c.gout !== undefined && memeGout(c.gout, gout)) : undefined;
+  return (auGout ?? taille.find((c) => c.gout === undefined))?.comptoir ?? null;
 }
 
 /**
@@ -48,10 +74,10 @@ export function produitComptoirPourTaille(
 export function gateauSurCommandeDe(
   cleComptoir: string | null | undefined,
   table: readonly CorrespondanceComptoir[],
-): { surCommande: string; parts: number } | null {
+): { surCommande: string; parts: number; gout: string | null } | null {
   if (!cleComptoir) return null;
   const c = table.find((x) => x.comptoir === cleComptoir);
-  return c ? { surCommande: c.surCommande, parts: c.parts } : null;
+  return c ? { surCommande: c.surCommande, parts: c.parts, gout: c.gout ?? null } : null;
 }
 
 /**
@@ -69,8 +95,40 @@ export function validerPrixComptoir(
   fiche: FicheTarifee,
   parts: number,
   table: readonly CorrespondanceComptoir[],
+  gouts?: readonly string[] | null,
 ): Resultat<number> {
-  const cle = produitComptoirPourTaille(fiche.produit.id, parts, table);
+  const cle = produitComptoirPourTaille(fiche.produit.id, parts, table, goutDeLaLigne(gouts));
   if (cle === null) return succes(parts);
   return signaler('ERR_PRIX_COMPTOIR', { produit: fiche.produit.produit, parts }, { champ: 'quantite', valeurProposee: cle });
+}
+
+/**
+ * Règle R60 au goût (propriétaire, 28/10/2026) : une ligne du COMPTOIR qui
+ * remplace un gâteau sur commande (`origineSurCommande`) doit être le produit
+ * que la table donne pour ce gâteau, cette taille et le goût de la ligne.
+ * « Bavarois 6P » goût Framboise → refusé, « Bavarois framboise 6P » proposé ;
+ * « Bavarois framboise 6P » goût Mangue → « Bavarois mangue 6P » proposé.
+ * Niveau : BLOQUANT (`ERR_PRIX_COMPTOIR`, champ `quantite`), même sortie que
+ * `validerPrixComptoir` : `valeurProposee` = la bonne clé du comptoir, ou la
+ * clé du gâteau sur commande s'il n'y en a aucune (retour au prix par personne).
+ * `libelleOrigine` : nom du gâteau commandé, pour le message.
+ * N'interdit pas : un achat au comptoir (sans origine), une ligne d'une autre
+ * origine, le bon produit au bon goût.
+ */
+export function validerComptoirSelonGout(
+  produitId: string,
+  origineSurCommande: string | null | undefined,
+  gouts: readonly string[] | null | undefined,
+  table: readonly CorrespondanceComptoir[],
+  libelleOrigine: string,
+): Resultat<string> {
+  const de = gateauSurCommandeDe(produitId, table);
+  if (!de || !origineSurCommande || origineSurCommande !== de.surCommande) return succes(produitId);
+  const attendu = produitComptoirPourTaille(de.surCommande, de.parts, table, goutDeLaLigne(gouts));
+  if (attendu === produitId) return succes(produitId);
+  return signaler(
+    'ERR_PRIX_COMPTOIR',
+    { produit: libelleOrigine, parts: de.parts },
+    { champ: 'quantite', valeurProposee: attendu ?? de.surCommande },
+  );
 }

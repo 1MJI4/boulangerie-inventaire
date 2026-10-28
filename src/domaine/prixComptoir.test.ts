@@ -129,6 +129,61 @@ test('correspondance invalide : régime ≠ A, gâteau d’origine pas en régim
   assert.ok(doublon.some((m) => /déjà associée/.test(m)));
 });
 
+test('correspondances au goût (28/10/2026) : unicité sur (gâteau, taille, goût), un produit du comptoir cité une fois', () => {
+  const framboise6 = 'gateaux-et-tartes/bavarois-framboise/6p';
+  // Même taille, goûts différents (et l'entrée sans goût) : valide.
+  assert.deepEqual(
+    controlerCorrespondancesComptoir(
+      [
+        { surCommande: ID.bavarois, parts: 6, comptoir: ID.bavarois6p },
+        { surCommande: ID.bavarois, parts: 6, gout: 'Framboise', comptoir: framboise6 },
+      ],
+      lireCatalogue,
+      TAILLES,
+    ),
+    [],
+  );
+  // Même (gâteau, taille, goût) deux fois, casse comprise : refusé.
+  const doublon = controlerCorrespondancesComptoir(
+    [
+      { surCommande: ID.bavarois, parts: 6, gout: 'Framboise', comptoir: framboise6 },
+      { surCommande: ID.bavarois, parts: 6, gout: 'framboise ', comptoir: 'gateaux-et-tartes/bavarois-mangue/6p' },
+    ],
+    lireCatalogue,
+    TAILLES,
+  );
+  assert.ok(doublon.some((m) => /à ce goût est déjà associée/.test(m)));
+  // Un même produit du comptoir pour deux goûts : refusé.
+  const deuxGouts = controlerCorrespondancesComptoir(
+    [
+      { surCommande: ID.bavarois, parts: 6, gout: 'Framboise', comptoir: framboise6 },
+      { surCommande: ID.bavarois, parts: 6, gout: 'Mangue', comptoir: framboise6 },
+    ],
+    lireCatalogue,
+    TAILLES,
+  );
+  assert.ok(deuxGouts.some((m) => /déjà associé à une autre taille ou à un autre goût/.test(m)));
+  // Goût vide : refusé (il faut retirer le champ).
+  const vide = controlerCorrespondancesComptoir([{ surCommande: ID.bavarois, parts: 6, gout: ' ', comptoir: framboise6 }], lireCatalogue, TAILLES);
+  assert.ok(vide.some((m) => /goût est vide/.test(m)));
+});
+
+test('produitComptoirPourTaille au goût : entrée au goût d’abord, sinon entrée sans goût ; gateauSurCommandeDe rend le goût', () => {
+  const t = CORRESPONDANCES_COMPTOIR;
+  assert.equal(produitComptoirPourTaille(ID.bavarois, 6, t, 'Framboise'), 'gateaux-et-tartes/bavarois-framboise/6p');
+  assert.equal(produitComptoirPourTaille(ID.bavarois, 6, t, 'matadi chocolat'), 'gateaux-et-tartes/matadi-chocolat/6p');
+  assert.equal(produitComptoirPourTaille(ID.bavarois, 6, t, 'Vanille'), ID.bavarois6p);
+  assert.equal(produitComptoirPourTaille(ID.bavarois, 6, t, null), ID.bavarois6p);
+  assert.equal(produitComptoirPourTaille(ID.bavarois, 10, t, 'Framboise'), ID.bavarois10p, 'pas de framboise 10P au comptoir');
+  assert.equal(produitComptoirPourTaille(ID.bavarois, 15, t, 'Framboise'), null);
+  assert.equal(produitComptoirPourTaille(ID.creme, 6, t, 'Framboise'), 'gateaux-et-tartes/creme-fraiche/6p');
+  // Seule une entrée au goût, pas d'entrée sans goût : autre goût → aucun équivalent.
+  const seule = [{ surCommande: ID.bavarois, parts: 6, gout: 'Framboise', comptoir: 'gateaux-et-tartes/bavarois-framboise/6p' }];
+  assert.equal(produitComptoirPourTaille(ID.bavarois, 6, seule, 'Mangue'), null);
+  assert.deepEqual(gateauSurCommandeDe('gateaux-et-tartes/fraisier/8p', t), { surCommande: ID.bavarois, parts: 8, gout: 'Fraisier' });
+  assert.deepEqual(gateauSurCommandeDe(ID.bavarois6p, t), { surCommande: ID.bavarois, parts: 6, gout: null });
+});
+
 // ------------------------------------------------------------ fonctions pures
 
 test('produitComptoirPourTaille : bavarois 6 → comptoir 6P ; crème fraîche 4 → aucun ; crème fraîche 8 → 8P', () => {
@@ -141,7 +196,7 @@ test('produitComptoirPourTaille : bavarois 6 → comptoir 6P ; crème fraîche 4
   assert.equal(produitComptoirPourTaille(null, 6, t), null);
   assert.equal(produitComptoirPourTaille(ID.bavarois, null, t), null);
   assert.equal(produitComptoirPourTaille(ID.bavarois, 6, []), null, 'table vide : règle sans objet');
-  assert.deepEqual(gateauSurCommandeDe(ID.creme8p, t), { surCommande: ID.creme, parts: 8 });
+  assert.deepEqual(gateauSurCommandeDe(ID.creme8p, t), { surCommande: ID.creme, parts: 8, gout: null });
   assert.equal(gateauSurCommandeDe(ID.photo, t), null);
 });
 
