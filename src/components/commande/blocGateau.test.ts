@@ -20,6 +20,7 @@ import {
   choisirTaille,
   ficheDe,
   gateauxAuBon,
+  indexBlocGateau,
   indexPremierGateau,
   ligneVide,
   precisionsAEnregistrer,
@@ -81,6 +82,17 @@ test('bloc « Gâteau » : sous le premier gâteau (y compris le Bavarois 6P du 
   assert.equal(indexPremierGateau([bavarois6(), burgers(), bavarois6()], catalogue, F), 0);
   // Un supplément n'est pas un gâteau.
   assert.equal(indexPremierGateau([{ ...ligneVide(SUPPLEMENT_PHOTO), quantite: 1 }], catalogue, F), null);
+});
+
+test('bloc « Sur le gâteau » sous le gâteau choisi sur photo, même avec un autre gâteau avant (28/10/2026)', () => {
+  const avecPhoto = { ...bavarois6(), photoModele: 'G106' };
+  // Le cas du bug : un autre gâteau au-dessus prenait l'écriture.
+  assert.equal(indexBlocGateau([burgers(), bavarois6(), avecPhoto], catalogue, F), 2);
+  // Sans photo : le premier gâteau, comme avant.
+  assert.equal(indexBlocGateau([burgers(), bavarois6(), bavarois6()], catalogue, F), 1);
+  // Une photo posée sur autre chose qu'un gâteau ne déplace rien.
+  assert.equal(indexBlocGateau([bavarois6(), { ...burgers(), photoModele: 'G200' }], catalogue, F), 0);
+  assert.equal(indexBlocGateau([burgers()], catalogue, F), null);
 });
 
 test('photo à imprimer : cocher ajoute le supplément Photo une fois, décocher le retire', () => {

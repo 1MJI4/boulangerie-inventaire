@@ -116,7 +116,8 @@ import {
   remplacementsProposes,
   synchroniserSupplementsParPersonne,
   SUPPLEMENT_PATE_A_SUCRE,
-  indexPremierGateau,
+  estLigneGateau,
+  indexBlocGateau,
   precisionsAEnregistrer,
   saisirEcriture,
   SUPPLEMENT_ECRITURE,
@@ -329,7 +330,9 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   const famillesGateau = cal?.reglement.famillesGateau ?? FAMILLES_GATEAU;
   const nbGateaux = cal ? gateauxAuBon(lignes, catalogue, famillesGateau) : 0;
   const sansGateau = nbGateaux === 0;
-  const iPremierGateau = indexPremierGateau(lignes, catalogue, famillesGateau);
+  // Sous le gâteau choisi sur photo, sinon sous le premier gâteau (28/10/2026).
+  const iBlocGateau = indexBlocGateau(lignes, catalogue, famillesGateau);
+  const ficheBlocGateau = iBlocGateau === null ? null : ficheDe(catalogue, lignes[iBlocGateau]?.produitId ?? null);
   const photoImprimee = photoHeritee || aSupplement(lignes, SUPPLEMENT_PHOTO);
   // Sans gâteau, aucune précision « gâteau » ne part en base (bloc absent).
   const precisionsGateau = precisionsAEnregistrer({ texteGateau, sansEcriture, photoWhatsapp, photoImprimee }, nbGateaux);
@@ -438,6 +441,12 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   // --- Actions -----------------------------------------------------------------
   const majLigne = (i: number, partiel: Partial<LigneEcran>) =>
     setLignes((ls) => ls.map((l, j) => (j === i ? majLigneEcran(l, partiel) : l)));
+  // Le bloc « Sur le gâteau » est sous la ligne du premier gâteau : sur tablette,
+  // hors de vue une fois la taille et le goût affichés (28/10/2026). Tous les
+  // goûts choisis : l'écriture est l'étape suivante, on la fait venir.
+  const zoneGateau = useRef<HTMLDivElement>(null);
+  const montrerEcriture = () =>
+    requestAnimationFrame(() => zoneGateau.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   const retirerLigne = (i: number) => setLignes((ls) => ls.filter((_, j) => j !== i));
   /** R63 / R65 : la ligne devient le produit proposé par le domaine (un geste). */
   const remplacer = (i: number, r: SortieRemplacement) =>
@@ -1008,6 +1017,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   const ficheSucre = ficheDe(catalogue, SUPPLEMENT_PATE_A_SUCRE);
   const blocGateau = (
     <div
+      ref={zoneGateau}
+      style={{ scrollMarginTop: 8 }}
       role="group"
       aria-label="Sur le gâteau"
       className="mt-2 rounded-lg border-l-4 border-accent bg-surface-2 px-2.5 pb-1.5 pt-2"
@@ -1144,6 +1155,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                     options={options}
                     tailles={cal.reglement.taillesGateau}
                     onChange={(p) => majLigne(i, p)}
+                    // Taille ET goût donnés : l'écriture est l'étape suivante (jamais avant la taille).
+                    onGoutChoisi={i === iBlocGateau && ligne.quantite !== null ? montrerEcriture : undefined}
                     onRetirer={() => retirerLigne(i)}
                     onGerantLibre={() =>
                       avecGerant(`Prix d’une demande hors catalogue : « ${ligne.libelleLibre || 'ligne libre'} ».`, (d) =>
@@ -1154,7 +1167,18 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                     onRetirerPhoto={() => setLignes((ls) => retirerPhoto(ls, ligne.cle))}
                   />
                   {rendre(signaux, unite, `ligne-${ligne.cle}`)}
-                  {i === iPremierGateau ? blocGateau : null}
+                  {i === iBlocGateau ? (
+                    blocGateau
+                  ) : ficheBlocGateau && estLigneGateau(ligne, catalogue, famillesGateau) ? (
+                    // Un seul bloc pour la commande : les autres gâteaux y mènent d'un geste.
+                    <button
+                      type="button"
+                      onClick={montrerEcriture}
+                      className="mt-1 min-h-10 text-left text-sm text-ink-2 underline underline-offset-2"
+                    >
+                      Écriture et photo : sous « {libelleProduit(ficheBlocGateau)} » {iBlocGateau !== null && iBlocGateau < i ? '↑' : '↓'}
+                    </button>
+                  ) : null}
                 </li>
               );
             })}
@@ -1895,6 +1919,7 @@ function BlocGouts({
   options,
   onGouts,
   onDecorations,
+  onGoutChoisi,
 }: {
   choix: ChoixGout;
   attendus: number;
@@ -1903,6 +1928,8 @@ function BlocGouts({
   options: OptionsGateau | null;
   onGouts: (gouts: string[]) => void;
   onDecorations: (decorations: string[]) => void;
+  /** Tous les goûts choisis d'un toucher (pas pendant la frappe d'« Autre… »). */
+  onGoutChoisi?: () => void;
 }) {
   const liste = (choix.liste === 'entremet' ? options?.entremets : options?.parfums) ?? [];
   // Un gâteau à goûts propres (Bavarois) ne montre que les siens, sans « Autre… ».
@@ -1917,6 +1944,7 @@ function BlocGouts({
     const suivants = Array.from({ length: attendus }, (_, k) => gouts[k] ?? '');
     suivants[etage] = suivants[etage] === nom ? '' : nom;
     onGouts(suivants);
+    if (suivants[etage] && suivants.every(Boolean)) onGoutChoisi?.();
   };
   const titre = (etage: number) =>
     attendus > 1 ? `Goût de l’étage ${etage + 1}` : choix.liste === 'entremet' ? 'Quel entremet ?' : 'Goût ?';
@@ -2141,6 +2169,7 @@ function LigneDuBon({
   onGerantLibre,
   onAutreForme,
   onRetirerPhoto,
+  onGoutChoisi,
 }: {
   ligne: LigneEcran;
   fiche: FicheTarifee | null;
@@ -2167,6 +2196,8 @@ function LigneDuBon({
   onAutreForme: () => void;
   /** Retire la photo de modèle de la ligne (la ligne reste). */
   onRetirerPhoto: () => void;
+  /** Goût choisi (tous les étages) : l'écran peut montrer l'étape suivante. */
+  onGoutChoisi?: () => void;
 }) {
   const id = (champ: string) => `${ligne.cle}.${champ}`;
   const basculer = (champ: string) => setActif(actif === id(champ) ? null : id(champ));
@@ -2387,6 +2418,7 @@ function LigneDuBon({
           decorations={ligne.decorations}
           options={options}
           onGouts={(gouts) => onChange({ gouts })}
+          onGoutChoisi={onGoutChoisi}
           onDecorations={(decorations) => onChange({ decorations })}
         />
       ) : null}
@@ -2416,7 +2448,7 @@ function LigneDuBon({
         aria-expanded={detail}
         className="mt-1 min-h-10 max-w-full break-words text-left text-sm text-ink-2 underline underline-offset-2"
       >
-        {ligne.precision ? `Précision : ${ligne.precision}` : regime === 'B' ? 'Garnitures, précision…' : goutAPart ? 'Précision (peu sucré, sans gluten…)' : 'Parfum, précision…'}
+        {ligne.precision ? `Précision : ${ligne.precision}` : regime === 'B' ? 'Garnitures, précision…' : goutAPart ? 'Précision…' : 'Parfum, précision…'}
       </button>
 
       {detail ? (

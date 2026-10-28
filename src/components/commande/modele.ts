@@ -565,6 +565,27 @@ export function indexPremierGateau(
   return i < 0 ? null : i;
 }
 
+/** true si la ligne apporte au moins un gâteau au bon (domaine : `gateauxDeLigne`). */
+export function estLigneGateau(l: LigneEcran, catalogue: CatalogueCommande | null, famillesGateau: readonly string[]): boolean {
+  return gateauxDeLigneEcran(l, catalogue, famillesGateau) > 0;
+}
+
+/**
+ * Ligne sous laquelle s'affiche le bloc « Sur le gâteau » (écriture, photos).
+ * Le gâteau choisi sur PHOTO d'abord : c'est sur lui que le client montre ce
+ * qu'il veut, et un Cake nature ajouté avant ne doit pas lui voler l'écriture
+ * (bug du 28/10/2026 : bloc invisible sous la photo G106). Sinon le premier
+ * gâteau. null : aucun gâteau au bon.
+ */
+export function indexBlocGateau(
+  lignes: readonly LigneEcran[],
+  catalogue: CatalogueCommande | null,
+  famillesGateau: readonly string[],
+): number | null {
+  const i = lignes.findIndex((l) => l.photoModele && gateauxDeLigneEcran(l, catalogue, famillesGateau) > 0);
+  return i < 0 ? indexPremierGateau(lignes, catalogue, famillesGateau) : i;
+}
+
 /** true si le bon porte une ligne de ce supplément. */
 export function aSupplement(lignes: readonly LigneEcran[], produitId: string): boolean {
   return lignes.some((l) => l.produitId === produitId);
