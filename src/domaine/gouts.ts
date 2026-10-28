@@ -19,9 +19,11 @@ import type { FicheTarifee } from './types.ts';
  *    mélange de la liste (« Chocolat caramel ») ;
  *  - `entremet` : UNE recette d'entremet (Saint-Michel, Javanais…) ;
  *  - `parEtage` : un goût PAR ÉTAGE (pièces montées : des gâteaux posés l'un
- *    sur l'autre), le nombre d'étages venant du tarif.
+ *    sur l'autre), le nombre d'étages venant du tarif ;
+ *  - `goutsProposes` : goûts propres à ce gâteau, à la place de la liste du
+ *    gérant (Bavarois : mousse chocolat ou Matadi chocolat, 28/10/2026).
  */
-export type ChoixGout = { liste: 'parfum' | 'entremet'; parEtage: boolean };
+export type ChoixGout = { liste: 'parfum' | 'entremet'; parEtage: boolean; goutsProposes?: readonly string[] };
 
 /** Sortie en un geste quand le client hésite : la vente n'est jamais perdue. */
 export const GOUT_AU_CHOIX = 'Au choix du pâtissier';

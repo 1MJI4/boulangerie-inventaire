@@ -1905,7 +1905,9 @@ function BlocGouts({
   onDecorations: (decorations: string[]) => void;
 }) {
   const liste = (choix.liste === 'entremet' ? options?.entremets : options?.parfums) ?? [];
-  const noms = liste.filter((o) => o.actif !== false).map((o) => o.nom);
+  // Un gâteau à goûts propres (Bavarois) ne montre que les siens, sans « Autre… ».
+  const fermes = choix.goutsProposes !== undefined;
+  const noms = choix.goutsProposes ? [...choix.goutsProposes] : liste.filter((o) => o.actif !== false).map((o) => o.nom);
   const [tout, setTout] = useState(false);
   const [libre, setLibre] = useState<number | null>(null);
   const [deco, setDeco] = useState(decorations.length > 0);
@@ -1947,9 +1949,11 @@ function BlocGouts({
                   {tout ? 'Moins' : `+ ${noms.length - GOUTS_VISIBLES} autres`}
                 </button>
               ) : null}
-              <button type="button" onClick={() => setLibre(libre === etage ? null : etage)} className="min-h-11 rounded-lg px-2.5 text-sm text-ink-2 underline underline-offset-2">
-                Autre…
-              </button>
+              {fermes ? null : (
+                <button type="button" onClick={() => setLibre(libre === etage ? null : etage)} className="min-h-11 rounded-lg px-2.5 text-sm text-ink-2 underline underline-offset-2">
+                  Autre…
+                </button>
+              )}
               <button
                 type="button"
                 aria-pressed={choisi === GOUT_AU_CHOIX}

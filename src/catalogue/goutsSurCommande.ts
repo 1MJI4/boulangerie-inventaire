@@ -13,7 +13,8 @@ import type { ChoixGout } from '../domaine/gouts.ts';
 export const GOUTS_SUR_COMMANDE: Readonly<Record<string, ChoixGout>> = {
   'gateaux-sur-commande/cake-nature': { liste: 'parfum', parEtage: false },
   'gateaux-sur-commande/creme-fraiche': { liste: 'parfum', parEtage: false },
-  'gateaux-sur-commande/bavarois': { liste: 'parfum', parEtage: false },
+  // Bavarois : deux goûts seulement (propriétaire, 28/10/2026).
+  'gateaux-sur-commande/bavarois': { liste: 'parfum', parEtage: false, goutsProposes: ['Mousse chocolat', 'Matadi chocolat'] },
   'gateaux-sur-commande/layer-cake': { liste: 'parfum', parEtage: false },
   'gateaux-sur-commande/number-cake': { liste: 'parfum', parEtage: false },
   'gateaux-sur-commande/gateau-de-mariage': { liste: 'parfum', parEtage: true },
