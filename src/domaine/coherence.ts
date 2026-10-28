@@ -281,3 +281,19 @@ export function validerModification(
   }
   return succes(existante);
 }
+
+// ---------------------------------------------------------------------------
+// Photo de modèle en attente (audit du 28/10/2026)
+// ---------------------------------------------------------------------------
+
+/**
+ * Une photo de la galerie sans produit unique (bûche, tarte, mini-pâtisserie)
+ * attend le produit à qui l'attribuer. Valider avant = photo perdue sans un mot.
+ * Niveau : BLOQUANT, champ `photoEnAttente`, sortie « Retirer la photo ».
+ * Aucune photo en attente (null / vide) : accepté.
+ */
+export function validerPhotoEnAttente(photoId: string | null | undefined): Resultat<null> {
+  const id = String(photoId ?? '').trim();
+  if (id === '') return succes(null);
+  return signaler('ERR_PHOTO_EN_ATTENTE', { photo: id }, { champ: 'photoEnAttente' });
+}

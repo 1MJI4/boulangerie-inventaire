@@ -61,6 +61,7 @@ import {
   controlerCommande,
   controlerLigne,
   libelleProduit,
+  totalEnCours,
   type CommandeControlee,
   type ContexteCommande,
   type LigneControlee,
@@ -72,6 +73,7 @@ import { LIBELLES_FORME, libelleCorrection } from '@/domaine/messages';
 import { estForme, formesPossibles } from '@/domaine/formes';
 import { estSupplementParPersonne } from '@/domaine/supplementsParPersonne';
 import { horairesOuvertureDuJour, validerJourMeme, validerLendemain } from '@/domaine/reglement';
+import { validerPhotoEnAttente } from '@/domaine/coherence';
 import { estGateauSimpleSurCommande, taillesAPartirDuMinimum, taillesProches } from '@/domaine/minimums';
 import { formesAImprimer } from '@/lib/ticketCanvas';
 import {
@@ -141,7 +143,8 @@ import {
   type LigneEcran,
 } from '@/components/commande/modele';
 import { sortieDe } from '@/components/commande/sorties';
-import { libelleManque, MANQUE_SIMPLE, MOTS_MANQUANTS } from '@/components/commande/manques';
+import { CHAMPS_A_PHRASE, libelleManque, MANQUE_SIMPLE, texteChampVide } from '@/components/commande/manques';
+import { empreinteSaisie, saisieEntamee, texteMontantEnCours, texteResteEnCours } from '@/components/commande/saisieEnCours';
 import { ChampPave } from '@/components/commande/ChampPave';
 import { AccesGerant } from '@/components/commande/AccesGerant';
 import { BandeRetrait } from '@/components/commande/BandeRetrait';
@@ -258,6 +261,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   // (21/10/2026). Ancienne commande sans le champ : non.
   const [zoneDessin, setZoneDessin] = useState(commande?.zoneDessin === true);
   const [remarques, setRemarques] = useState(commande?.remarques ?? '');
+  // « Annuler » (audit du 28/10/2026) : jamais jeter une saisie en un toucher.
+  const [abandonOuvert, setAbandonOuvert] = useState(false);
 
   // --- Interface -----------------------------------------------------------
   const [actif, setActif] = useState<string | null>(null);
@@ -422,9 +427,16 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   const succesCommande = resultat?.ok ? resultat : null;
 
   const lignesOk = resultatsLignes.flatMap((r) => (r?.ok ? [r.donnees] : []));
-  const totalTarif = somme(lignesOk.map((l) => l.totalCentimes));
+  // Total pendant la saisie (audit du 28/10/2026) : lignes admises + lignes encore
+  // refusées dont le montant se calcule (domaine) ; jamais présenté comme définitif
+  // tant qu'une ligne n'est pas complète (« <montant> + à compléter »).
+  const enCours = saisie && ctx && prise ? totalEnCours(saisie.lignes, prise.datePrise, ctx) : null;
+  const totalTarif = enCours?.totalCentimes ?? 0;
   const total = succesCommande?.donnees.totalCentimes ?? totalConvenu ?? totalTarif;
+  const totalComplet = succesCommande !== null || totalConvenu !== null || enCours === null || enCours.complet;
   const reste = resteDu(total, acompte ?? 0);
+  const texteTotal = texteMontantEnCours(total, totalComplet);
+  const texteReste = texteResteEnCours(reste, total, totalComplet);
 
   // Délai : première date possible, calculée par le domaine (jours ouvrés).
   const delai = lignesOk.length > 0 ? Math.max(...lignesOk.map((l) => l.delaiJoursOuvres)) : 0;
@@ -435,7 +447,13 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   const tous: SignalementAffichable[] = [...blocages, ...(succesCommande?.signalements ?? [])];
   // Tout ce qui empêche de valider : refus de la commande et refus des lignes, sans doublon.
   const manques: SignalementAffichable[] = [];
-  for (const m of [...blocages, ...resultatsLignes.flatMap((r) => (r && !r.ok ? [r] : []))]) {
+  // Photo de la galerie qui attend son produit : la valider la perdrait sans un mot.
+  const photoAttente = validerPhotoEnAttente(photoEnAttente?.id ?? null);
+  for (const m of [
+    ...blocages,
+    ...resultatsLignes.flatMap((r) => (r && !r.ok ? [r] : [])),
+    ...(photoAttente.ok ? [] : [photoAttente]),
+  ]) {
     if (!manques.some((x) => x.code === m.code && x.champ === m.champ)) manques.push(m);
   }
   const pour = (champs: readonly string[]) => tous.filter((s) => champs.includes(champLocal(s.champ)) && indexLigne(s.champ) === null);
@@ -456,6 +474,23 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   const signauxInhabituelle = pour(['demandeInhabituelle']);
   const signauxMontants = acompte !== null || tentative ? pour(['acompte', 'total']) : pour(['total']);
   const signauxStatut = pour(['statut']);
+  // Champ du haut simplement vide (nom, téléphone, jour, heure) : phrase courte
+  // JUSTE SOUS le champ, champ bordé de rouge, seulement après un premier
+  // « Valider » ; elle disparaît dès que le champ est rempli (propriétaire, 28/10/2026).
+  const estVideDuHaut = (s: SignalementAffichable) => MANQUE_SIMPLE.has(s.code) && CHAMPS_A_PHRASE.has(champLocal(s.champ)) && indexLigne(s.champ) === null;
+  const videDe = (champ: string): SignalementAffichable | null =>
+    tentative ? (tous.find((s) => estVideDuHaut(s) && champLocal(s.champ) === champ) ?? null) : null;
+  const videNom = videDe('client');
+  const videTelephone = videDe('telephone');
+  const videJour = videDe('dateRetrait');
+  const videHeure = videDe('heureRetrait');
+  const sousLeChamp = (s: SignalementAffichable | null): ReactNode =>
+    s ? (
+      <p data-niveau="bloquant" data-champ={s.champ ?? undefined} className="mt-1 text-sm text-alerte">
+        {texteChampVide(s)}
+      </p>
+    ) : null;
+  const refusClient = signauxClient.filter((s) => !estVideDuHaut(s));
 
   // Écriture présente + gâteau au bon → supplément Écriture remis s'il manque
   // (gâteau retiré puis remis, ligne retirée…) : le retirer à la main n'est
@@ -624,6 +659,14 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       }
       return;
     }
+    // Photo en attente d'un produit : la sortie la retire (rien d'autre ne change).
+    if (s.code === 'ERR_PHOTO_EN_ATTENTE') return setPhotoEnAttente(null);
+    // « Autre demande » pas encore décrite : on amène au champ, jamais retirer la ligne.
+    if (i !== null && ligne && champ === 'libelle') {
+      montrerLigne(i);
+      document.getElementById(`libelle-${ligne.cle}`)?.focus();
+      return;
+    }
     // Photo de modèle refusée (identifiant inconnu) : on retire la photo, jamais la ligne.
     if (i !== null && ligne && champ === 'photoModele') return setLignes((ls) => retirerPhoto(ls, ligne.cle));
     if (i !== null && ligne && s.code === 'ERR_GOUT_MANQUANT') {
@@ -735,9 +778,9 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
             key={`${s.code}|${s.champ ?? ''}`}
             data-niveau="bloquant"
             data-champ={s.champ ?? undefined}
-            className="mt-1.5 text-sm font-semibold text-bloquant"
+            className="mt-1 text-sm text-alerte"
           >
-            ▲ À remplir{MOTS_MANQUANTS[champLocal(s.champ)] ? ` : ${MOTS_MANQUANTS[champLocal(s.champ)]}` : ''}
+            {texteChampVide(s)}
           </p>
         ))}
         {rendreRefus(autres, unite, prefixe)}
@@ -907,13 +950,60 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       />
     );
 
+  // « Annuler » : commande vide (ou modification inchangée) → on part ; sinon
+  // une petite fenêtre demande confirmation (« Continuer la commande » par défaut).
+  const empreinte = () =>
+    empreinteSaisie({
+      client,
+      telephone,
+      dateRetrait,
+      heureRetrait,
+      origine,
+      modePaiement,
+      lignes,
+      acompte,
+      totalConvenu,
+      texteGateau,
+      sansEcriture,
+      photoWhatsapp,
+      demandeInhabituelle,
+      zoneDessin,
+      remarques,
+    });
+  const [empreinteInitiale] = useState(() =>
+    commande
+      ? empreinteSaisie({
+          client: commande.client,
+          telephone: commande.telephone,
+          dateRetrait: commande.retraitLe,
+          heureRetrait: commande.retraitHeure ?? '',
+          origine: commande.origine,
+          modePaiement: commande.modePaiement,
+          lignes: synchroniserSupplementsParPersonne(lignesDepuisCommande(commande), SUPPLEMENTS_PAR_PERSONNE, CORRESPONDANCES_COMPTOIR),
+          acompte: commande.acompteCentimes,
+          totalConvenu,
+          texteGateau: commande.texteGateau ?? '',
+          sansEcriture: commande.sansEcriture ?? false,
+          photoWhatsapp: commande.photoWhatsapp ?? false,
+          demandeInhabituelle: commande.demandeInhabituelle ?? false,
+          zoneDessin: commande.zoneDessin === true,
+          remarques: commande.remarques ?? '',
+        })
+      : null,
+  );
+  const annuler = () => {
+    const aPerdre = modification ? empreinte() !== empreinteInitiale : saisieEntamee({ client, telephone, lignes, remarques });
+    if (aPerdre) setAbandonOuvert(true);
+    else router.push('/commandes');
+  };
+
   const valider = async () => {
     setTentative(true);
     setRefusServeur(null);
     setActif(null);
     // Une ligne incomplète (taille non choisie) bloque aussi, même si `blocages` ne la cite pas encore.
     const incomplete = lignes.some((l) => l.quantite === null && l.produitId !== null);
-    if (!saisie || blocages.length > 0 || incomplete) {
+    if (!saisie || blocages.length > 0 || incomplete || photoEnAttente !== null) {
       // Tout ce qui manque, d'un coup, au centre de l'écran.
       setRecapOuvert(true);
       return;
@@ -1014,7 +1104,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       return remise ? (
         <PaveMontant
           libelle="Prix convenu avec le client"
-          sousTitre={`Tarif : ${formaterEuros(totalTarif)}`}
+          sousTitre={`Tarif : ${formaterEuros(totalTarif)}${totalComplet ? '' : ' + à compléter'}`}
           centimes={totalConvenu}
           onChange={setTotalConvenu}
           onValider={() => setActif(null)}
@@ -1232,11 +1322,17 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
             })}
           </ul>
         )}
-        {lignesOk.length > 1 ? (
-          <p className="chiffres mt-2 text-sm font-medium text-ink">
-            {lignesOk.map((l) => formaterEuros(l.totalCentimes)).join(' + ')} = {formaterEuros(totalTarif)}
-          </p>
-        ) : null}
+        {(() => {
+          // Détail des montants : lignes chiffrées seulement ; une ligne pas encore chiffrable est dite.
+          const chiffres = (enCours?.montants ?? []).filter((m): m is number => m !== null);
+          const incomplet = enCours !== null && !enCours.complet;
+          return chiffres.length > 1 || (incomplet && chiffres.length > 0) ? (
+            <p className="chiffres mt-2 text-sm font-medium text-ink">
+              {chiffres.map((m) => formaterEuros(m)).join(' + ')} = {formaterEuros(totalTarif)}
+              {incomplet ? <span className="font-normal text-ink-2"> + à compléter</span> : null}
+            </p>
+          ) : null;
+        })()}
       </div>
     ) : null;
 
@@ -1288,7 +1384,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         {paiement}
         <div className="flex items-baseline justify-between border-t border-line pt-3">
           <span className="text-base text-ink-2">Reste à payer au retrait</span>
-          <span className="chiffres text-xl font-semibold text-ink">{formaterEuros(reste)}</span>
+          <span className="chiffres text-xl font-semibold text-ink">{texteReste.replace(/^reste /, '')}</span>
         </div>
         {refusServeur ? rendre([refusServeur]) : null}
         <Bouton variante="principal" className="min-h-14 w-full text-lg" disabled={envoi} onClick={() => void valider()}>
@@ -1305,7 +1401,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
           eclair ? 'bg-accent-doux text-accent' : 'text-ink'
         }`}
       >
-        {formaterEuros(total)}
+        {texteTotal.montant ?? <span className="text-xl font-semibold text-ink-2">{texteTotal.suite}</span>}
+        {texteTotal.montant && texteTotal.suite ? <span className="ml-1 text-sm font-medium text-ink-2">{texteTotal.suite}</span> : null}
       </span>
     </div>
   );
@@ -1346,7 +1443,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       ouverture = null; // réglage illisible : le domaine refusera, avec son message
     }
   }
-  const signauxRetrait = [...signauxDate, ...signauxHeure];
+  const signauxRetrait = [...signauxDate, ...signauxHeure].filter((s) => !estVideDuHaut(s));
   const bande = cal ? (
     <div ref={bandeRetrait} className="min-w-0">
       <BandeRetrait
@@ -1362,6 +1459,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         onDate={setDateRetrait}
         onHeure={setHeureRetrait}
         enErreur={signauxRetrait.some((s) => s.niveau === 'bloquant')}
+        messageJour={sousLeChamp(videJour)}
+        messageHeure={sousLeChamp(videHeure)}
         signalements={
           signauxRetrait.length > 0 ? (
             <div className={etroit ? '' : 'max-h-40 overflow-y-auto overscroll-contain'}>{rendre(signauxRetrait)}</div>
@@ -1395,7 +1494,11 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
 
   // Photo en attente (bûche, tarte…) : rappel visible tant qu'aucun produit n'est touché.
   const bandeauPhoto = photoEnAttente ? (
-    <div role="status" className="mb-2 flex items-center gap-3 rounded-xl border-2 border-accent bg-accent-doux p-2">
+    <div
+      role="status"
+      data-champ="photoEnAttente"
+      className={`mb-2 flex items-center gap-3 rounded-xl border-2 bg-accent-doux p-2 ${tentative ? 'border-alerte' : 'border-accent'}`}
+    >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={photoEnAttente.url} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
       <p className="min-w-0 flex-1 text-base leading-tight text-ink">
@@ -1407,12 +1510,19 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         onClick={() => setPhotoEnAttente(null)}
         className="min-h-12 shrink-0 rounded-xl border-2 border-line-fort bg-surface px-3 text-sm font-medium text-ink"
       >
-        Annuler la photo
+        Retirer la photo
       </button>
     </div>
   ) : null;
 
   const galerie = galerieOuverte ? <GaleriePhotos onChoisir={choisirPhoto} onFermer={fermerGalerie} /> : null;
+  const fenetreAbandon = abandonOuvert ? (
+    <FenetreAbandon
+      modification={modification}
+      onContinuer={() => setAbandonOuvert(false)}
+      onAbandonner={() => router.push('/commandes')}
+    />
+  ) : null;
 
   const accesGerant = demande ? (
     <AccesGerant
@@ -1482,7 +1592,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         <p className="sr-only" aria-live="polite">{annonce}</p>
         {cal && catalogue ? null : (
           <>
-            <Entete titre={titre} actions={<Bouton onClick={() => router.push('/commandes')}>Annuler</Bouton>} />
+            <Entete titre={titre} actions={<Bouton onClick={annuler}>Annuler</Bouton>} />
             {enTeteChargement}
           </>
         )}
@@ -1498,25 +1608,34 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                   {modification ? 'Changements enregistrés et datés' : <>Prise par <span className="font-medium text-ink">{vendeur}</span></>}
                 </p>
               </div>
-              <input
-                ref={champClient}
-                className="min-h-12 min-w-[8rem] flex-[1_1_10rem] rounded-xl border-2 border-line-fort bg-surface px-3 text-base text-ink placeholder:text-ink-3"
-                value={client}
-                onChange={(e) => setClient(e.target.value)}
-                placeholder="Nom du client"
-                aria-label="Nom du client"
-                autoComplete="off"
-              />
-              <BoutonBande
-                libelle="Tél."
-                valeur={telephone || null}
-                vide="Toucher"
-                actif={actif === 'telephone'}
-                enErreur={signauxClient.some((s) => s.niveau === 'bloquant')}
-                onClick={() => setActif(actif === 'telephone' ? null : 'telephone')}
-                className="flex-[1_1_10rem]"
-                ariaLabel={`Téléphone du client${telephone ? ` : ${telephone}` : ''}`}
-              />
+              <div className="flex min-w-[8rem] flex-[1_1_10rem] flex-col">
+                <input
+                  ref={champClient}
+                  className={`min-h-12 w-full rounded-xl border-2 bg-surface px-3 text-base text-ink placeholder:text-ink-3 ${
+                    videNom ? 'border-alerte' : 'border-line-fort'
+                  }`}
+                  value={client}
+                  onChange={(e) => setClient(e.target.value)}
+                  placeholder="Nom du client"
+                  aria-label="Nom du client"
+                  aria-invalid={videNom ? true : undefined}
+                  autoComplete="off"
+                />
+                {sousLeChamp(videNom)}
+              </div>
+              <div className="flex min-w-0 flex-[1_1_10rem] flex-col">
+                <BoutonBande
+                  libelle="Tél."
+                  valeur={telephone || null}
+                  vide="Toucher"
+                  actif={actif === 'telephone'}
+                  enErreur={videTelephone !== null || refusClient.some((s) => s.niveau === 'bloquant' && champLocal(s.champ) === 'telephone')}
+                  onClick={() => setActif(actif === 'telephone' ? null : 'telephone')}
+                  className="w-full"
+                  ariaLabel={`Téléphone du client${telephone ? ` : ${telephone}` : ''}`}
+                />
+                {sousLeChamp(videTelephone)}
+              </div>
               <div role="group" aria-label="Commande prise" className="flex shrink-0 gap-0.5 rounded-xl border-2 border-line-fort bg-surface p-0.5">
                 <Segment actif={origine === 'comptoir'} onClick={() => { setOrigine('comptoir'); setModePaiement('especes'); }}>
                   Comptoir
@@ -1525,15 +1644,15 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                   Téléphone
                 </Segment>
               </div>
-              <Bouton className="shrink-0" onClick={() => router.push('/commandes')}>Annuler</Bouton>
+              <Bouton className="shrink-0" onClick={annuler}>Annuler</Bouton>
             </div>
 
             {/* Signalements qui ne tiennent pas dans la bande (rares : ils prennent sur la grille, jamais sur la page). */}
-            {refusChargement || signauxStatut.length > 0 || signauxClient.length > 0 ? (
+            {refusChargement || signauxStatut.length > 0 || refusClient.length > 0 ? (
               <div className="max-h-[40%] flex-none overflow-y-auto overscroll-contain">
                 {refusChargement ? rendre([refusChargement]) : null}
                 {rendre(signauxStatut)}
-                {rendre(signauxClient)}
+                {rendre(refusClient)}
               </div>
             ) : null}
 
@@ -1586,7 +1705,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                     <div className="min-w-0 text-sm leading-tight text-ink-2">
                       <div>Total à annoncer</div>
                       <div className="chiffres truncate">
-                        {lignes.length === 0 ? 'aucun produit' : `reste ${formaterEuros(reste)}`}
+                        {lignes.length === 0 ? 'aucun produit' : texteReste}
                       </div>
                     </div>
                     <span
@@ -1594,7 +1713,10 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                         eclair ? 'bg-accent-doux text-accent' : 'text-ink'
                       }`}
                     >
-                      {formaterEuros(total)}
+                      {texteTotal.montant ?? <span className="text-xl font-semibold text-ink-2">{texteTotal.suite}</span>}
+                      {texteTotal.montant && texteTotal.suite ? (
+                        <span className="ml-1 block text-right text-xs font-medium text-ink-2">{texteTotal.suite}</span>
+                      ) : null}
                     </span>
                   </div>
                   {refusServeur ? <div className="max-h-48 overflow-y-auto">{rendre([refusServeur])}</div> : null}
@@ -1608,6 +1730,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
         ) : null}
       {recap}
       {galerie}
+      {fenetreAbandon}
       </>
     );
   }
@@ -1624,7 +1747,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
             <>Prise par <span className="font-medium text-ink">{vendeur}</span></>
           )
         }
-        actions={<Bouton onClick={() => router.push('/commandes')}>Annuler</Bouton>}
+        actions={<Bouton onClick={annuler}>Annuler</Bouton>}
       />
       <p className="sr-only" aria-live="polite">{annonce}</p>
 
@@ -1645,19 +1768,24 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                   <span className="mb-1 block text-sm text-ink-2">Nom</span>
                   <input
                     ref={champClient}
-                    className={CHAMP_TEXTE}
+                    className={videNom ? CHAMP_TEXTE.replace('border-line-fort', 'border-alerte') : CHAMP_TEXTE}
                     value={client}
                     onChange={(e) => setClient(e.target.value)}
+                    aria-invalid={videNom ? true : undefined}
                     autoComplete="off"
                   />
+                  {sousLeChamp(videNom)}
                 </label>
-                <ChampPave
-                  libelle="Téléphone"
-                  valeur={telephone || null}
-                  ouvert={actif === 'telephone'}
-                  onBasculer={() => setActif(actif === 'telephone' ? null : 'telephone')}
-                  className="self-end"
-                />
+                <div className="self-end">
+                  <ChampPave
+                    libelle="Téléphone"
+                    valeur={telephone || null}
+                    ouvert={actif === 'telephone'}
+                    onBasculer={() => setActif(actif === 'telephone' ? null : 'telephone')}
+                    enErreur={videTelephone !== null}
+                  />
+                  {sousLeChamp(videTelephone)}
+                </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Choix actif={origine === 'comptoir'} onClick={() => { setOrigine('comptoir'); setModePaiement('especes'); }}>
@@ -1667,7 +1795,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                   Par téléphone
                 </Choix>
               </div>
-              {rendre(signauxClient)}
+              {rendre(refusClient)}
             </Carte>
 
             {/* ----------------------------------- Date et heure de retrait */}
@@ -1695,15 +1823,19 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
 
       {recap}
       {galerie}
+      {fenetreAbandon}
 
       {/* Téléphone, pavé fermé : total et validation toujours à portée de pouce. */}
       {cal && catalogue && !blocPave ? (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-4 py-2.5 backdrop-blur">
           <div className="mx-auto flex max-w-3xl items-center gap-3">
             <div className="min-w-0 flex-1">
-              <div className="chiffres text-2xl font-bold leading-tight text-ink">{formaterEuros(total)}</div>
+              <div className="chiffres text-2xl font-bold leading-tight text-ink">
+                {texteTotal.montant ?? <span className="text-lg font-semibold text-ink-2">{texteTotal.suite}</span>}
+                {texteTotal.montant && texteTotal.suite ? <span className="ml-1 text-sm font-medium text-ink-2">{texteTotal.suite}</span> : null}
+              </div>
               <div className="truncate text-sm text-ink-2">
-                {lignes.length === 0 ? 'Aucun produit' : `reste ${formaterEuros(reste)}`}
+                {lignes.length === 0 ? 'Aucun produit' : texteReste}
                 {(blocages.length > 0 || resultatsLignes.some((r) => r && !r.ok)) && tentative ? (
                   <span className="font-semibold text-bloquant"> · à corriger (en rouge)</span>
                 ) : null}
@@ -1922,6 +2054,65 @@ function RecapManques({
         >
           OK
         </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * « Annuler » avec une saisie en cours (audit du 28/10/2026) : petite fenêtre
+ * sobre. « Continuer la commande » est le choix par défaut (focus, touche
+ * Échap, toucher à côté) : rien n'est perdu sans un second geste voulu.
+ */
+function FenetreAbandon({
+  modification,
+  onContinuer,
+  onAbandonner,
+}: {
+  modification: boolean;
+  onContinuer: () => void;
+  onAbandonner: () => void;
+}) {
+  useEffect(() => {
+    const echap = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onContinuer();
+    };
+    window.addEventListener('keydown', echap);
+    return () => window.removeEventListener('keydown', echap);
+  }, [onContinuer]);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6" onClick={onContinuer}>
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="abandon-titre"
+        aria-describedby="abandon-texte"
+        className="w-full max-w-sm rounded-2xl bg-surface p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="abandon-titre" className="text-lg font-bold text-ink">
+          {modification ? 'Abandonner les changements ?' : 'Abandonner cette commande ?'}
+        </h2>
+        <p id="abandon-texte" className="mt-1 text-base text-ink-2">
+          {modification ? 'Les changements faits ici seront perdus.' : 'Ce qui a été saisi sera perdu.'}
+        </p>
+        <div className="mt-4 grid gap-2">
+          <button
+            type="button"
+            autoFocus
+            onClick={onContinuer}
+            className="min-h-12 w-full rounded-xl bg-accent text-base font-semibold text-white active:bg-accent-fort"
+          >
+            Continuer la commande
+          </button>
+          <button
+            type="button"
+            onClick={onAbandonner}
+            className="min-h-12 w-full rounded-xl border-2 border-line-fort bg-surface text-base font-medium text-bloquant"
+          >
+            Abandonner
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -2270,6 +2461,7 @@ function LigneDuBon({
         <div className="min-w-0 flex-1">
           {libre ? (
             <input
+              id={`libelle-${ligne.cle}`}
               value={ligne.libelleLibre}
               onChange={(e) => onChange({ libelleLibre: e.target.value })}
               aria-label="Libellé de la demande"
@@ -2993,8 +3185,9 @@ function BoutonBande({
   className?: string;
   ariaLabel: string;
 }) {
+  // Champ en erreur : le bord seul, en rouge (propriétaire, 28/10/2026 — pas de gros bloc).
   const bord = enErreur
-    ? 'border-bloquant bg-bloquant-doux'
+    ? 'border-alerte bg-surface'
     : actif
       ? 'border-accent bg-accent-doux'
       : aFaire

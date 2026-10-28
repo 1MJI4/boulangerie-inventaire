@@ -319,6 +319,8 @@ function preparer(
       formesLibres: l.formesLibres === true,
       // Ligne libre : « C'est un gâteau ? » (réponse explicite, jamais déduite du libellé).
       gateauLibre: typeof l.gateauLibre === 'boolean' ? l.gateauLibre : null,
+      // Ligne « Autre demande » (sans produit) : « Décrivez la demande » plutôt que « sans produit ».
+      ligneLibre: !produitId,
       nbObjets: entierOuNull(l.nbObjets),
       gouts: listeDeMots(l.gouts),
       origineSurCommande: texte(l.origineSurCommande, 200) || null,

@@ -29,7 +29,16 @@ export const MOTS_MANQUANTS: Readonly<Record<string, string>> = {
   prixCentimes: 'PRIX',
   nbObjets: 'NOMBRE DE SANDWICHS',
   gateauLibre: 'GÂTEAU OU NON',
+  // Nouveaux textes (28/10/2026) : sans capitales criées.
+  libelle: 'décrivez la demande',
 };
+
+/**
+ * Champs dont la fenêtre « Il manque » dit la CONSIGNE du domaine plutôt qu'un
+ * mot-clé (« Décrivez ce que veut le client. », « Photo G047 : touchez le
+ * produit… ») : un mot-clé n'y dirait pas quoi faire.
+ */
+export const MANQUES_PAR_CONSIGNE: ReadonlySet<string> = new Set(['libelle', 'photoEnAttente']);
 
 /** Codes d'un champ simplement vide : le mot-clé suffit, pas besoin de la phrase. */
 export const MANQUE_SIMPLE: ReadonlySet<string> = new Set([
@@ -50,6 +59,7 @@ export function libelleManque(
   lignes: readonly LigneEcran[],
   catalogue: CatalogueCommande | null,
 ): { titre: string; detail: string | null } {
+  if (MANQUES_PAR_CONSIGNE.has(champLocal(m.champ))) return { titre: m.message, detail: null };
   const i = indexLigne(m.champ);
   const mot = MOTS_MANQUANTS[champLocal(m.champ)] ?? null;
   const ligne = i !== null ? lignes[i] : undefined;
@@ -58,4 +68,22 @@ export function libelleManque(
   const titre = [mot, produit].filter(Boolean).join(' — ') || m.message;
   const detail = MANQUE_SIMPLE.has(m.code) || titre === m.message ? null : m.message;
   return { titre, detail };
+}
+
+/**
+ * Champs du haut de l'écran (client, retrait) : leur message de champ vide est
+ * la phrase courte du domaine (« Indiquez le nom du client. »), sous le champ.
+ */
+export const CHAMPS_A_PHRASE: ReadonlySet<string> = new Set(['client', 'telephone', 'dateRetrait', 'heureRetrait']);
+
+/**
+ * Texte discret d'un champ simplement vide, affiché SOUS le champ (propriétaire,
+ * 28/10/2026 : comme une app Apple — phrase courte, ni triangle ni capitales).
+ * Champ du haut : la phrase du domaine ; champ d'une ligne : « À remplir : goût ».
+ */
+export function texteChampVide(s: { message: string; champ?: string }): string {
+  const champ = champLocal(s.champ);
+  if (CHAMPS_A_PHRASE.has(champ)) return s.message;
+  const mot = MOTS_MANQUANTS[champ];
+  return mot ? `À remplir : ${mot.toLocaleLowerCase('fr')}` : 'À remplir';
 }

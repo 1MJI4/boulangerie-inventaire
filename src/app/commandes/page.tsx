@@ -212,7 +212,8 @@ function EcranCommandes() {
           className="min-h-11 w-full rounded-lg border border-line-fort bg-surface px-3 text-sm text-ink placeholder:text-ink-3"
         />
         {commandes && commandes.length > 0 ? (
-          <div role="group" aria-label="Filtrer les commandes" className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+          // Sur deux lignes si besoin : tous les filtres visibles, sans barre de défilement.
+          <div role="group" aria-label="Filtrer les commandes" className="mt-2 flex flex-wrap gap-1.5">
             <Filtre actif={filtre === null} onClick={() => setFiltre(null)} libelle="Toutes" />
             {GROUPES.map((g) => (
               <Filtre

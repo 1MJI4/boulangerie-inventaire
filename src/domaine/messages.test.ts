@@ -96,6 +96,7 @@ const EXEMPLES: Partial<Record<CodeCatalogue, unknown>> = {
   ERR_CHAMP_OBLIGATOIRE: { champLibelle: 'nom du client' },
   ERR_COMMANDE_VIDE: {},
   ERR_LIGNE_SANS_PRODUIT: {},
+  ERR_PHOTO_EN_ATTENTE: { photo: 'G047' },
   ERR_STATUT_INCOHERENT: { de: 'Remise au client', vers: 'À imprimer' },
   ERR_COMMANDE_FIGEE: { etat: 'annulée' },
   AVERT_ACOMPTE_INSUFFISANT: { acompteFormate: 'A €', minimumFormate: 'M €', pourcentage: 50 },
@@ -415,11 +416,20 @@ test('quantité invalide : « positif ou zéro » en inventaire, « supérieur �
 });
 
 test('champ obligatoire : accord correct quel que soit le libellé (masculin, féminin, voyelle, h muet)', () => {
-  for (const champLibelle of ['nom du client', 'heure de retrait', 'date de retrait', 'acompte', 'téléphone', 'libellé']) {
+  for (const champLibelle of ['acompte', 'heure de prise', 'téléphone', 'libellé', 'adresse']) {
     const m = messagePour('ERR_CHAMP_OBLIGATOIRE', { champLibelle });
     assert.equal(m, `Le champ « ${champLibelle} » est obligatoire : remplissez-le pour continuer.`);
     assert.doesNotMatch(m, /\ble [aeiouéèêh]/i, m);
   }
+  // Champs de l'écran de commande : phrase courte sous le champ (propriétaire, 28/10/2026).
+  const consignes: [string, string][] = [
+    ['nom du client', 'Indiquez le nom du client.'],
+    ['téléphone du client', 'Indiquez un numéro de téléphone.'],
+    ['date de retrait', 'Choisissez le jour de retrait.'],
+    ['heure de retrait', 'Choisissez l’heure de retrait.'],
+    ['Description de la demande', 'Décrivez ce que veut le client.'],
+  ];
+  for (const [champLibelle, attendu] of consignes) assert.equal(messagePour('ERR_CHAMP_OBLIGATOIRE', { champLibelle }), attendu);
   assert.deepEqual(sortiePour('ERR_CHAMP_OBLIGATOIRE', { champLibelle: 'heure de retrait' }), {
     type: 'correction',
     libelle: 'Remplir « heure de retrait »',

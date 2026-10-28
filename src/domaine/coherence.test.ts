@@ -23,7 +23,7 @@ test('nom du client vide → ERR_CHAMP_OBLIGATOIRE', () => {
   if (!r.ok) {
     assert.equal(r.code, 'ERR_CHAMP_OBLIGATOIRE');
     assert.equal(r.champ, 'client');
-    assert.equal(r.message, 'Le champ « nom du client » est obligatoire : remplissez-le pour continuer.');
+    assert.equal(r.message, 'Indiquez le nom du client.');
   }
   const ok = validerChampObligatoire(' Dupont ', 'nom du client', 'client');
   assert.ok(ok.ok);

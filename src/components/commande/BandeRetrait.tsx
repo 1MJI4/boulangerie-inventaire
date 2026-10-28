@@ -61,6 +61,8 @@ export function BandeRetrait({
   onHeure,
   enErreur = false,
   signalements,
+  messageJour,
+  messageHeure,
 }: {
   aujourdhui: string;
   date: string | null;
@@ -77,6 +79,13 @@ export function BandeRetrait({
   enErreur?: boolean;
   /** Messages du domaine sur le jour et l'heure, rendus sous la bande. */
   signalements?: ReactNode;
+  /**
+   * Champ vide (« Choisissez le jour de retrait. ») : rendu juste SOUS la rangée
+   * des jours, la rangée bordée de rouge (propriétaire, 28/10/2026).
+   */
+  messageJour?: ReactNode;
+  /** Idem sous la rangée des heures. */
+  messageHeure?: ReactNode;
 }) {
   const jours = joursProposes(aujourdhui, JOURS_PROPOSES_RETRAIT, date);
   const creneaux = date ? creneauxRetrait(horaires, PAS_CRENEAU_MINUTES, heure) : [];
@@ -95,7 +104,7 @@ export function BandeRetrait({
       }`}
     >
       {/* ------------------------------------------------------------ Jours */}
-      <div className="flex min-w-0 items-center gap-1.5">
+      <div className={`flex min-w-0 items-center gap-1.5 rounded-xl border-2 ${messageJour ? 'border-alerte' : 'border-transparent'}`}>
         <span className="w-12 shrink-0 text-xs font-semibold leading-tight text-ink-2">
           {aFaire ? <span className="text-accent">Jour ?</span> : 'Jour'}
         </span>
@@ -142,9 +151,10 @@ export function BandeRetrait({
           })}
         </div>
       </div>
+      {messageJour ? <div className="-mt-1 pl-14">{messageJour}</div> : null}
 
       {/* ----------------------------------------------------------- Heures */}
-      <div className="flex min-w-0 items-center gap-1.5">
+      <div className={`flex min-w-0 items-center gap-1.5 rounded-xl border-2 ${messageHeure ? 'border-alerte' : 'border-transparent'}`}>
         <span className="w-12 shrink-0 text-xs font-semibold leading-tight text-ink-2">Heure</span>
         {date === null ? (
           <p className="flex h-12 min-w-0 flex-1 items-center px-1 text-sm text-ink-2">Choisissez d’abord le jour.</p>
@@ -199,6 +209,7 @@ export function BandeRetrait({
           </div>
         )}
       </div>
+      {messageHeure ? <div className="-mt-1 pl-14">{messageHeure}</div> : null}
       {signalements}
     </div>
   );

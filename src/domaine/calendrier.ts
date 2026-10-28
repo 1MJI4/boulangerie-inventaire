@@ -186,6 +186,11 @@ export function validerDateRetrait(
   aujourdhui: DateISO,
   champ = 'dateRetrait',
 ): Resultat<DateISO> {
+  // Date simplement pas encore choisie : un champ à remplir comme le nom
+  // (audit du 28/10/2026), pas une saisie « mal remplie ».
+  if (String(date ?? '').trim() === '') {
+    return signaler('ERR_CHAMP_OBLIGATOIRE', { champLibelle: 'date de retrait' }, { champ });
+  }
   if (!estDateISO(date) || !estDateISO(aujourdhui)) {
     return signaler('ERR_SAISIE_INVALIDE', { champLibelle: 'date de retrait' }, { champ });
   }

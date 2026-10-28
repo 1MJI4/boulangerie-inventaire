@@ -37,7 +37,7 @@ import { GOUT_AU_CHOIX, validerGouts, type ChoixGout } from './gouts.ts';
 import { deverrouillageValide, prixLigne } from './regimes.ts';
 import { gateauSurCommandeDe, validerComptoirSelonGout, validerPrixComptoir } from './prixComptoir.ts';
 import type { CorrespondanceComptoir } from './prixComptoir.ts';
-import { validerQuantite } from './unites.ts';
+import { totalLigne, validerQuantite } from './unites.ts';
 import {
   controlerCommandeInhabituelle,
   heureChamp,
@@ -80,6 +80,11 @@ export type LigneSaisie = {
   produitId?: string | null;
   /** Ligne libre uniquement : le libellé d'une ligne catalogue vient du catalogue (LOI 5). */
   libelle?: string | null;
+  /**
+   * Ligne ouverte par « Autre demande » (audit du 28/10/2026) : sans libellé,
+   * c'est une description à écrire (champ à remplir), pas une ligne « sans produit ».
+   */
+  ligneLibre?: boolean;
   /** Pièces, parts, ou GRAMMES pour un produit au kilo. */
   quantite: number;
   /**
@@ -322,6 +327,10 @@ function controlerLigneSansPrefixe(
   const libelleLibre = saisie.libelle?.trim() || '';
 
   if (!produitId && !libelleLibre) {
+    // « Autre demande » pas encore décrite : à remplir, discrètement (jamais « supprimez la ligne »).
+    if (saisie.ligneLibre === true) {
+      return signaler('ERR_CHAMP_OBLIGATOIRE', { champLibelle: CHAMP_DESCRIPTION_LIBRE }, { champ: 'libelle' });
+    }
     return signaler('ERR_LIGNE_SANS_PRODUIT', {}, { champ: 'produitId', valeurProposee: index });
   }
   if (!produitId) return controlerLigneLibre(saisie, libelleLibre, ctx.delais);
@@ -446,6 +455,9 @@ function controlerLigneSansPrefixe(
   return succes(ligne, ...signalements);
 }
 
+/** Libellé du champ « description » d'une ligne libre (messages : « Décrivez ce que veut le client. »). */
+export const CHAMP_DESCRIPTION_LIBRE = 'Description de la demande';
+
 /** Libellé du champ « C'est un gâteau ? » d'une ligne libre (messages, écran). */
 export const CHAMP_GATEAU_LIBRE = 'C’est un gâteau ?';
 
@@ -509,6 +521,61 @@ function controlerLigneLibre(saisie: LigneSaisie, libelle: string, delais: Delai
     nbGateaux: gateauxDeLigneLibre(gateau),
     autorisation: { par: saisie.deverrouillage.par.trim(), le: saisie.deverrouillage.le },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Total pendant la saisie (audit du 28/10/2026)
+// ---------------------------------------------------------------------------
+
+/**
+ * Montant d'une ligne ENCORE REFUSÉE (forme à choisir, sous le minimum…) quand
+ * il se calcule quand même : prix connu au catalogue × quantité connue, par les
+ * helpers du domaine (`prixLigne` / `totalLigne`, centimes). null sinon (taille
+ * pas choisie, quantité vide, prix sous le plancher, produit absent du tarif…).
+ * Sert uniquement à l'AFFICHAGE d'un total provisoire, jamais à l'enregistrement.
+ */
+export function montantCalculableLigne(saisie: LigneSaisie, datePrise: DateISO, ctx: Pick<ContexteLigne, 'resoudre'>): number | null {
+  const produitId = saisie.produitId?.trim() || null;
+  if (!produitId) {
+    const prix = saisie.prixUnitaireCentimes;
+    if (prix == null) return null;
+    const t = totalLigne('piece', saisie.quantite, prix);
+    return t.ok ? t.donnees : null;
+  }
+  const resolu = ctx.resoudre(produitId, datePrise);
+  if (!resolu.ok) return null;
+  const fiche = resolu.donnees;
+  const prixFixe = !(fiche.produit.regimePrix === 'C' && fiche.prix.prixEstPlancher);
+  const prix = prixLigne(fiche, saisie.quantite, {
+    prixParPersonneCentimes: prixFixe ? undefined : (saisie.prixUnitaireCentimes ?? undefined),
+    deverrouillage: saisie.deverrouillage,
+  });
+  return prix.ok && prix.donnees.totalCentimes > 0 ? prix.donnees.totalCentimes : null;
+}
+
+export type TotalEnCours = {
+  /** Somme des lignes admises ET des lignes refusées dont le montant se calcule. */
+  totalCentimes: number;
+  /** Montant par ligne (null = pas encore chiffrable), dans l'ordre des lignes. */
+  montants: (number | null)[];
+  /** true seulement si TOUTES les lignes sont admises : sinon le total est à compléter. */
+  complet: boolean;
+};
+
+/**
+ * Total à annoncer pendant la saisie. Une ligne incomplète n'est JAMAIS
+ * présentée comme réglée : `complet` est faux dès qu'une ligne est refusée
+ * (même chiffrée) ou pas chiffrable. Aucune ligne → complet (rien à annoncer).
+ */
+export function totalEnCours(lignes: readonly LigneSaisie[], datePrise: DateISO, ctx: ContexteLigne): TotalEnCours {
+  let complet = true;
+  const montants = lignes.map((l, i) => {
+    const r = controlerLigne(l, i, datePrise, ctx);
+    if (r.ok) return r.donnees.totalCentimes;
+    complet = false;
+    return montantCalculableLigne(l, datePrise, ctx);
+  });
+  return { totalCentimes: somme(montants.filter((m): m is number => m !== null)), montants, complet };
 }
 
 // ---------------------------------------------------------------------------

@@ -115,6 +115,7 @@ export type ParametresMessages = {
   ERR_CHAMP_OBLIGATOIRE: { champLibelle: string };
   ERR_COMMANDE_VIDE: Record<string, never>;
   ERR_LIGNE_SANS_PRODUIT: Record<string, never>;
+  ERR_PHOTO_EN_ATTENTE: { photo: string };
   /** Libellés de statut en clair (« Remise au client »…). */
   ERR_STATUT_INCOHERENT: { de: string; vers: string };
   /** `etat` : « annulée », « remise au client », « archivée », « anonymisée ». */
@@ -361,6 +362,19 @@ export const APPELER_LE_GERANT = 'Appeler le gérant';
 export const APPELER_LE_RESPONSABLE = 'Appeler le responsable';
 const CORRIGER_LE_FICHIER = 'Corriger le fichier puis relancer l’import';
 
+/**
+ * Champ obligatoire vide qui se CHOISIT plutôt qu'il ne se tape : la consigne
+ * dit le geste (audit du 28/10/2026 : date vide = à remplir, comme le nom).
+ */
+// Phrases courtes affichées SOUS le champ (propriétaire, 28/10/2026 : « comme une app Apple »).
+const CONSIGNES_CHAMP_VIDE: Readonly<Record<string, string>> = {
+  'nom du client': 'Indiquez le nom du client.',
+  'téléphone du client': 'Indiquez un numéro de téléphone.',
+  'date de retrait': 'Choisissez le jour de retrait.',
+  'heure de retrait': 'Choisissez l’heure de retrait.',
+  'Description de la demande': 'Décrivez ce que veut le client.',
+};
+
 /** Entrée du rapport d'import : « <où> — <constat> (<précision>). <quoi faire> ». */
 function rapport(niveau: Niveau, cas: string, constat: string, action: string): EntreeAvec<ParametresImport> {
   const entree: EntreeAvec<ParametresImport> = {
@@ -562,7 +576,9 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     cas: 'Champ obligatoire laissé vide (nom du client, téléphone, acompte, libellé d’une ligne libre…).',
     // Tournure neutre : correcte quel que soit le genre ou l'initiale du libellé
     // (« nom du client », « heure de retrait », « date de retrait »…).
-    message: (p) => `Le champ « ${p.champLibelle} » est obligatoire : remplissez-le pour continuer.`,
+    // Champ qui se CHOISIT (la date au calendrier) : la consigne dit le geste.
+    message: (p) =>
+      CONSIGNES_CHAMP_VIDE[p.champLibelle] ?? `Le champ « ${p.champLibelle} » est obligatoire : remplissez-le pour continuer.`,
     correction: (p) => `Remplir « ${p.champLibelle} »`,
   },
   ERR_COMMANDE_VIDE: {
@@ -576,6 +592,12 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     cas: 'Ligne ajoutée sans produit choisi ni libellé.',
     message: () => `Une ligne n’a pas de produit. Choisissez un produit ou supprimez la ligne.`,
     correction: () => 'Supprimer la ligne',
+  },
+  ERR_PHOTO_EN_ATTENTE: {
+    niveau: 'bloquant',
+    cas: 'Validation alors qu’une photo de modèle attend encore le produit à qui l’attribuer (bûche, tarte…).',
+    message: (p) => `Photo ${p.photo} : touchez le produit à qui l’attribuer, ou retirez la photo.`,
+    correction: () => 'Retirer la photo',
   },
   ERR_STATUT_INCOHERENT: {
     niveau: 'bloquant',

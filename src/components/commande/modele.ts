@@ -88,7 +88,7 @@ export const RAYONS_HORS_LISTE_PAR_DEFAUT: readonly string[] = ['Frigo-Boisson',
  */
 export function fichesVisibles(catalogue: CatalogueCommande, recherche: string, rayon: string | null): FicheCatalogue[] {
   const mots = normaliserRecherche(recherche).split(/\s+/).filter(Boolean);
-  return catalogue.fiches.filter((f) => {
+  const fiches = catalogue.fiches.filter((f) => {
     if (f.produit.regimePrix === null) return false;
     if (rayon !== null && f.produit.categorie !== rayon) return false;
     if (mots.length === 0 && rayon === null && RAYONS_HORS_LISTE_PAR_DEFAUT.includes(f.produit.categorie)) return false;
@@ -96,6 +96,32 @@ export function fichesVisibles(catalogue: CatalogueCommande, recherche: string, 
     const texte = normaliserRecherche(`${f.produit.produit} ${f.produit.sousCategorie ?? ''} ${f.produit.categorie}`);
     return mots.every((m) => texte.includes(m));
   });
+  return mots.length > 0 ? ordonnerResultatsRecherche(fiches, recherche) : fiches;
+}
+
+/**
+ * Gâteau SUR COMMANDE au prix par personne (régime C, base « personne »), hors
+ * supplément par personne (Pâte à sucre) : lu sur les données, jamais sur le nom (LOI 6).
+ */
+function estGateauParPersonne(f: FicheCatalogue): boolean {
+  return f.produit.regimePrix === 'C' && f.prix.basePrix === 'personne' && f.produit.famille !== FAMILLE_SUPPLEMENT;
+}
+
+/**
+ * Résultats d'une RECHERCHE (audit du 28/10/2026) : « bavarois » donnait 16
+ * Bavarois du comptoir avant le Bavarois sur commande (prix par personne) ; un vendeur pressé
+ * touchait « Bavarois 10P ». Le gâteau sur commande dont le LIBELLÉ contient
+ * tous les mots cherchés passe en tête ; le reste garde l'ordre du catalogue
+ * (tri stable). Sans recherche, l'ordre ne change pas.
+ */
+export function ordonnerResultatsRecherche(fiches: readonly FicheCatalogue[], recherche: string): FicheCatalogue[] {
+  const mots = normaliserRecherche(recherche).split(/\s+/).filter(Boolean);
+  if (mots.length === 0) return [...fiches];
+  const enTete = (f: FicheCatalogue) => {
+    const libelle = normaliserRecherche(f.produit.produit);
+    return estGateauParPersonne(f) && mots.every((m) => libelle.includes(m));
+  };
+  return [...fiches.filter(enTete), ...fiches.filter((f) => !enTete(f))];
 }
 
 /**
@@ -307,7 +333,13 @@ export function versLigneSaisie(l: LigneEcran, fiche: FicheTarifee | null): Lign
     deverrouillageTaille: l.deverrouillageTaille,
   };
   if (!l.produitId) {
-    return { ...base, libelle: l.libelleLibre, prixUnitaireCentimes: l.prixUnitaireCentimes, gateauLibre: l.gateauLibre ?? null };
+    return {
+      ...base,
+      libelle: l.libelleLibre,
+      ligneLibre: true,
+      prixUnitaireCentimes: l.prixUnitaireCentimes,
+      gateauLibre: l.gateauLibre ?? null,
+    };
   }
   if (!fiche) return base;
   const plancher = fiche.produit.regimePrix === 'C' && fiche.prix.prixEstPlancher;
