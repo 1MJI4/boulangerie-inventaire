@@ -3,7 +3,8 @@
 // Galerie de photos de modèles dans l'écran de commande (décision du
 // propriétaire, 26/10/2026 ; propriétaire de l'écran : `commandes-traiteur`).
 // Le client montre une photo, la vendeuse la touche : l'application ajoute le
-// produit EXACTEMENT comme un toucher de sa carte (`toucherProduit`), et la
+// produit comme un toucher de sa carte (`toucherProduit`) s'il n'est pas déjà
+// au bon — sinon la photo se pose sur sa ligne, SANS rien ajouter — et la
 // ligne retient l'identifiant de la photo (« G043 »), imprimé sur le bon.
 //
 // AUCUNE règle de prix ni de minimum ici : les photos sont une DONNÉE gérée
@@ -31,12 +32,15 @@ import {
 export type ToucherPhoto = { lignes: LigneEcran[]; cle: string; champ: 'quantite' | 'symboles' | 'taille' };
 
 /**
- * Ajoute le produit de la fiche « comme si on avait touché sa carte », et pose
- * la photo sur la ligne touchée.
- * - La ligne touchée par `toucherProduit` porte déjà une AUTRE photo (deux
- *   gâteaux différents du même produit) : nouvelle ligne, jamais d'écrasement.
- * - Sinon : la photo est posée sur la ligne touchée (créée ou existante, par
- *   ex. une carte touchée juste avant la photo).
+ * Pose la photo sur le produit de la fiche. Poser une photo n'ajoute JAMAIS
+ * de quantité (audit du 28/10/2026 : Bûche 6P à 1 → photo → restait 1, pas 2 ;
+ * 10 mini-burgers → 10, pas 11) :
+ * - produit déjà au bon sur une ligne SANS photo (ou avec cette même photo) :
+ *   la photo s'y pose, quantité inchangée ;
+ * - produit déjà au bon, mais chaque ligne porte une AUTRE photo (deux gâteaux
+ *   différents du même produit) : nouvelle ligne, jamais d'écrasement ;
+ * - produit absent du bon : ajouté comme un toucher de sa carte (`toucherProduit`).
+ * Même règle pour la photo « en attente » posée sur le prochain produit touché.
  * - Suppléments du modèle : seuls les suppléments PAR PERSONNE (Pâte à sucre,
  *   R64) sont cochés, par le mécanisme de la case du bloc gâteau ; le domaine
  *   juge ensuite (20 parts minimum, carré ou Layer) avec ses sorties. Le
@@ -51,11 +55,18 @@ export function ajouterAvecPhoto(
   regles: Readonly<Record<string, RegleSupplementParPersonne>>,
   table: readonly CorrespondanceComptoir[],
 ): ToucherPhoto {
-  let t = toucherProduit(lignes, fiche);
-  const avant = lignes.find((l) => l.cle === t.cle);
-  if (avant && avant.photoModele && avant.photoModele !== photo.id) {
+  // Même repérage que `toucherProduit` (gâteau devenu celui du comptoir compris, R60).
+  const duProduit = lignes.filter((l) => l.produitId === fiche.produit.id || l.origineSurCommande === fiche.produit.id);
+  const cible = duProduit.find((l) => l.photoModele === photo.id) ?? duProduit.find((l) => !l.photoModele);
+  let t: ToucherPhoto;
+  if (cible) {
+    // Champ à ouvrir comme un toucher de la carte, mais AUCUNE quantité ajoutée.
+    t = { lignes: [...lignes], cle: cible.cle, champ: toucherProduit([cible], fiche).champ };
+  } else if (duProduit.length > 0) {
     const neuve = toucherProduit([], fiche);
     t = { lignes: [...lignes, ...neuve.lignes], cle: neuve.cle, champ: neuve.champ };
+  } else {
+    t = toucherProduit(lignes, fiche);
   }
   let suivantes = t.lignes.map((l) => (l.cle === t.cle ? { ...l, photoModele: photo.id } : l));
   for (const s of photo.supplements ?? []) {

@@ -89,3 +89,35 @@ export function controlerSupplements(lignes: readonly RepereSupplement[]): Echec
   });
   return blocages;
 }
+
+/**
+ * Règle (décision du propriétaire, 28/10/2026) : une écriture sur un gâteau
+ * se facture TOUJOURS — texte d'écriture présent + au moins un gâteau au bon
+ * → le supplément « Écriture » (clé catalogue `supplementEcriture`, donnée)
+ * doit être au bon. Le retirer à la main n'est pas autorisé.
+ * Niveau : BLOQUANT (ERR_ECRITURE_SANS_SUPPLEMENT), champ `texteGateau`,
+ * `valeurProposee` = clé du supplément (sortie « Ajouter … » en un geste).
+ * N'interdit pas : un gâteau sans écriture ; un texte vide ou d'espaces ; un
+ * texte sans gâteau (la saisie n'est alors pas enregistrée, et un supplément
+ * sans gâteau est refusé par `controlerSupplements`).
+ */
+export function controlerSupplementEcriture(entree: {
+  texteGateau?: string | null;
+  lignes: readonly { produitId: string | null; nbGateaux: number }[];
+  supplementEcriture: string;
+  /** Libellé du supplément au catalogue (LOI 5), pour le message. */
+  libelleSupplement?: string;
+}): Echec[] {
+  const texte = (entree.texteGateau ?? '').trim();
+  if (texte === '') return [];
+  const gateaux = entree.lignes.reduce((n, l) => n + (Number.isSafeInteger(l.nbGateaux) && l.nbGateaux > 0 ? l.nbGateaux : 0), 0);
+  if (gateaux === 0) return [];
+  if (entree.lignes.some((l) => l.produitId === entree.supplementEcriture)) return [];
+  return [
+    signaler(
+      'ERR_ECRITURE_SANS_SUPPLEMENT',
+      entree.libelleSupplement ? { produit: entree.libelleSupplement } : {},
+      { champ: 'texteGateau', valeurProposee: entree.supplementEcriture },
+    ),
+  ];
+}

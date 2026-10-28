@@ -127,3 +127,48 @@ test('photo sans produit : recherche et consigne du rayon (« Choisissez la tail
   // Rayon créé par le gérant, photo avec produit : la recherche est le nom du rayon.
   assert.equal(navigationPourPhoto(photo('P001', 'Anniversaire', LAYER)).recherche, 'Anniversaire');
 });
+
+// --------------------------------------------- Audit du 28/10/2026 : une photo n'ajoute jamais de pièce
+
+const BUCHE = 'comptoir/buche-6p';
+const buche: FicheCatalogue = {
+  produit: { id: BUCHE, produit: 'Bûche', sousCategorie: '6P', unite: 'piece', regimePrix: 'A', famille: 'patisserie', categorie: 'Test', estFavori: false },
+  prix: { prixCentimes: PRIX, basePrix: 'piece', prixEstPlancher: false, minQuantite: null, minParSymbole: null, maxParUnite: null },
+};
+
+test('photo sur un produit DÉJÀ au bon sans photo : la photo s’y pose, quantité inchangée (Bûche 1 → 1, burgers 10 → 10)', () => {
+  const avecBuche = toucherProduit([], buche).lignes;
+  assert.equal(avecBuche[0].quantite, 1);
+  const t = ajouterAvecPhoto(avecBuche, buche, { id: 'B001' }, cat, FAMILLES, SUPPLEMENTS_PAR_PERSONNE, []);
+  assert.equal(t.lignes.length, 1);
+  assert.equal(t.lignes[0].quantite, 1, 'jamais +1');
+  assert.equal(t.lignes[0].photoModele, 'B001');
+  assert.equal(t.cle, avecBuche[0].cle);
+
+  const dix: LigneEcran[] = [{ ...ligneVide(MINI), quantite: 10 }];
+  const m = ajouter(dix, mini, 'S002');
+  assert.equal(m.lignes.length, 1);
+  assert.equal(m.lignes[0].quantite, 10, '10 mini-burgers restent 10');
+  assert.equal(m.lignes[0].photoModele, 'S002');
+});
+
+test('même photo touchée deux fois : rien ne change (ni quantité, ni ligne)', () => {
+  const un = ajouter([{ ...ligneVide(MINI), quantite: 10 }], mini, 'S002').lignes;
+  const deux = ajouter(un, mini, 'S002');
+  assert.equal(deux.lignes.length, 1);
+  assert.equal(deux.lignes[0].quantite, 10);
+});
+
+test('produit déjà au bon avec une AUTRE photo : nouvelle ligne, la première intacte', () => {
+  const un = ajouter([{ ...ligneVide(MINI), quantite: 10 }], mini, 'S002').lignes;
+  const deux = ajouter(un, mini, 'S005');
+  assert.equal(deux.lignes.length, 2);
+  assert.deepEqual(deux.lignes.map((l) => [l.photoModele, l.quantite]), [['S002', 10], ['S005', 1]]);
+});
+
+test('photo en attente posée au prochain produit touché (déjà au bon) : quantité inchangée', () => {
+  // `toucher` de l'écran appelle `ajouterAvecPhoto` avec la photo en attente : même règle.
+  const avecBuche = toucherProduit([], buche).lignes;
+  const t = ajouterAvecPhoto(avecBuche, buche, { id: 'B001' }, cat, FAMILLES, SUPPLEMENTS_PAR_PERSONNE, []);
+  assert.equal(t.lignes[0].quantite, 1);
+});

@@ -91,6 +91,8 @@ export type ParametresMessages = {
   ERR_SUPPLEMENT_TROP_NOMBREUX: { max: number; produit?: string };
   /** Supplément commandé sans aucun gâteau auquel le rattacher. */
   ERR_SUPPLEMENT_SANS_GATEAU: { produit?: string };
+  /** `produit` : libellé du supplément Écriture au catalogue (LOI 5), s'il est connu. */
+  ERR_ECRITURE_SANS_SUPPLEMENT: { produit?: string };
 
   // --- Refus métier : prix ---------------------------------------------------
   /**
@@ -490,6 +492,15 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
       `Un supplément ` + (p.produit ? `« ${p.produit} » ` : '') +
       `s’ajoute à un gâteau, et cette commande n’en contient aucun. Ajoutez un gâteau ou supprimez la ligne.`,
     correction: () => 'Supprimer la ligne',
+  },
+  ERR_ECRITURE_SANS_SUPPLEMENT: {
+    niveau: 'bloquant',
+    cas: 'Écriture sur un gâteau sans le supplément Écriture au bon (décision du propriétaire, 28/10/2026 : une écriture se facture toujours).',
+    message: (p) =>
+      `Une écriture sur le gâteau se facture : le supplément ` +
+      (p.produit ? `« ${p.produit} » ` : 'Écriture ') +
+      `doit être au bon. Ajoutez-le, s’il vous plaît, ou retirez le texte.`,
+    correction: () => 'Ajouter le supplément Écriture',
   },
 
   // --- Prix ------------------------------------------------------------------

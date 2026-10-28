@@ -25,13 +25,36 @@ function libelleUnite(fiche: FicheTarifee, n: number): string {
 }
 
 /**
- * Number Cake : nombre de symboles à réaliser. « 25 » → 2.
+ * Séparateurs tapés ENTRE les chiffres ou lettres (« 2 5 », « 2-5 », « 2.5 ») :
+ * ils ne se réalisent pas, ils ne comptent pas (audit du 28/10/2026).
+ */
+const SEPARATEURS_SYMBOLES = /[\s\-‐‑‒–—_.,;:/·']/gu;
+
+/**
+ * Number Cake : nombre de chiffres ou lettres à réaliser. « 25 », « 2 5 »,
+ * « 2-5 » → 2.
  * HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°21) : chaque caractère visible
  * compte, signes compris (« 18+ » → 3). C'est le comptage le plus exigeant,
- * donc le plus sûr ; les espaces ne comptent pas.
+ * donc le plus sûr ; les espaces et les séparateurs (tiret, point, virgule,
+ * barre) ne comptent pas.
  */
 export function compterSymboles(texte: string): number {
-  return [...String(texte ?? '').replace(/\s/g, '')].length;
+  return [...String(texte ?? '').replace(SEPARATEURS_SYMBOLES, '')].length;
+}
+
+/**
+ * Règle (audit du 28/10/2026) : le nombre de chiffres ou lettres d'un Number
+ * Cake SUIT le texte saisi, jamais un nombre déclaré à part (« 25 » avec « 1 »
+ * touché = 2, donc 30 parts minimum). Retourne le nombre compté dans le texte,
+ * ou `null` quand le texte ne permet pas de compter :
+ *  - texte vide (le nombre déclaré reste seul juge) ;
+ *  - « Autre forme » (cœur, étoile… : `formesLibres`), où les lettres tapées
+ *    décrivent une forme au lieu d'être réalisées une à une.
+ */
+export function symbolesDuTexte(texte: string | null | undefined, formesLibres = false): number | null {
+  if (formesLibres) return null;
+  const n = compterSymboles(String(texte ?? ''));
+  return n > 0 ? n : null;
 }
 
 /** Minimum applicable à cette ligne, ou `null` si le produit n'en a pas. */
@@ -76,7 +99,7 @@ export function validerQuantiteMin(
   const precision =
     fiche.prix.minParSymbole !== null && nbSymboles !== undefined
       ? `${fiche.prix.minParSymbole} ${libelleUnite(fiche, fiche.prix.minParSymbole)} par chiffre ou lettre, ` +
-        `${nbSymboles} ${nbSymboles > 1 ? 'symboles' : 'symbole'}`
+        `${nbSymboles} ${nbSymboles > 1 ? 'chiffres ou lettres' : 'chiffre ou lettre'}`
       : undefined;
   return signaler(
     'ERR_QUANTITE_MIN',

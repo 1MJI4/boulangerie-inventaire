@@ -58,6 +58,8 @@ export type LigneCommande = {
   /** Produit du catalogue de commande (null : ligne libre ou ligne antérieure au lot 2). */
   /** Rayon, nom et régime : de quoi classer la ligne (boulangerie, pâtisserie, salé). */
   produitCatalogue?: { cleCatalogue: string; categorie?: string; nom?: string; regimePrix?: 'A' | 'B' | 'C' | null } | null;
+  /** Base de prix de la version de tarif appliquée (piece, personne, kg, forfait) ; null : ligne libre ou ancienne. */
+  prixProduit?: { basePrix: string } | null;
   sousPlancherAutorisePar?: string | null;
   sousPlancherAutoriseLe?: string | null;
   ligneLibreAutoriseePar?: string | null;

@@ -292,13 +292,13 @@ test('ligne : 9 mini burgers → ERR_QUANTITE_MIN à la saisie de la ligne', () 
 
 test('ligne libre : prix fixé avec le gérant obligatoire, prix > 0', () => {
   const montant = multiplier(50, 100); // montant de test, hors catalogue
-  const sans = controlerLigne({ libelle: 'Plateau spécial', quantite: 1, prixUnitaireCentimes: montant }, 0, PRISE, ctx);
+  const sans = controlerLigne({ libelle: 'Plateau spécial', gateauLibre: false, quantite: 1, prixUnitaireCentimes: montant }, 0, PRISE, ctx);
   assert.equal(sans.ok, false);
   if (!sans.ok) assert.equal(sans.code, 'ERR_DROIT_INSUFFISANT');
-  const nul = controlerLigne({ libelle: 'Plateau spécial', quantite: 1, prixUnitaireCentimes: 0, deverrouillage: GERANT }, 0, PRISE, ctx);
+  const nul = controlerLigne({ libelle: 'Plateau spécial', gateauLibre: false, quantite: 1, prixUnitaireCentimes: 0, deverrouillage: GERANT }, 0, PRISE, ctx);
   assert.equal(nul.ok, false);
   if (!nul.ok) assert.equal(nul.code, 'ERR_MONTANT_NUL');
-  const ok = controlerLigne({ libelle: 'Plateau spécial', quantite: 2, prixUnitaireCentimes: montant, deverrouillage: GERANT }, 0, PRISE, ctx);
+  const ok = controlerLigne({ libelle: 'Plateau spécial', gateauLibre: false, quantite: 2, prixUnitaireCentimes: montant, deverrouillage: GERANT }, 0, PRISE, ctx);
   assert.ok(ok.ok);
   assert.equal(ok.donnees.totalCentimes, multiplier(2, montant));
   assert.deepEqual(ok.donnees.autorisation, GERANT);
@@ -740,7 +740,7 @@ test('R55 case « demande inhabituelle » ou ligne libre → AVERT_COMMANDE_INHA
   assert.ok(r.ok);
   assert.ok(r.signalements.some((s) => s.code === 'AVERT_COMMANDE_INHABITUELLE'));
   const libre = controlerCommande(
-    commande([{ libelle: 'Gâteau licorne', quantite: 1, prixUnitaireCentimes: multiplier(40, 100) /* montant de test, hors catalogue */, deverrouillage: GERANT }]),
+    commande([{ libelle: 'Gâteau licorne', gateauLibre: false, quantite: 1, prixUnitaireCentimes: multiplier(40, 100) /* montant de test, hors catalogue */, deverrouillage: GERANT }]),
     ctx,
   );
   assert.ok(libre.ok, JSON.stringify(libre));

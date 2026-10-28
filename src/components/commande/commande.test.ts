@@ -72,7 +72,7 @@ test('sous le plancher : refus, sortie « Remettre … par personne »', () => {
 });
 
 test('ligne libre sans accord du gérant : refus, sortie « Saisir le code gérant » (action, pas valeur)', () => {
-  const l = { ...ligneVide(null), libelleLibre: 'Gâteau licorne', quantite: 1, prixUnitaireCentimes: PRIX };
+  const l = { ...ligneVide(null), libelleLibre: 'Gâteau licorne', gateauLibre: false, quantite: 1, prixUnitaireCentimes: PRIX };
   const r = controlerLigne(versLigneSaisie(l, null), 0, DATE, ctx);
   assert.equal(r.ok, false);
   if (r.ok) return;

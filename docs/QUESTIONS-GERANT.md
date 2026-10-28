@@ -422,3 +422,13 @@ l'avez pas confirmé ici.
     virgule qui n'est pas un prix (par exemple « 1,5 kg ») dans une note ?
     *(en attendant, l'application fait : elle refuse le nombre à virgule — écrivez le prix
     dans le tarif, jamais sur la photo.)*
+
+82. **« Autre demande » qui est un gâteau : faut-il un minimum de parts ?** Depuis le
+    28/10/2026, une ligne « Autre demande » demande « C'est un gâteau ? ». Si oui, la quantité
+    devient un nombre de parts et un goût est obligatoire.
+    *(en attendant, l'application fait : aucun minimum de parts pour un gâteau libre.)*
+
+83. **Number Cake : quels caractères comptent comme un chiffre ou une lettre ?** « 2 5 »,
+    « 2-5 » et « 25 » comptent tous 2 (15 parts chacun).
+    *(en attendant, l'application fait : espaces, tirets, points, virgules et barres ne
+    comptent pas ; « + » compte comme un symbole.)*

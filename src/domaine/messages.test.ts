@@ -75,6 +75,7 @@ test('le balayage voit bien les zones attendues', () => {
 const EXEMPLE_IMPORT = { ou: 'Ligne 12 « Croissant »', precision: '7 colonnes au lieu de 8' };
 
 const EXEMPLES: Partial<Record<CodeCatalogue, unknown>> = {
+  ERR_ECRITURE_SANS_SUPPLEMENT: { produit: 'Écriture simple' },
   ERR_JOUR_FERME: { jour: 'mardi' },
   ERR_PERIODE_CONGES: {},
   ERR_DATE_PASSEE: { premiereDate: 'jeudi 16 octobre' },

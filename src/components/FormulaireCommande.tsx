@@ -79,6 +79,7 @@ import {
   JOURS_AVANT_ARCHIVAGE,
   REGLES_FORME,
   SUPPLEMENTS_PAR_PERSONNE,
+  SUPPLEMENT_ECRITURE as SUPPLEMENT_ECRITURE_DOMAINE,
   TAILLES_INTERDITES,
 } from '@/domaine/constantes';
 import { CORRESPONDANCES_COMPTOIR } from '@/catalogue/correspondancesComptoir';
@@ -115,6 +116,12 @@ import {
   basculerSupplementParPersonne,
   remplacementsProposes,
   synchroniserSupplementsParPersonne,
+  synchroniserSupplementEcriture,
+  supplementEcritureImpose,
+  ecrireChiffresOuLettres,
+  choisirNombreSymboles,
+  basculerFormesLibres,
+  formesLibresEnregistrees,
   SUPPLEMENT_PATE_A_SUCRE,
   estLigneGateau,
   indexBlocGateau,
@@ -131,6 +138,7 @@ import {
   type LigneEcran,
 } from '@/components/commande/modele';
 import { sortieDe } from '@/components/commande/sorties';
+import { libelleManque, MANQUE_SIMPLE, MOTS_MANQUANTS } from '@/components/commande/manques';
 import { ChampPave } from '@/components/commande/ChampPave';
 import { AccesGerant } from '@/components/commande/AccesGerant';
 import { BandeRetrait } from '@/components/commande/BandeRetrait';
@@ -144,9 +152,14 @@ const CHAMP_TEXTE =
 const TITRE = 'mb-3 text-base font-semibold text-ink';
 
 /** Unité affichée d'une quantité en pièces : parts pour un prix par personne (donnée du catalogue). */
-function uniteDe(fiche: FicheTarifee | null): string {
+function uniteDe(fiche: FicheTarifee | null, ligne?: Pick<LigneEcran, 'produitId' | 'gateauLibre'>): string {
+  // Ligne libre déclarée gâteau (« C'est un gâteau ? » : oui) : la quantité est en parts.
+  if (ligne && ligne.produitId === null && ligne.gateauLibre === true) return 'parts';
   return fiche?.prix.basePrix === 'personne' ? 'parts' : 'pièces';
 }
+
+/** Goût d'un gâteau libre (« Autre demande » déclarée gâteau) : un goût, liste du gérant. */
+const CHOIX_GOUT_LIBRE: ChoixGout = { liste: 'parfum', parEtage: false };
 
 /** « parts × prix par personne = total » — les trois composantes que le vendeur annonce. */
 function composantes(l: LigneControlee, unite: string): string {
@@ -365,6 +378,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       // R63 : forme carré / rond ; R65 : tailles qui ne se font pas (décisions du 26/10/2026).
       formes: REGLES_FORME,
       taillesInterdites: TAILLES_INTERDITES,
+      // Écriture sur un gâteau = supplément Écriture au bon, toujours (28/10/2026).
+      supplementEcriture: SUPPLEMENT_ECRITURE_DOMAINE,
       aujourdhui: cal.aujourdhui,
       existante: commande
         ? { statut: commande.statut, retraitLe: commande.retraitLe, anonymiseeLe: commande.anonymiseeLe }
@@ -438,6 +453,14 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   const signauxMontants = acompte !== null || tentative ? pour(['acompte', 'total']) : pour(['total']);
   const signauxStatut = pour(['statut']);
 
+  // Écriture présente + gâteau au bon → supplément Écriture remis s'il manque
+  // (gâteau retiré puis remis, ligne retirée…) : le retirer à la main n'est
+  // pas autorisé (propriétaire, 28/10/2026). Même tableau si rien ne change.
+  useEffect(() => {
+    if (!catalogue) return;
+    setLignes((ls) => synchroniserSupplementEcriture(ls, texteGateau, sansEcriture, catalogue, famillesGateau));
+  }, [lignes, texteGateau, sansEcriture, catalogue, famillesGateau, setLignes]);
+
   // --- Actions -----------------------------------------------------------------
   const majLigne = (i: number, partiel: Partial<LigneEcran>) =>
     setLignes((ls) => ls.map((l, j) => (j === i ? majLigneEcran(l, partiel) : l)));
@@ -451,6 +474,12 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
   /** R63 / R65 : la ligne devient le produit proposé par le domaine (un geste). */
   const remplacer = (i: number, r: SortieRemplacement) =>
     setLignes((ls) => ls.map((l, j) => (j === i ? appliquerRemplacement(l, r, GOUTS_SUR_COMMANDE) : l)));
+  /** Goûts attendus sur une ligne : donnée du gâteau commandé, ou 1 pour un gâteau libre. */
+  const goutsDeLaLigne = (l: LigneEcran): number => {
+    if (l.produitId === null) return l.gateauLibre === true ? 1 : 0;
+    const f = ficheDe(catalogue, gateauDeLaLigne(l));
+    return f ? goutsAttendus(GOUTS_SUR_COMMANDE[f.produit.id], f) : 0;
+  };
   /** Amène une ligne du bon à l'écran (champ simplement vide : rien à « corriger » d'autre). */
   const montrerLigne = (i: number) =>
     document.getElementById(`bon-${lignes[i]?.cle ?? ''}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -484,7 +513,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
       (photo ? `Photo ${photo.id} — ` : '') +
       (t.champ === 'taille'
         ? f.prix.minParSymbole !== null && ligne?.nbSymboles == null
-          ? `${libelleProduit(f)} au bon : combien de formes ?`
+          ? `${libelleProduit(f)} au bon : combien de chiffres ou lettres ?`
           : `${libelleProduit(f)} au bon : choisissez la taille`
         : ligne?.quantite != null && f.produit.unite !== 'kg'
           ? `${libelleProduit(f)} : ${ligne.quantite} ${uniteDe(fiche)} au bon`
@@ -587,9 +616,14 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
     if (i !== null && ligne && champ === 'photoModele') return setLignes((ls) => retirerPhoto(ls, ligne.cle));
     if (i !== null && ligne && s.code === 'ERR_GOUT_MANQUANT') {
       // R62 : « Au choix du pâtissier » sur chaque goût encore vide (jamais retirer la ligne).
-      const f = ficheDe(catalogue, gateauDeLaLigne(ligne));
-      const n = f ? goutsAttendus(GOUTS_SUR_COMMANDE[f.produit.id], f) : 0;
+      const n = goutsDeLaLigne(ligne);
       return majLigne(i, { gouts: Array.from({ length: n }, (_, k) => ligne.gouts[k] || GOUT_AU_CHOIX) });
+    }
+    // Ligne libre : « C'est un gâteau ? » se répond sur la ligne (jamais la retirer).
+    if (i !== null && ligne && champ === 'gateauLibre') return montrerLigne(i);
+    // Écriture sans supplément (28/10/2026) : la sortie le remet au bon.
+    if (s.code === 'ERR_ECRITURE_SANS_SUPPLEMENT') {
+      return setLignes((ls) => basculerSupplement(ls, SUPPLEMENT_ECRITURE, true, catalogue, famillesGateau));
     }
     // R63 : forme du gâteau — jamais retirer la ligne. Rond impossible → carré
     // (les remplaçants ont leurs propres boutons) ; forme illisible → à rechoisir.
@@ -727,8 +761,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
           // R62 : goût manquant → « Au choix du pâtissier » sur chaque goût encore vide.
           if (s.code === 'ERR_GOUT_MANQUANT' && iLigne !== null) {
             const l = lignes[iLigne];
-            const f = l ? ficheDe(catalogue, gateauDeLaLigne(l)) : null;
-            const n = l && f ? goutsAttendus(GOUTS_SUR_COMMANDE[f.produit.id], f) : 0;
+            const n = l ? goutsDeLaLigne(l) : 0;
             boutons.push(
               <BoutonSortie
                 key="gout-au-choix"
@@ -1113,7 +1146,7 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
             {lignes.map((ligne, i) => {
               const fiche = ficheDe(catalogue, ligne.produitId);
               const r = resultatsLignes[i];
-              const unite = uniteDe(fiche);
+              const unite = uniteDe(fiche, ligne);
               // Refus qui portent sur PLUSIEURS lignes (suppléments…) : `controlerLigne`
               // ne les voit pas, `blocagesCommande` si. Affichés sur la ligne dès sa
               // saisie, sans doubler le refus propre à la ligne.
@@ -1158,6 +1191,8 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
                     // Taille ET goût donnés : l'écriture est l'étape suivante (jamais avant la taille).
                     onGoutChoisi={i === iBlocGateau && ligne.quantite !== null ? montrerEcriture : undefined}
                     onRetirer={() => retirerLigne(i)}
+                    // Supplément Écriture d'une écriture saisie : pas de × (non retirable à la main, 28/10/2026).
+                    retirable={!supplementEcritureImpose(ligne, precisionsGateau.texteGateau, precisionsGateau.sansEcriture)}
                     onGerantLibre={() =>
                       avecGerant(`Prix d’une demande hors catalogue : « ${ligne.libelleLibre || 'ligne libre'} ».`, (d) =>
                         majLigne(i, { deverrouillage: d }),
@@ -1694,6 +1729,11 @@ function lignesDepuisCommande(c: Commande): LigneEcran[] {
       prixUnitaireCentimes: l.prixCentimes,
       nbSymboles: l.nbSymboles ?? null,
       formes: l.formes ?? '',
+      // « Autre dessin » (cœur…) : relu d'après le texte (non enregistré à part, voir rapport).
+      formesLibres: formesLibresEnregistrees(l.formes),
+      // Ligne libre : un gâteau libre porte toujours un goût (exigé) ; sans goût,
+      // la question est reposée (jamais deviné « non », LOI 6 / règle de doute).
+      gateauLibre: produitId ? null : (l.gouts ?? []).some((g) => g.trim() !== '') ? true : null,
       gouts: l.gouts ?? [],
       decorations: l.decorations ?? [],
       nbObjets: l.nbObjets ?? null,
@@ -1731,18 +1771,19 @@ function PaveDeLigne({
   ouvrir: (champ: string | null) => void;
 }) {
   const libre = ligne.produitId === null;
-  const unite = uniteDe(fiche);
+  const unite = uniteDe(fiche, ligne);
   const plancher = fiche?.produit.regimePrix === 'C' && fiche.prix.prixEstPlancher === true;
   const nom = fiche ? libelleProduit(fiche) : ligne.libelleLibre || 'Autre demande';
 
   if (champ === 'symboles') {
     return (
       <PaveEntier
-        libelle={`${nom} — nombre de formes`}
+        libelle={`${nom} — nombre de chiffres ou lettres`}
         contexte="commande"
-        libelleUnite="formes"
+        libelleUnite="chiffres ou lettres"
         quantite={ligne.nbSymboles}
-        onChange={(n) => onChange({ nbSymboles: n })}
+        // Un texte qui compte autre chose est vidé (jamais « 25 » avec 1, 28/10/2026).
+        onChange={(n) => onChange(n === null ? { nbSymboles: null } : choisirNombreSymboles(ligne, n))}
         onValider={() => ouvrir('taille')}
         champ="nbSymboles"
       />
@@ -1774,7 +1815,7 @@ function PaveDeLigne({
   if (champ === 'prix' && (plancher || libre)) {
     return (
       <PaveMontant
-        libelle={libre ? `${nom} — prix fixé avec le gérant` : `${nom} — prix par personne`}
+        libelle={libre ? `${nom} — ${ligne.gateauLibre ? 'prix par part, ' : ''}fixé avec le gérant` : `${nom} — prix par personne`}
         sousTitre={plancher && fiche ? `à partir de ${formaterEuros(fiche.prix.prixCentimes)}, modifiable vers le haut` : undefined}
         centimes={ligne.prixUnitaireCentimes ?? (plancher && fiche ? fiche.prix.prixCentimes : null)}
         onChange={(c) => onChange({ prixUnitaireCentimes: c, deverrouillage: libre ? ligne.deverrouillage : null })}
@@ -1799,51 +1840,12 @@ function PaveDeLigne({
   return null;
 }
 
-/** Ce qui manque, en un mot en capitales (« NOM du client », « GOÛT — Bavarois »). */
-const MOTS_MANQUANTS: Record<string, string> = {
-  client: 'NOM du client',
-  telephone: 'TÉLÉPHONE',
-  dateRetrait: 'DATE de retrait',
-  heureRetrait: 'HEURE de retrait',
-  acompte: 'ACOMPTE',
-  total: 'TOTAL',
-  texteGateau: 'ÉCRITURE sur le gâteau',
-  lignes: 'PRODUITS',
-  quantite: 'TAILLE / QUANTITÉ',
-  gouts: 'GOÛT',
-  forme: 'FORME (carré ou rond)',
-  nbSymboles: 'FORMES',
-  prixCentimes: 'PRIX',
-  nbObjets: 'NOMBRE DE SANDWICHS',
-};
-
-/** Codes dont le mot-clé suffit (champ vide) : pas besoin de la phrase complète. */
-const MANQUE_SIMPLE = new Set([
-  'ERR_CHAMP_OBLIGATOIRE',
-  'ERR_QUANTITE_INVALIDE',
-  'ERR_GOUT_MANQUANT',
-  'ERR_FORME_MANQUANTE',
-  'ERR_NB_SYMBOLES_MANQUANT',
-  'ERR_COMMANDE_VIDE',
-]);
-
-function libelleManque(
-  m: SignalementAffichable,
-  lignes: readonly LigneEcran[],
-  catalogue: CatalogueCommande | null,
-): { titre: string; detail: string | null } {
-  const i = indexLigne(m.champ);
-  const mot = MOTS_MANQUANTS[champLocal(m.champ)] ?? null;
-  const ligne = i !== null ? lignes[i] : undefined;
-  const fiche = ligne ? ficheDe(catalogue, gateauDeLaLigne(ligne)) : null;
-  const produit = ligne ? (fiche ? libelleProduit(fiche) : ligne.libelleLibre || 'Autre demande') : null;
-  const titre = [mot, produit].filter(Boolean).join(' — ') || m.message;
-  return { titre, detail: MANQUE_SIMPLE.has(m.code) ? null : m.message };
-}
+// Mots-clés et libellés de la fenêtre « Il manque » : src/components/commande/manques.ts (testé).
 
 /**
  * Fenêtre « Il manque : » au centre de l'écran (propriétaire, 22/10/2026) :
- * simple, une liste de mots-clés, fermée d'un geste (OK, ✕ ou à côté).
+ * simple, une liste de mots-clés, fermée d'un geste (OK, ✕ ou à côté). Un
+ * refus de règle y porte sa phrase courte du domaine ; aucun bouton (28/10/2026).
  * Toucher un élément mène au champ concerné, sans que ce soit nécessaire.
  */
 function RecapManques({
@@ -1886,6 +1888,10 @@ function RecapManques({
                 className="w-full rounded-lg px-1 py-1.5 text-left text-base font-semibold text-ink hover:bg-surface-2"
               >
                 • {libelle(m).titre}
+                {/* Refus de règle (mardi, minimum…) : sa phrase du domaine, sans bouton (28/10/2026). */}
+                {libelle(m).detail ? (
+                  <span className="mt-0.5 block pl-3 text-sm font-normal text-ink-2">{libelle(m).detail}</span>
+                ) : null}
               </button>
             </li>
           ))}
@@ -2038,18 +2044,17 @@ function BlocGouts({
   );
 }
 
-/** Nombre de formes proposé en gros boutons (au-delà : « Autre », au pavé). */
-const NOMBRES_DE_FORMES = [1, 2, 3, 4] as const;
-
-/** Chiffres et lettres seulement (« 25 », « AM ») : le nombre de formes s'en déduit. */
-const FORMES_SIMPLES = /^[\p{L}\p{N}]+$/u;
+/** Nombre de chiffres ou lettres proposé en gros boutons (au-delà : « Autre », au pavé). */
+const NOMBRES_DE_SYMBOLES = [1, 2, 3, 4] as const;
 
 /**
- * Number Cake (propriétaire, 22/10/2026), sans pavé ni engrenage :
- * 1. « Combien de formes ? » en gros boutons ;
- * 2. « Quelles formes ? » — chiffres ou lettres le plus souvent (« 25 » :
- *    le nombre de formes suit ce qui est tapé), ou « Autre forme » (cœur,
- *    étoile…) en texte libre, qui fait imprimer la zone de dessin ;
+ * Number Cake (propriétaire, 22/10/2026 ; vocabulaire « chiffres ou lettres »,
+ * 28/10/2026), sans pavé ni engrenage :
+ * 1. « Combien de chiffres ou lettres ? » en gros boutons ;
+ * 2. « Quels chiffres ou lettres ? » — le nombre SUIT ce qui est tapé (« 25 »,
+ *    « 2 5 », « 2-5 » → 2, compté par le domaine) ; toucher un autre nombre
+ *    vide le texte (à retaper). « Autre dessin » (cœur, étoile…) : texte libre,
+ *    non compté, qui fait imprimer la zone de dessin ;
  * 3. la taille (boutons à partir du minimum), puis seulement le prix.
  */
 function BlocFormes({
@@ -2067,30 +2072,23 @@ function BlocFormes({
   fermerPave: () => void;
   onAutreForme: () => void;
 }) {
-  const [autre, setAutre] = useState(() => ligne.formes.trim() !== '' && !FORMES_SIMPLES.test(ligne.formes.trim()));
+  const autre = ligne.formesLibres === true;
   const n = ligne.nbSymboles;
-  const horsBoutons = n !== null && !(NOMBRES_DE_FORMES as readonly number[]).includes(n);
+  const horsBoutons = n !== null && !(NOMBRES_DE_SYMBOLES as readonly number[]).includes(n);
   const apercu = formesAImprimer(ligne.formes);
-
-  const ecrire = (texte: string) => {
-    const t = texte.trim();
-    // Chiffres ou lettres : le nombre de formes suit ce qui est écrit (« 25 » = 2).
-    if (!autre && t !== '' && FORMES_SIMPLES.test(t)) onChange({ formes: texte, nbSymboles: [...t].length });
-    else onChange({ formes: texte });
-  };
 
   return (
     <div className="grid gap-2 rounded-lg border-l-4 border-accent bg-surface-2 px-2.5 py-2">
       <div>
-        <p className="mb-1 text-sm font-semibold text-ink">Combien de formes ?</p>
-        <div role="group" aria-label="Nombre de formes" className="grid grid-cols-5 gap-1">
-          {NOMBRES_DE_FORMES.map((k) => (
+        <p className="mb-1 text-sm font-semibold text-ink">Combien de chiffres ou lettres ?</p>
+        <div role="group" aria-label="Nombre de chiffres ou lettres" className="grid grid-cols-5 gap-1">
+          {NOMBRES_DE_SYMBOLES.map((k) => (
             <button
               key={k}
               type="button"
               aria-pressed={n === k}
               onClick={() => {
-                onChange({ nbSymboles: k });
+                onChange(choisirNombreSymboles(ligne, k));
                 fermerPave();
               }}
               className={`chiffres min-h-12 rounded-lg border-2 text-lg font-semibold ${
@@ -2116,15 +2114,15 @@ function BlocFormes({
       {n !== null ? (
         <div>
           <label className="block">
-            <span className="mb-1 block text-sm font-semibold text-ink">Quelles formes ?</span>
+            <span className="mb-1 block text-sm font-semibold text-ink">{autre ? 'Quel dessin ?' : 'Quels chiffres ou lettres ?'}</span>
             <input
               className={CHAMP_TEXTE}
               value={ligne.formes}
-              onChange={(e) => ecrire(e.target.value)}
+              onChange={(e) => onChange(ecrireChiffresOuLettres(ligne, e.target.value))}
               placeholder={autre ? 'cœur + 1, étoile…' : n === 1 ? '5' : n === 2 ? '25' : 'Chiffres ou lettres'}
               autoComplete="off"
               autoCapitalize="characters"
-              aria-label="Formes à réaliser"
+              aria-label={autre ? 'Dessin à réaliser' : 'Chiffres ou lettres à réaliser'}
             />
           </label>
           {apercu ? (
@@ -2136,11 +2134,11 @@ function BlocFormes({
             compact
             coche={autre}
             onChange={(v) => {
-              setAutre(v);
+              onChange(basculerFormesLibres(ligne, v));
               if (v) onAutreForme();
             }}
           >
-            Autre forme (cœur, étoile…) — zone de dessin au ticket
+            Autre dessin (cœur, étoile…) — zone de dessin au ticket
           </Case>
         </div>
       ) : null}
@@ -2166,6 +2164,7 @@ function LigneDuBon({
   tailles,
   onChange,
   onRetirer,
+  retirable = true,
   onGerantLibre,
   onAutreForme,
   onRetirerPhoto,
@@ -2191,8 +2190,10 @@ function LigneDuBon({
   tailles: readonly number[];
   onChange: (p: Partial<LigneEcran>) => void;
   onRetirer: () => void;
+  /** false : pas de × (supplément Écriture d'une écriture saisie, 28/10/2026). */
+  retirable?: boolean;
   onGerantLibre: () => void;
-  /** Number Cake « autre forme » : la zone de dessin s'imprime pour l'atelier. */
+  /** Number Cake « autre dessin » : la zone de dessin s'imprime pour l'atelier. */
   onAutreForme: () => void;
   /** Retire la photo de modèle de la ligne (la ligne reste). */
   onRetirerPhoto: () => void;
@@ -2278,15 +2279,47 @@ function LigneDuBon({
             </div>
           ) : null}
         </div>
-        <button
-          type="button"
-          onClick={onRetirer}
-          className="min-h-12 min-w-12 shrink-0 rounded-xl border border-line text-2xl leading-none text-ink-3 hover:text-bloquant"
-          aria-label="Retirer la ligne"
-        >
-          ×
-        </button>
+        {retirable ? (
+          <button
+            type="button"
+            onClick={onRetirer}
+            className="min-h-12 min-w-12 shrink-0 rounded-xl border border-line text-2xl leading-none text-ink-3 hover:text-bloquant"
+            aria-label="Retirer la ligne"
+          >
+            ×
+          </button>
+        ) : (
+          <span className="shrink-0 self-center text-xs text-ink-2">avec l’écriture</span>
+        )}
       </div>
+
+      {libre ? (
+        // « C'est un gâteau ? » (audit du 28/10/2026) : réponse explicite, jamais déduite du libellé (LOI 6).
+        <div role="group" aria-label="C’est un gâteau ?" className="mt-2 flex items-center gap-1">
+          <span className="mr-1 text-sm font-semibold text-ink">C’est un gâteau ?</span>
+          {([true, false] as const).map((v) => (
+            <button
+              key={String(v)}
+              type="button"
+              aria-pressed={ligne.gateauLibre === v}
+              onClick={() =>
+                onChange(
+                  v
+                    ? // Gâteau : la quantité devient des PARTS, à saisir.
+                      { gateauLibre: true, quantite: ligne.gateauLibre === true ? ligne.quantite : null }
+                    : // Pas un gâteau : ni goût ni décoration (sinon relu comme un gâteau).
+                      { gateauLibre: false, gouts: [], decorations: [] },
+                )
+              }
+              className={`min-h-11 min-w-16 rounded-lg border-2 px-3 text-base font-semibold ${
+                ligne.gateauLibre === v ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
+              }`}
+            >
+              {v ? 'Oui' : 'Non'}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="mt-2 grid gap-1.5">
         {aFormes ? (
@@ -2388,7 +2421,7 @@ function LigneDuBon({
         {/* Gâteau aux tailles : le prix n'apparaît qu'une fois la taille choisie. */}
         {(plancher || libre) && !(parTailles || aFormes ? ligne.quantite === null : false) ? (
           <ChampPave
-            libelle={libre ? 'Prix unitaire' : unite === 'parts' ? 'Prix / pers.' : 'Prix à la pièce'}
+            libelle={libre ? (ligne.gateauLibre ? 'Prix / part' : 'Prix unitaire') : unite === 'parts' ? 'Prix / pers.' : 'Prix à la pièce'}
             valeur={
               ligne.prixUnitaireCentimes !== null
                 ? formaterEuros(ligne.prixUnitaireCentimes)
@@ -2410,6 +2443,20 @@ function LigneDuBon({
         ) : null}
       </div>
 
+      {libre && ligne.gateauLibre === true ? (
+        // Gâteau libre : goût exigé comme les autres gâteaux (décision n°8, 28/10/2026).
+        <BlocGouts
+          choix={CHOIX_GOUT_LIBRE}
+          attendus={1}
+          gouts={ligne.gouts}
+          decorations={ligne.decorations}
+          options={options}
+          onGouts={(gouts) => onChange({ gouts })}
+          onGoutChoisi={onGoutChoisi}
+          onDecorations={(decorations) => onChange({ decorations })}
+        />
+      ) : null}
+
       {choixGout && ficheGateau && !(aFormes && ligne.nbSymboles === null) ? (
         <BlocGouts
           choix={choixGout}
@@ -2428,7 +2475,7 @@ function LigneDuBon({
       ) : ligne.quantite === null ? (
         <p className="mt-1.5 text-sm text-ink-2">
           {aFormes && ligne.nbSymboles === null
-            ? 'Touchez le nombre de formes.'
+            ? 'Touchez le nombre de chiffres ou lettres.'
             : parTailles
               ? 'Touchez une taille (parts).'
               : `Saisissez ${auKilo ? 'le poids' : 'la quantité'} au pavé.`}
@@ -2707,7 +2754,7 @@ function GrilleProduits({
                         {f.prix.basePrix === 'kg' ? '/kg' : f.prix.basePrix === 'personne' ? '/pers.' : ''}
                       </span>
                       {f.prix.minParSymbole !== null
-                        ? ` · min. ${f.prix.minParSymbole} parts/chiffre`
+                        ? ` · min. ${f.prix.minParSymbole} parts par chiffre ou lettre`
                         : f.prix.minQuantite !== null
                           ? ` · min. ${f.prix.minQuantite}`
                           : ''}

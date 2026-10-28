@@ -169,6 +169,14 @@ export const REGLEMENT_COMMANDE: ReglementCommande = {
 /** Famille du catalogue des suppléments (src/catalogue/familles.ts, PRODUITS_SUPPLEMENT). */
 export const FAMILLE_SUPPLEMENT = 'supplement';
 
+/**
+ * Clé catalogue du supplément « Écriture » (forfait). Décision du propriétaire
+ * (28/10/2026) : une écriture sur un gâteau = ce supplément au bon, toujours ;
+ * le retirer à la main n'est pas autorisé (`controlerSupplementEcriture`,
+ * passé au domaine par `ContexteCommande.supplementEcriture`).
+ */
+export const SUPPLEMENT_ECRITURE = 'gateaux-sur-commande/supplement-ecriture-simple';
+
 /** R63 — forme (carré ou rond) d'un gâteau simple sur commande. */
 export type ReglesForme = {
   /** Gâteaux sur commande qui demandent une forme (clés catalogue). */

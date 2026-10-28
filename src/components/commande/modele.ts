@@ -12,16 +12,16 @@
 import type { Echec, Resultat } from '../../domaine/resultat.ts';
 import type { DateISO, Deverrouillage, FicheTarifee, Forme, PrixRegle, ProduitRegle, RegimePrix, SortieRemplacement } from '../../domaine/types.ts';
 import type { CommandeSaisie, LigneSaisie, ResoudreProduit } from '../../domaine/commande.ts';
-import { resoudreDepuisCatalogue } from '../../domaine/commande.ts';
+import { gateauxDeLigneLibre, resoudreDepuisCatalogue } from '../../domaine/commande.ts';
 import { signaler } from '../../domaine/messages.ts';
 import { gateauxDeLigne } from '../../domaine/supplements.ts';
-import { estGateauSimpleSurCommande } from '../../domaine/minimums.ts';
+import { estGateauSimpleSurCommande, symbolesDuTexte } from '../../domaine/minimums.ts';
 import { gateauSurCommandeDe, produitComptoirPourTaille, type CorrespondanceComptoir } from '../../domaine/prixComptoir.ts';
 import type { JourFerme } from '../../domaine/calendrier.ts';
 import { decalerJours, estDateISO } from '../../domaine/calendrier.ts';
 import { heureChamp, lireHeure } from '../../domaine/reglement.ts';
 import type { DelaisCommande, PlageOuverture, RegleSupplementParPersonne, ReglementCommande } from '../../domaine/constantes.ts';
-import { FAMILLE_SUPPLEMENT } from '../../domaine/constantes.ts';
+import { FAMILLE_SUPPLEMENT, SUPPLEMENT_ECRITURE } from '../../domaine/constantes.ts';
 import type { ChoixGout } from '../../domaine/gouts.ts';
 
 // ---------------------------------------------------------------------------
@@ -216,9 +216,17 @@ export type LigneEcran = {
   quantite: number | null;
   /** Régime C : prix par personne / pièce saisi (null = plancher). Ligne libre : prix fixé avec le gérant. */
   prixUnitaireCentimes: number | null;
+  /** Number Cake : nombre de chiffres ou lettres (suit le texte `formes` quand il se compte). */
   nbSymboles: number | null;
-  /** Number Cake : formes à réaliser (« 25 », « cœur + 1 »), imprimées en gras. */
+  /** Number Cake : chiffres ou lettres à réaliser (« 25 », « cœur + 1 »), imprimés en gras. */
   formes: string;
+  /** Number Cake : « Autre forme » cochée (cœur, étoile…) — le texte ne se compte pas. */
+  formesLibres?: boolean;
+  /**
+   * Ligne libre : réponse à « C'est un gâteau ? » (null = pas encore répondu,
+   * refusé par le domaine). Jamais déduite du libellé (LOI 6).
+   */
+  gateauLibre?: boolean | null;
   /** R62 : goût (ou recette d'entremet) du gâteau, un par étage ('' = pas encore choisi). */
   gouts: string[];
   /** R62 : décorations facultatives (Oreo, Kinder…). */
@@ -263,6 +271,7 @@ export function ligneVide(produitId: string | null): LigneEcran {
     prixUnitaireCentimes: null,
     nbSymboles: null,
     formes: '',
+    formesLibres: false,
     gouts: [],
     decorations: [],
     nbObjets: null,
@@ -271,6 +280,7 @@ export function ligneVide(produitId: string | null): LigneEcran {
     deverrouillageTaille: null,
     forme: null,
     photoModele: null,
+    gateauLibre: null,
   };
 }
 
@@ -285,6 +295,9 @@ export function versLigneSaisie(l: LigneEcran, fiche: FicheTarifee | null): Lign
     produitId: l.produitId,
     quantite: l.quantite ?? 0,
     nbSymboles: l.nbSymboles,
+    // Number Cake : le texte part au domaine (et au serveur), qui recompte (28/10/2026).
+    formes: l.formes.trim() || null,
+    formesLibres: l.formesLibres === true,
     nbObjets: l.nbObjets,
     gouts: l.gouts,
     origineSurCommande: l.origineSurCommande ?? null,
@@ -292,7 +305,9 @@ export function versLigneSaisie(l: LigneEcran, fiche: FicheTarifee | null): Lign
     deverrouillage: l.deverrouillage,
     deverrouillageTaille: l.deverrouillageTaille,
   };
-  if (!l.produitId) return { ...base, libelle: l.libelleLibre, prixUnitaireCentimes: l.prixUnitaireCentimes };
+  if (!l.produitId) {
+    return { ...base, libelle: l.libelleLibre, prixUnitaireCentimes: l.prixUnitaireCentimes, gateauLibre: l.gateauLibre ?? null };
+  }
   if (!fiche) return base;
   const plancher = fiche.produit.regimePrix === 'C' && fiche.prix.prixEstPlancher;
   return { ...base, prixUnitaireCentimes: plancher ? (l.prixUnitaireCentimes ?? fiche.prix.prixCentimes) : fiche.prix.prixCentimes };
@@ -526,6 +541,41 @@ export function majLigneEcran(l: LigneEcran, partiel: Partial<LigneEcran>): Lign
 }
 
 // ---------------------------------------------------------------------------
+// Number Cake : le nombre de chiffres ou lettres suit le texte (audit du 28/10/2026)
+// ---------------------------------------------------------------------------
+// Le comptage est au domaine (`symbolesDuTexte`, rejoué par le serveur) ; ces
+// fonctions gardent seulement l'écran d'accord avec lui, sans jamais laisser
+// « 25 » affiché avec « 1 » coché.
+
+/** Saisie du texte : le nombre suit ce qui est tapé (« 2 5 », « 2-5 », « 25 » → 2), sauf « Autre forme ». */
+export function ecrireChiffresOuLettres(l: LigneEcran, texte: string): Partial<LigneEcran> {
+  const n = symbolesDuTexte(texte, l.formesLibres === true);
+  return n === null ? { formes: texte } : { formes: texte, nbSymboles: n };
+}
+
+/**
+ * Toucher d'un nombre (1, 2, 3, 4, « Autre ») : un texte déjà tapé qui compte
+ * AUTRE CHOSE est vidé (il est à retaper), jamais gardé à côté d'un nombre faux.
+ */
+export function choisirNombreSymboles(l: LigneEcran, n: number): Partial<LigneEcran> {
+  const compte = symbolesDuTexte(l.formes, l.formesLibres === true);
+  return compte !== null && compte !== n ? { nbSymboles: n, formes: '' } : { nbSymboles: n };
+}
+
+/** Case « Autre forme » : décochée, le texte se recompte aussitôt. */
+export function basculerFormesLibres(l: LigneEcran, libres: boolean): Partial<LigneEcran> {
+  if (libres) return { formesLibres: true };
+  const n = symbolesDuTexte(l.formes, false);
+  return n === null ? { formesLibres: false } : { formesLibres: false, nbSymboles: n };
+}
+
+/** Relecture d'une commande : « Autre forme » si le texte n'est pas fait que de chiffres ou lettres (cœur…). */
+export function formesLibresEnregistrees(formes: string | null | undefined): boolean {
+  const t = String(formes ?? '').trim();
+  return t !== '' && !/^[\p{L}\p{N}\s\-.,/]+$/u.test(t);
+}
+
+// ---------------------------------------------------------------------------
 // Bloc « Gâteau » et suppléments automatiques (demande du propriétaire, 18/10/2026)
 // ---------------------------------------------------------------------------
 // Écriture, photo WhatsApp et photo à imprimer s'affichent SOUS LA LIGNE du
@@ -541,12 +591,15 @@ export function majLigneEcran(l: LigneEcran, partiel: Partial<LigneEcran>): Lign
  * produit (pas de prix : le prix est lu au catalogue reçu, LOI 1).
  */
 export const SUPPLEMENT_PHOTO = 'gateaux-sur-commande/supplement-photo';
-export const SUPPLEMENT_ECRITURE = 'gateaux-sur-commande/supplement-ecriture-simple';
+/** Clé du domaine (constantes.ts) : le domaine l'exige dès qu'il y a une écriture (28/10/2026). */
+export { SUPPLEMENT_ECRITURE };
 /** R64 (26/10/2026) : supplément PAR PERSONNE, autant de parts que le gâteau qui le reçoit. */
 export const SUPPLEMENT_PATE_A_SUCRE = 'gateaux-sur-commande/supplement-pate-a-sucre';
 
 /** Gâteaux apportés par UNE ligne de l'écran (domaine : `gateauxDeLigne`). */
 function gateauxDeLigneEcran(l: LigneEcran, catalogue: CatalogueCommande | null, famillesGateau: readonly string[]): number {
+  // Ligne libre : gâteau seulement sur réponse explicite (« C'est un gâteau ? » : oui).
+  if (l.produitId === null) return gateauxDeLigneLibre(l.gateauLibre);
   const f = ficheDe(catalogue, l.produitId);
   if (!f) return 0;
   return gateauxDeLigne(
@@ -614,10 +667,9 @@ export function basculerSupplement(
 }
 
 /**
- * Saisie du texte d'écriture. Texte non vide → supplément « Écriture » au bon
- * (s'il n'y est pas : un vendeur qui l'a retiré le voit revenir seulement
- * quand il MODIFIE le texte — jamais de boucle sur un simple rendu) ; texte
- * vidé → supplément retiré.
+ * Saisie du texte d'écriture. Texte non vide → supplément « Écriture » au bon ;
+ * texte vidé → supplément retiré. Le supplément ne se retire pas à la main
+ * (propriétaire, 28/10/2026) : `synchroniserSupplementEcriture` le remet.
  */
 export function saisirEcriture(
   lignes: readonly LigneEcran[],
@@ -626,6 +678,31 @@ export function saisirEcriture(
   famillesGateau: readonly string[],
 ): LigneEcran[] {
   return basculerSupplement(lignes, SUPPLEMENT_ECRITURE, texte.trim() !== '', catalogue, famillesGateau);
+}
+
+/**
+ * Décision du propriétaire (28/10/2026) : une écriture sur un gâteau = le
+ * supplément « Écriture » au bon, TOUJOURS. Texte présent (et « Pas
+ * d'écriture » non coché) + au moins un gâteau + supplément absent → il est
+ * remis (gâteau retiré puis remis, ligne retirée au ×…). Le domaine le refuse
+ * de toute façon (ERR_ECRITURE_SANS_SUPPLEMENT) : ceci évite d'y arriver.
+ * Retourne le MÊME tableau si rien ne change (aucune boucle de rendu).
+ */
+export function synchroniserSupplementEcriture(
+  lignes: LigneEcran[],
+  texte: string,
+  sansEcriture: boolean,
+  catalogue: CatalogueCommande | null,
+  famillesGateau: readonly string[],
+): LigneEcran[] {
+  if (sansEcriture || texte.trim() === '' || aSupplement(lignes, SUPPLEMENT_ECRITURE)) return lignes;
+  const suivantes = basculerSupplement(lignes, SUPPLEMENT_ECRITURE, true, catalogue, famillesGateau);
+  return suivantes.length === lignes.length ? lignes : suivantes;
+}
+
+/** true : la ligne est le supplément « Écriture » d'une écriture saisie — pas de × (non retirable à la main). */
+export function supplementEcritureImpose(l: LigneEcran, texte: string, sansEcriture: boolean): boolean {
+  return l.produitId === SUPPLEMENT_ECRITURE && !sansEcriture && texte.trim() !== '';
 }
 
 export type PrecisionsGateau = {

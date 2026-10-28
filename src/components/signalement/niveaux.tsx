@@ -9,7 +9,7 @@
 //
 //   | Niveau        | Forme d'icône        | Libellé    | Poids visuel                           |
 //   |---------------|----------------------|------------|----------------------------------------|
-//   | bloquant      | octogone (stop) + ✕  | « Refusé » | cadre épais 2 px + barre 8 px, pastille pleine |
+//   | bloquant      | octogone (stop) + ✕  | « À corriger » | cadre épais 2 px + barre 8 px, pastille pleine |
 //   | avertissement | triangle + !         | « Attention » | cadre 2 px + barre 8 px, pastille ambre |
 //   | information   | cercle + i           | « Info »   | cadre fin 1 px, pas de pastille         |
 //
@@ -30,7 +30,7 @@ type Style = {
 
 export const NIVEAUX: Record<Niveau, Style> = {
   bloquant: {
-    libelle: 'Refusé',
+    libelle: 'À corriger',
     role: 'alert',
     cadre: 'border-2 border-l-8 border-bloquant bg-bloquant-doux',
     icone: 'text-bloquant',

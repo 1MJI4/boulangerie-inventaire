@@ -31,9 +31,9 @@ import { validerForme } from './formes.ts';
 import { validerTailleAutorisee } from './taillesInterdites.ts';
 import { controlerSupplementsParPersonne, estSupplementParPersonne } from './supplementsParPersonne.ts';
 import { libelleProduitFiche } from './libelles.ts';
-import { controlerSupplements, gateauxDeLigne } from './supplements.ts';
-import { validerQuantiteMin, validerMaximum, validerTailleGateau } from './minimums.ts';
-import { validerGouts, type ChoixGout } from './gouts.ts';
+import { controlerSupplementEcriture, controlerSupplements, gateauxDeLigne } from './supplements.ts';
+import { symbolesDuTexte, validerQuantiteMin, validerMaximum, validerTailleGateau } from './minimums.ts';
+import { GOUT_AU_CHOIX, validerGouts, type ChoixGout } from './gouts.ts';
 import { deverrouillageValide, prixLigne } from './regimes.ts';
 import { gateauSurCommandeDe, validerPrixComptoir } from './prixComptoir.ts';
 import type { CorrespondanceComptoir } from './prixComptoir.ts';
@@ -88,8 +88,23 @@ export type LigneSaisie = {
    * Ligne libre : prix fixé avec le gérant (obligatoire).
    */
   prixUnitaireCentimes?: number | null;
-  /** Number Cake : nombre de chiffres/lettres (cf. compterSymboles). */
+  /**
+   * Number Cake : nombre de chiffres ou lettres DÉCLARÉ (boutons). Le texte
+   * `formes` le remplace dès qu'il permet de compter (`symbolesDuTexte`) : le
+   * nombre suit toujours ce qui est écrit (audit du 28/10/2026).
+   */
   nbSymboles?: number | null;
+  /** Number Cake : chiffres ou lettres à réaliser, tels que dits par le client (« 25 », « AM »). */
+  formes?: string | null;
+  /** Number Cake : « Autre forme » (cœur, étoile…) — le texte décrit une forme, il ne se compte pas. */
+  formesLibres?: boolean;
+  /**
+   * Ligne libre (« Autre demande ») : réponse explicite à « C'est un gâteau ? »
+   * (audit du 28/10/2026, décision n°8 du propriétaire). Jamais déduite du
+   * libellé (LOI 6). null / absent = pas encore répondu → refusé.
+   * true : la ligne est UN gâteau — quantité = PARTS, prix par part, goût exigé.
+   */
+  gateauLibre?: boolean | null;
   /** Pain surprise : nombre de sandwichs demandés au total. */
   nbObjets?: number | null;
   /** R62 : goût (ou recette d'entremet) du gâteau, un par étage. */
@@ -208,6 +223,12 @@ export type ContexteCommande = {
   supplementsParPersonne?: Readonly<Record<string, RegleSupplementParPersonne>>;
   /** R65 : tailles qui ne se font pas (TAILLES_INTERDITES). Absent → non contrôlé, comme R62. */
   taillesInterdites?: readonly TailleInterdite[];
+  /**
+   * Clé catalogue du supplément « Écriture » (SUPPLEMENT_ECRITURE de
+   * constantes.ts). Donnée → une écriture sur un gâteau EXIGE ce supplément au
+   * bon (décision du propriétaire, 28/10/2026). Absent → non contrôlé, comme R62.
+   */
+  supplementEcriture?: string | null;
 };
 
 export type CommandeControlee = {
@@ -323,7 +344,10 @@ function controlerLigneSansPrefixe(
     if (!t.ok) return t;
   }
 
-  const nbSymboles = saisie.nbSymboles ?? undefined;
+  // Number Cake : le nombre de chiffres ou lettres suit le TEXTE quand il se
+  // compte (« 25 » = 2, même si « 1 » a été touché) ; sinon le nombre déclaré.
+  const compte = fiche.prix.minParSymbole !== null ? symbolesDuTexte(saisie.formes, saisie.formesLibres === true) : null;
+  const nbSymboles = compte ?? saisie.nbSymboles ?? undefined;
   const min = validerQuantiteMin(fiche, saisie.quantite, { nbSymboles });
   if (!min.ok) return min;
 
@@ -414,15 +438,42 @@ function controlerLigneSansPrefixe(
   return succes(ligne, ...signalements);
 }
 
+/** Libellé du champ « C'est un gâteau ? » d'une ligne libre (messages, écran). */
+export const CHAMP_GATEAU_LIBRE = 'C’est un gâteau ?';
+
+/** Gâteaux apportés par une ligne libre : 1 si elle est déclarée gâteau (réponse explicite), sinon 0. */
+export function gateauxDeLigneLibre(gateauLibre: boolean | null | undefined): number {
+  return gateauLibre === true ? 1 : 0;
+}
+
 /**
  * Ligne libre (« Autre demande ? Merci de contacter le gérant » — affiche).
  * HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°3) : son prix n'est pas au
  * catalogue, il est donc fixé AVEC le gérant : déverrouillage obligatoire,
  * prix > 0, quantité en pièces entières, délai le plus long (le plus sûr).
+ *
+ * « C'est un gâteau ? » (audit du 28/10/2026, décision n°8 du propriétaire) :
+ * réponse EXPLICITE obligatoire (`gateauLibre`), jamais déduite du libellé
+ * (LOI 6). Un gâteau libre exige un nombre de PARTS (la quantité, prix par
+ * part) et un goût (sortie « Au choix du pâtissier ») ; il compte pour un
+ * gâteau (écriture, photo).
+ * HYPOTHÈSE À VALIDER : aucun minimum de parts pour un gâteau libre (aucune
+ * donnée ne le fixe) — seulement un nombre entier > 0.
  */
 function controlerLigneLibre(saisie: LigneSaisie, libelle: string, delais: DelaisCommande): Resultat<LigneControlee> {
+  if (saisie.gateauLibre !== true && saisie.gateauLibre !== false) {
+    return signaler('ERR_CHAMP_OBLIGATOIRE', { champLibelle: CHAMP_GATEAU_LIBRE }, { champ: 'gateauLibre' });
+  }
+  const gateau = saisie.gateauLibre;
   const q = validerQuantite('piece', saisie.quantite);
   if (!q.ok) return q;
+  if (gateau && !(saisie.gouts ?? []).some((g) => String(g ?? '').trim() !== '')) {
+    return signaler(
+      'ERR_GOUT_MANQUANT',
+      { produit: libelle, objet: 'le goût', etage: null },
+      { champ: 'gouts', valeurProposee: GOUT_AU_CHOIX },
+    );
+  }
   const prixSaisi = saisie.prixUnitaireCentimes;
   if (prixSaisi == null || !Number.isSafeInteger(prixSaisi) || prixSaisi <= 0) {
     return signaler('ERR_MONTANT_NUL', { objet: `la ligne « ${libelle} »` }, { champ: 'prixCentimes' });
@@ -445,8 +496,9 @@ function controlerLigneLibre(saisie: LigneSaisie, libelle: string, delais: Delai
     totalCentimes: multiplier(saisie.quantite, prixSaisi),
     nbSymboles: null,
     delaiJoursOuvres: delaiMaximal(delais),
-    // Ligne libre : contenu inconnu, ne porte pas de supplément (le plus sûr).
-    nbGateaux: 0,
+    // Gâteau libre : UN gâteau (écriture, photo) ; autre demande : contenu
+    // inconnu, ne porte pas de supplément (le plus sûr).
+    nbGateaux: gateauxDeLigneLibre(gateau),
     autorisation: { par: saisie.deverrouillage.par.trim(), le: saisie.deverrouillage.le },
   });
 }
@@ -514,6 +566,19 @@ function analyser(c: CommandeSaisie, ctx: ContexteCommande): Analyse {
   // R7 : suppléments au forfait, une fois par gâteau. Contrôlé seulement si
   // toutes les lignes passent (un gâteau refusé ferait croire à « sans gâteau »).
   if (lignesOk) blocages.push(...controlerSupplements(lignes));
+  // Écriture sur un gâteau = supplément « Écriture » au bon, toujours (28/10/2026).
+  if (lignesOk && ctx.supplementEcriture) {
+    const cle = ctx.supplementEcriture;
+    const r = ctx.resoudre(cle, c.datePrise);
+    blocages.push(
+      ...controlerSupplementEcriture({
+        texteGateau: c.texteGateau,
+        lignes,
+        supplementEcriture: cle,
+        libelleSupplement: r.ok ? libelleProduit(r.donnees) : undefined,
+      }),
+    );
+  }
   // R64 : supplément par personne (Pâte à sucre) rattaché à un gâteau admis, aux mêmes parts.
   if (lignesOk) {
     const libelleDe = (cle: string): string => {
@@ -567,7 +632,9 @@ function analyser(c: CommandeSaisie, ctx: ContexteCommande): Analyse {
   const contientGateau = lignes.some(
     (l) =>
       (l.regimePrix === 'C' && l.basePrix === 'personne' && l.supplementParPersonne !== true) ||
-      gateauSurCommandeDe(l.produitId, ctx.correspondancesComptoir) !== null,
+      gateauSurCommandeDe(l.produitId, ctx.correspondancesComptoir) !== null ||
+      // Ligne libre déclarée gâteau (« C'est un gâteau ? » : oui).
+      (l.produitId === null && l.nbGateaux > 0),
   );
   signalements.push(
     ...controlerEcriture({ contientGateau, texteGateau: c.texteGateau, sansEcriture: c.sansEcriture }),

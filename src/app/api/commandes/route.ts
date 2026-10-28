@@ -56,11 +56,9 @@ import {
   type AccordsNonConfirmes,
 } from '@/components/commande/accords';
 import { decalerJours, estDateISO } from '@/domaine/calendrier';
-import { JOURS_AVANT_ARCHIVAGE, REGLES_FORME, TAILLES_INTERDITES } from '@/domaine/constantes';
-import { formaterEuros } from '@/domaine/argent';
-import { formaterQuantite } from '@/domaine/unites';
-import { LIBELLES_FORME, signaler } from '@/domaine/messages';
-import { estForme } from '@/domaine/formes';
+import { JOURS_AVANT_ARCHIVAGE, REGLES_FORME, SUPPLEMENT_ECRITURE, TAILLES_INTERDITES } from '@/domaine/constantes';
+import { signaler } from '@/domaine/messages';
+import { changementsLisibles, detailModification, type Apres, type LigneTexte } from '@/components/commande/historique';
 import type { Echec } from '@/domaine/resultat';
 import type { Deverrouillage } from '@/domaine/types';
 import { chargerContexte, correspondancesServeur, priseBruxelles, resoudreServeur } from './contexteServeur';
@@ -69,8 +67,10 @@ import { getPhotoModele } from '@/catalogue/serveur';
 import type { PhotoModele } from '@/catalogue/photosModeles';
 import { idsPhotosCites, lirePhotoDeLigne } from '@/components/commande/photosGestion';
 
+// Base de prix de chaque ligne (pièce / personne / kilo / forfait) : le bon imprime
+// « 1 gâteau — 20 PARTS » d'après la DONNÉE, jamais d'après le régime seul (LOI 6).
 const inclusions = {
-  lignes: { orderBy: { ordre: 'asc' } as const, include: { produitCatalogue: { select: { cleCatalogue: true, categorie: true, nom: true, regimePrix: true } } } },
+  lignes: { orderBy: { ordre: 'asc' } as const, include: { produitCatalogue: { select: { cleCatalogue: true, categorie: true, nom: true, regimePrix: true } }, prixProduit: { select: { basePrix: true } } } },
   evenements: { orderBy: { quand: 'desc' } as const, take: 20 },
 };
 
@@ -94,6 +94,18 @@ function entierOuNull(v: unknown): number | null {
 
 function jourIso(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+/** Champs imprimés lus dans le corps reçu (identiques dans les deux chemins de modification). */
+function imprimesRecus(corps: Record<string, unknown>) {
+  return {
+    remarques: texte(corps.remarques, 500) || null,
+    photoImprimee: corps.photoImprimee === true,
+    photoWhatsapp: corps.photoWhatsapp === true,
+    demandeInhabituelle: corps.demandeInhabituelle === true,
+    modePaiement: corps.modePaiement === 'virement' ? 'virement' : 'especes',
+    zoneDessin: corps.zoneDessin === true,
+  };
 }
 
 /** Photos de modèle citées par les lignes, lues en base (masquées comprises). */
@@ -301,6 +313,12 @@ function preparer(
       quantite: quantite ?? 0,
       prixUnitaireCentimes: prix,
       nbSymboles: entierOuNull(l.nbSymboles),
+      // Number Cake : le texte des chiffres ou lettres est RECOMPTÉ par le domaine
+      // (« 25 » = 2, quoi que dise nbSymboles), sauf « Autre forme » (28/10/2026).
+      formes: texte(l.formes, 60) || null,
+      formesLibres: l.formesLibres === true,
+      // Ligne libre : « C'est un gâteau ? » (réponse explicite, jamais déduite du libellé).
+      gateauLibre: typeof l.gateauLibre === 'boolean' ? l.gateauLibre : null,
       nbObjets: entierOuNull(l.nbObjets),
       gouts: listeDeMots(l.gouts),
       origineSurCommande: texte(l.origineSurCommande, 200) || null,
@@ -388,6 +406,8 @@ async function controler(
     // R63 (forme carré / rond) et R65 (tailles qui ne se font pas), décisions du 26/10/2026.
     formes: REGLES_FORME,
     taillesInterdites: TAILLES_INTERDITES,
+    // Écriture sur un gâteau = supplément Écriture au bon, toujours (28/10/2026).
+    supplementEcriture: SUPPLEMENT_ECRITURE,
     aujourdhui,
     existante,
     joursAvantArchivage: JOURS_AVANT_ARCHIVAGE,
@@ -536,78 +556,8 @@ export async function POST(request: Request) {
 
 /* ------------------------------------------------------------------ PATCH */
 
-type LigneTexte = {
-  libelle: string;
-  quantite: number;
-  prixCentimes: number;
-  unite: string;
-  forme?: string | null;
-  photoModele?: string | null;
-};
-
-/** État de la commande après modification, pour l'historique. */
-type Apres = {
-  client: string;
-  telephone: string;
-  dateRetrait: string;
-  heureRetrait: string | null;
-  texteGateau: string | null;
-  zoneDessin: boolean;
-  totalCentimes: number;
-  acompteCentimes: number;
-};
-
-/** Historique lisible : ce qui a changé, et l'ancienne version des lignes (litige, R31). */
-function changementsLisibles(
-  existante: {
-    client: string;
-    telephone: string;
-    retraitLe: Date;
-    retraitHeure: string | null;
-    texteGateau: string | null;
-    zoneDessin: boolean;
-    totalCentimes: number;
-    acompteCentimes: number;
-    lignes: LigneTexte[];
-  },
-  apres: Apres,
-  lignesApres: LigneTexte[],
-): string[] {
-  const changements: string[] = [];
-  if (apres.client !== existante.client) changements.push(`client : ${existante.client} → ${apres.client}`);
-  if (apres.telephone !== existante.telephone) changements.push('téléphone');
-  const avantRetrait = jourIso(existante.retraitLe);
-  if (apres.dateRetrait !== avantRetrait) changements.push(`retrait : ${avantRetrait} → ${apres.dateRetrait}`);
-  if ((apres.heureRetrait ?? '') !== (existante.retraitHeure ?? '')) {
-    changements.push(`heure : ${existante.retraitHeure ?? '—'} → ${apres.heureRetrait ?? '—'}`);
-  }
-  if (apres.texteGateau !== existante.texteGateau) {
-    changements.push(`écriture : ${existante.texteGateau ?? 'aucune'} → ${apres.texteGateau ?? 'aucune'}`);
-  }
-  // Le bon imprimé change (zone ajoutée ou retirée) : tracé, donc réimprimé.
-  if (apres.zoneDessin !== existante.zoneDessin) {
-    changements.push(`zone dessin : ${existante.zoneDessin ? 'oui' : 'non'} → ${apres.zoneDessin ? 'oui' : 'non'}`);
-  }
-  const versTexte = (ls: LigneTexte[]) =>
-    ls
-      .map((l) => {
-        // R63 : un changement de forme seul change le bon (réimpression, historique).
-        const forme = estForme(l.forme) ? ` (${LIBELLES_FORME[l.forme].toLowerCase()})` : '';
-        // Galerie : un changement de photo seul change le bon (réimpression, historique).
-        const photo = l.photoModele ? ` (photo ${l.photoModele})` : '';
-        return `${formaterQuantite(l.unite === 'kg' ? 'kg' : 'piece', l.quantite)} × ${l.libelle}${forme}${photo} à ${formaterEuros(l.prixCentimes)}`;
-      })
-      .join(' ; ');
-  const avant = versTexte(existante.lignes);
-  if (avant !== versTexte(lignesApres)) changements.push(`produits — avant : ${avant}`);
-  if (apres.totalCentimes !== existante.totalCentimes) {
-    changements.push(`total : ${formaterEuros(existante.totalCentimes)} → ${formaterEuros(apres.totalCentimes)}`);
-  }
-  if (apres.acompteCentimes !== existante.acompteCentimes) {
-    changements.push(`acompte : ${formaterEuros(existante.acompteCentimes)} → ${formaterEuros(apres.acompteCentimes)}`);
-  }
-  return changements;
-}
+// Historique et réimpression : src/components/commande/historique.ts (testé).
+// Tout champ imprimé sur le bon compte (audit du 28/10/2026).
 
 export async function PATCH(request: Request) {
   const garde = exigerRole(request, 'tablette', 'modifier une commande');
@@ -623,7 +573,7 @@ export async function PATCH(request: Request) {
     if (!Number.isSafeInteger(id) || id <= 0) return introuvable(route);
     const existante = await prisma.commande.findUnique({
       where: { id },
-      include: { lignes: { orderBy: { ordre: 'asc' }, include: { produitCatalogue: { select: { cleCatalogue: true, categorie: true, nom: true, regimePrix: true } } } } },
+      include: { lignes: { orderBy: { ordre: 'asc' }, include: { produitCatalogue: { select: { cleCatalogue: true, categorie: true, nom: true, regimePrix: true } }, prixProduit: { select: { basePrix: true } } } } },
     });
     if (!existante) return introuvable(route);
 
@@ -740,12 +690,12 @@ export async function PATCH(request: Request) {
             modePaiement: corps.modePaiement === 'virement' ? 'virement' : 'especes',
           });
           apres = {
+            ...imprimesRecus(corps),
             client: client.donnees,
             telephone: telephone.donnees,
             dateRetrait: etatExistant.retraitLe,
             heureRetrait: heure.donnees,
             texteGateau,
-            zoneDessin: corps.zoneDessin === true,
             totalCentimes: existante.totalCentimes,
             acompteCentimes: existante.acompteCentimes,
           };
@@ -817,12 +767,13 @@ export async function PATCH(request: Request) {
             modePaiement: corps.modePaiement === 'virement' ? 'virement' : 'especes',
           });
           apres = {
+            ...imprimesRecus(corps),
             client: prep.saisie.client,
             telephone: prep.saisie.telephone,
             dateRetrait: resultat.donnees.dateRetrait,
             heureRetrait: resultat.donnees.heureRetrait,
             texteGateau: prep.saisie.texteGateau ?? null,
-            zoneDessin: corps.zoneDessin === true,
+            demandeInhabituelle: prep.saisie.demandeInhabituelle === true,
             totalCentimes: resultat.donnees.totalCentimes,
             acompteCentimes: resultat.donnees.acompteCentimes,
           };
@@ -832,14 +783,15 @@ export async function PATCH(request: Request) {
         const changements = changementsLisibles(existante, apres, lignesApres);
 
         // Une commande modifiée repasse par l'imprimante : le feuillet accroché ne dit plus la vérité.
-        if (changements.length > 0 && statut === 'imprimee') {
+        const aReimprimer = changements.length > 0 && statut === 'imprimee';
+        if (aReimprimer) {
           const r = transition('a_imprimer');
           if (r) return refus(r, route);
           donnees.statut = 'a_imprimer';
           donnees.imprimeeLe = null;
-          changements.push('à réimprimer');
         }
-        detail = changements.join(', ').slice(0, 2000) || 'aucun changement';
+        // Marqueur « à réimprimer » EN TÊTE, jamais coupé (bandeau « MODIFIÉE » du bon).
+        detail = detailModification(changements, aReimprimer);
         break;
       }
 
