@@ -16,6 +16,7 @@ import { RappelChargement } from '@/components/rappels';
 import { echecReseau, lireReponse } from '@/components/commande/modele';
 import { FicheCommande } from '@/components/FicheCommande';
 import { CelluleCommande, ListeGroupee } from '@/components/fiche/ElementsCommande';
+import { useMaintenant } from '@/components/fiche/useMaintenant';
 import { chercherCommandes, GROUPES, grouperCommandes, type CleGroupe } from '@/components/fiche/presentationCommande';
 
 /** `useSearchParams` impose une frontière Suspense : l'écran attend l'adresse lue. */
@@ -41,6 +42,8 @@ function EcranCommandes() {
   // Toucher une commande ouvre sa fiche sur place (propriétaire, 28/10/2026).
   const [ouverteId, setOuverteId] = useState<number | null>(null);
   const aujourdhui = dateDuJour();
+  // En retard dès l'heure de retrait passée, rouge à 19h (29/10/2026) : l'écran suit l'heure.
+  const { minutes } = useMaintenant();
 
   const charger = useCallback(async () => {
     try {
@@ -77,8 +80,8 @@ function EcranCommandes() {
   }, [vendeur, charger]);
 
   const groupes = useMemo(
-    () => grouperCommandes(chercherCommandes(commandes ?? [], recherche), aujourdhui),
-    [commandes, recherche, aujourdhui],
+    () => grouperCommandes(chercherCommandes(commandes ?? [], recherche), aujourdhui, minutes),
+    [commandes, recherche, aujourdhui, minutes],
   );
   const ouverte = (commandes ?? []).find((c) => c.id === ouverteId) ?? null;
 
@@ -236,6 +239,7 @@ function EcranCommandes() {
               titre={g.titre}
               commandes={groupes[g.cle]}
               aujourdhui={aujourdhui}
+              minutes={minutes}
               avecDate={g.cle !== 'duJour'}
               onOuvrir={(c) => setOuverteId(c.id)}
             />
@@ -314,12 +318,14 @@ function Groupe({
   titre,
   commandes,
   aujourdhui,
+  minutes,
   avecDate,
   onOuvrir,
 }: {
   titre: string;
   commandes: Commande[];
   aujourdhui: string;
+  minutes: number;
   avecDate: boolean;
   onOuvrir: (c: Commande) => void;
 }) {
@@ -337,6 +343,7 @@ function Groupe({
             commande={commande}
             types={typesDeCommande(commande)}
             aujourdhui={aujourdhui}
+            minutes={minutes}
             avecDate={avecDate}
             avecStatut
             onOuvrir={onOuvrir}

@@ -201,6 +201,18 @@ test('groupes de la liste : à imprimer, virements, retard, aujourd’hui, à ve
   assert.deepEqual(g.virements.map((c) => c.id), [4]);
 });
 
+test('retraits en retard : dès l’heure de retrait passée, le jour même (29/10/2026)', () => {
+  const j = '2026-10-29';
+  const liste = [
+    commande({ id: 1, statut: 'imprimee', retraitLe: j, retraitHeure: '10:00' }),
+    commande({ id: 2, statut: 'imprimee', retraitLe: j, retraitHeure: '16:00' }),
+  ];
+  // À 14h : la commande de 10h est en retard, celle de 16h reste « aujourd'hui ».
+  const g = grouperCommandes(liste, j, 14 * 60);
+  assert.deepEqual(g.enRetard.map((c) => c.id), [1]);
+  assert.deepEqual(g.duJour.map((c) => c.id), [2]);
+});
+
 test('recherche : nom, numéro, téléphone avec ou sans espaces', () => {
   const liste = [commande({ id: 1 }), commande({ id: 2, client: 'Martin', numero: '2026-0002', telephone: '02 123 45 67' })];
   assert.deepEqual(chercherCommandes(liste, 'mart').map((c) => c.id), [2]);

@@ -42,6 +42,7 @@ function partsBruxelles(instant: Date) {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
+    minute: '2-digit',
     hour12: false,
   });
   const parts = Object.fromEntries(
@@ -51,6 +52,7 @@ function partsBruxelles(instant: Date) {
     date: `${parts.year}-${parts.month}-${parts.day}` as DateISO,
     // Intl peut renvoyer "24" pour minuit selon l'environnement
     heure: Number(parts.hour) % 24,
+    minute: Number(parts.minute),
   };
 }
 
@@ -62,6 +64,12 @@ export function dateDuJour(instant: Date = new Date()): DateISO {
 /** Heure locale de Bruxelles (0-23) pour cet instant. */
 export function heureDuJour(instant: Date = new Date()): number {
   return partsBruxelles(instant).heure;
+}
+
+/** Date et minutes depuis minuit à Bruxelles : l'instant donné à `niveauRetard`. */
+export function maintenantBruxelles(instant: Date = new Date()): { date: DateISO; minutes: number } {
+  const p = partsBruxelles(instant);
+  return { date: p.date, minutes: p.heure * 60 + p.minute };
 }
 
 /**

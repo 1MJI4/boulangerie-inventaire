@@ -497,3 +497,8 @@ l'avez pas confirmé ici.
     par pièce, comme pour un Bavarois — c'est le plus sûr pour l'atelier, mais plus long à
     saisir. Faut-il les traiter comme des pâtisseries individuelles, « 6 × Bûchette » sur une
     ligne, sans écriture ?)*
+
+94. **Commande sans heure de retrait : quand est-elle en retard ?** Depuis le 29/10/2026, une
+    commande passe « En retard » (orange) dès son heure de retrait passée, puis en rouge à 19h
+    si elle était prévue avant 19h. *(en attendant, l'application fait : une commande sans
+    heure est comptée « avant 19h » : rien dans la journée, rouge à 19h.)*

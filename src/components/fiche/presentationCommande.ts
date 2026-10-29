@@ -12,6 +12,7 @@
 import { familleDuProduit } from '../../catalogue/familles.ts';
 import { LIBELLES_SELON_GOUT } from '../../catalogue/libellesSelonGout.ts';
 import { libelleSelonGout } from '../../domaine/libelles.ts';
+import { niveauRetard } from '../../domaine/retard.ts';
 import { LIBELLES_FORME } from '../../domaine/messages.ts';
 import { formaterHeure, lireHeure } from '../../domaine/reglement.ts';
 import { formaterQuantite } from '../../domaine/unites.ts';
@@ -228,16 +229,25 @@ export function chercherCommandes<T extends CommandeListe>(commandes: readonly T
  * chaque groupe trié par date puis heure de retrait. Une commande peut
  * figurer dans « À imprimer » ET « Virements à vérifier ».
  */
-export function grouperCommandes<T extends CommandeListe>(commandes: readonly T[], aujourdhui: string): Record<CleGroupe, T[]> {
+export function grouperCommandes<T extends CommandeListe>(
+  commandes: readonly T[],
+  aujourdhui: string,
+  /** Minutes depuis minuit à Bruxelles : en retard dès l'heure passée (29/10/2026). Absent : au jour près. */
+  minutes?: number,
+): Record<CleGroupe, T[]> {
   const parDate = (liste: T[]) =>
     trierParHeure(liste).sort((a, b) => a.retraitLe.localeCompare(b.retraitLe));
   const imprimees = commandes.filter((c) => c.statut !== 'a_imprimer');
+  const enRetard = (c: T) =>
+    minutes === undefined
+      ? c.retraitLe.slice(0, 10) < aujourdhui
+      : niveauRetard(c.retraitLe, c.retraitHeure, { date: aujourdhui, minutes }) !== null;
   return {
     aImprimer: parDate(commandes.filter((c) => c.statut === 'a_imprimer')),
     virements: parDate(commandes.filter(attendUnVirement)),
-    enRetard: parDate(imprimees.filter((c) => c.retraitLe < aujourdhui)),
-    duJour: parDate(imprimees.filter((c) => c.retraitLe === aujourdhui)),
-    aVenir: parDate(imprimees.filter((c) => c.retraitLe > aujourdhui)),
+    enRetard: parDate(imprimees.filter(enRetard)),
+    duJour: parDate(imprimees.filter((c) => c.retraitLe.slice(0, 10) === aujourdhui && !enRetard(c))),
+    aVenir: parDate(imprimees.filter((c) => c.retraitLe.slice(0, 10) > aujourdhui)),
   };
 }
 

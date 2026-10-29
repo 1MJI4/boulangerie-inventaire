@@ -18,6 +18,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FicheCommande } from '@/components/FicheCommande';
 import { CelluleCommande, ListeGroupee, Segmente } from '@/components/fiche/ElementsCommande';
+import { useMaintenant } from '@/components/fiche/useMaintenant';
 import { compterParType, filtrerParType, majusculeInitiale, trierParHeure, TYPES_FILTRE } from '@/components/fiche/presentationCommande';
 import { IconeNiveau } from '@/components/signalement';
 import { depuisApi, LIBELLE_TYPE, resteAFaire, typesDeCommande, type Commande, type CommandeApi, type TypeCommande } from '@/lib/commandes';
@@ -39,6 +40,8 @@ export function AccueilVendeur({ libelleProfil, onChangerProfil }: { libelleProf
   const [commandes, setCommandes] = useState<Commande[] | null>(null);
   const [joursFermes, setJoursFermes] = useState<JourFerme[]>([]);
   const [aujourdhui, setAujourdhui] = useState(dateDuJour());
+  // En retard dès l'heure de retrait passée, rouge à 19h (29/10/2026).
+  const { minutes } = useMaintenant();
   const [debutSemaine, setDebutSemaine] = useState(0);
   const [jourChoisi, setJourChoisi] = useState<string | null>(null);
   // Le filtre reste quand on change de jour : un pâtissier regarde « Pâtisserie » toute la semaine.
@@ -256,6 +259,7 @@ export function AccueilVendeur({ libelleProfil, onChangerProfil }: { libelleProf
                 commande={c}
                 types={typesDeCommande(c)}
                 aujourdhui={aujourdhui}
+                minutes={minutes}
                 onOuvrir={(x) => setOuverteId(x.id)}
               />
             ))}
@@ -265,8 +269,8 @@ export function AccueilVendeur({ libelleProfil, onChangerProfil }: { libelleProf
 
       {enRetard.length > 0 ? (
         <section className="mb-7">
-          <h3 className="mb-1.5 flex items-center gap-1.5 px-4 text-sm font-semibold text-avertissement">
-            <IconeNiveau niveau="avertissement" className="h-4 w-4" />
+          <h3 className="mb-1.5 flex items-center gap-1.5 px-4 text-sm font-semibold text-bloquant">
+            <IconeNiveau niveau="bloquant" className="h-4 w-4" />
             Date passée, pas encore retirées · {enRetard.length}
           </h3>
           <ListeGroupee>
@@ -276,6 +280,7 @@ export function AccueilVendeur({ libelleProfil, onChangerProfil }: { libelleProf
                 commande={c}
                 types={typesDeCommande(c)}
                 aujourdhui={aujourdhui}
+                minutes={minutes}
                 avecDate
                 onOuvrir={(x) => setOuverteId(x.id)}
               />

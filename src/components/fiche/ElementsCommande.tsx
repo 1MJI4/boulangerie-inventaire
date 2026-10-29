@@ -11,7 +11,8 @@
 
 import type { ReactNode } from 'react';
 import { IconeNiveau } from '@/components/signalement';
-import { attendUnVirement, LIBELLE_TYPE, type Commande, type TypeCommande } from '@/lib/commandes';
+import { attendUnVirement, LIBELLE_TYPE, resteAFaire, type Commande, type TypeCommande } from '@/lib/commandes';
+import { niveauRetard } from '@/domaine/retard';
 import { formatDateRelative } from '@/lib/dateProduction';
 import { formaterEuros, resteDu } from '@/domaine/argent';
 import { heureLisible, LIBELLE_STATUT_ECRAN, majusculeInitiale, resumeCommande, texteAutres } from './presentationCommande';
@@ -35,16 +36,18 @@ export function EtiquetteType({ type }: { type: TypeCommande }) {
 /* --------------------------------------------------------------- Pastilles */
 
 /** Pastille de statut ou d'état : texte toujours présent, icône pour ce qui demande une action. */
-export function Pastille({ ton, children }: { ton: 'accent' | 'avertissement' | 'neutre' | 'ok'; children: ReactNode }) {
+export function Pastille({ ton, children }: { ton: 'accent' | 'avertissement' | 'alerte' | 'neutre' | 'ok'; children: ReactNode }) {
   const styles = {
     accent: 'bg-accent-doux text-accent',
     avertissement: 'bg-avertissement-doux text-avertissement',
+    alerte: 'bg-bloquant-doux text-bloquant',
     neutre: 'bg-segment-fond text-ink-2',
     ok: 'bg-ok-doux text-ok',
   }[ton];
   return (
     <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${styles}`}>
       {ton === 'avertissement' ? <IconeNiveau niveau="avertissement" className="h-3.5 w-3.5" /> : null}
+      {ton === 'alerte' ? <IconeNiveau niveau="bloquant" className="h-3.5 w-3.5" /> : null}
       {children}
     </span>
   );
@@ -94,6 +97,7 @@ export function CelluleCommande({
   onOuvrir,
   types,
   aujourdhui,
+  minutes,
   avecDate = false,
   avecStatut = false,
 }: {
@@ -103,9 +107,15 @@ export function CelluleCommande({
   aujourdhui: string;
   avecDate?: boolean;
   avecStatut?: boolean;
+  /** Minutes depuis minuit à Bruxelles : « En retard » dès l'heure passée, rouge à 19h. */
+  minutes?: number;
 }) {
   const reste = resteDu(commande.totalCentimes, commande.acompteCentimes);
   const heure = heureLisible(commande.retraitHeure);
+  const retard =
+    minutes === undefined || !resteAFaire(commande)
+      ? null
+      : niveauRetard(commande.retraitLe, commande.retraitHeure, { date: aujourdhui, minutes });
   const date = formatDateRelative(commande.retraitLe, aujourdhui);
   const virement = attendUnVirement(commande);
   return (
@@ -117,7 +127,13 @@ export function CelluleCommande({
         className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-surface-2 active:bg-surface-2"
       >
         <span className="w-16 shrink-0 pt-px">
-          <span className="chiffres block text-lg font-semibold leading-tight text-ink">{heure ?? '—'}</span>
+          <span
+            className={`chiffres block text-lg font-semibold leading-tight ${
+              retard === 'retard-rouge' ? 'text-bloquant' : retard === 'retard' ? 'text-avertissement' : 'text-ink'
+            }`}
+          >
+            {heure ?? '—'}
+          </span>
           {heure === null ? <span className="block text-xs text-ink-2">sans heure</span> : null}
           {avecDate ? <span className="block text-xs text-ink-2">{majusculeInitiale(date)}</span> : null}
         </span>
@@ -128,6 +144,7 @@ export function CelluleCommande({
           </span>
           <ResumeArticles commande={commande} />
           <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            {retard ? <Pastille ton={retard === 'retard-rouge' ? 'alerte' : 'avertissement'}>En retard</Pastille> : null}
             {avecStatut || commande.statut === 'a_imprimer' ? <PastilleStatut commande={commande} /> : null}
             {virement ? <Pastille ton="avertissement">Virement à vérifier</Pastille> : null}
             {(types ?? []).map((t) => (
