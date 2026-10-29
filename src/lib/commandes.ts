@@ -7,6 +7,7 @@
 // Montants en centimes entiers, formatés et soustraits par `src/domaine/argent.ts`.
 
 import { familleDuProduit } from '../catalogue/familles.ts';
+import { TYPE_ACCUEIL_PAR_PRODUIT } from '../catalogue/typesAccueil.ts';
 import { formaterEuros, resteDu } from '../domaine/argent.ts';
 import { dateDuJour, type DateISO } from './dateProduction.ts';
 
@@ -344,6 +345,12 @@ export function typesDeCommande(c: Pick<Commande, 'lignes'>): TypeCommande[] {
   const types = new Set<TypeCommande>();
   for (const l of c.lignes) {
     const p = l.produitCatalogue;
+    // Exception explicite au rayon (Msemen → Salé, 29/10/2026).
+    const exception = p?.cleCatalogue ? TYPE_ACCUEIL_PAR_PRODUIT[p.cleCatalogue] : undefined;
+    if (exception) {
+      types.add(exception);
+      continue;
+    }
     if (!p?.categorie || !p.nom || !p.regimePrix) continue;
     const famille = familleDuProduit(p.regimePrix === 'A' ? 'comptoir' : 'sur-commande', p.categorie, p.nom);
     if (famille === 'gateau' || famille === 'patisserie') types.add('patisserie');
