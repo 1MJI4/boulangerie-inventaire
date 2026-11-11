@@ -35,6 +35,8 @@ export type PropsSelecteurDateRetrait = {
   premiereDate?: string;
   /** Nombre de rangées de 7 jours affichées à la fois (défaut 2). */
   semainesVisibles?: number;
+  /** Semaines parcourues par un toucher sur une flèche (défaut 1) ; le glissement au doigt suit. */
+  pasFleches?: number;
   /** @deprecated Ignoré depuis l'affichage par semaines : utiliser `semainesVisibles`. */
   nombreJours?: number;
   /** Titre du groupe (défaut « Jour de retrait »). */
@@ -55,6 +57,7 @@ export function SelecteurDateRetrait({
   aujourdhui,
   premiereDate,
   semainesVisibles = 2,
+  pasFleches = 1,
   titre = 'Jour de retrait',
   enErreur = false,
   decritPar,
@@ -63,6 +66,7 @@ export function SelecteurDateRetrait({
   const debut = aujourdhui ?? aujourdhuiAppareil;
   const rangees = Math.max(1, Math.floor(semainesVisibles));
   const decalageMax = Math.max(0, SEMAINES_MAX - rangees);
+  const pas = Math.max(1, Math.floor(pasFleches));
 
   // Au montage : la semaine de la date déjà choisie (commande rouverte).
   const [decalage, setDecalage] = useState(() =>
@@ -99,7 +103,7 @@ export function SelecteurDateRetrait({
     const dy = e.clientY - d.y;
     if (Math.abs(dx) >= SEUIL_GLISSEMENT_PX && Math.abs(dx) > Math.abs(dy)) {
       aGlisse.current = true;
-      allerA(decalage + (dx < 0 ? 1 : -1));
+      allerA(decalage + (dx < 0 ? pas : -pas));
     }
   }
 
@@ -122,9 +126,9 @@ export function SelecteurDateRetrait({
       <div className="mb-2 flex items-center gap-2">
         <button
           type="button"
-          onClick={() => allerA(decalage - 1)}
+          onClick={() => allerA(decalage - pas)}
           disabled={decalage === 0}
-          aria-label="Semaine précédente"
+          aria-label={pas > 1 ? 'Semaines précédentes' : 'Semaine précédente'}
           className={classeFleche}
         >
           <span aria-hidden>‹</span>
@@ -137,9 +141,9 @@ export function SelecteurDateRetrait({
         </p>
         <button
           type="button"
-          onClick={() => allerA(decalage + 1)}
+          onClick={() => allerA(decalage + pas)}
           disabled={decalage >= decalageMax}
-          aria-label="Semaine suivante"
+          aria-label={pas > 1 ? 'Semaines suivantes' : 'Semaine suivante'}
           className={classeFleche}
         >
           <span aria-hidden>›</span>

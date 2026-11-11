@@ -10,12 +10,16 @@
 //      trop tôt pour le délai est affiché mais jamais sélectionnable ;
 //   2. les heures du jour choisi, entre l'ouverture et la fermeture de CE jour
 //      (réglages du gérant, lus par le domaine), plus « sans heure ».
+// Commande lointaine (rare — propriétaire, 11/11/2026) : un petit bouton
+// calendrier, au bout de la rangée des jours, ouvre un calendrier large qui va
+// jusqu'à un an. Mêmes jours fermés et même première date que la bande.
 // Aucune règle ici : le jour fermé, la première date possible et les heures
 // d'ouverture sont donnés par l'écran, qui les tient du domaine. Le domaine
 // rejuge de toute façon (validerDateRetrait, validerHeureRetrait).
 
-import { useEffect, useRef, type ReactNode, type WheelEvent } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type WheelEvent } from 'react';
 import { libelleLong, morceauxDate } from '@/components/saisie/dates';
+import { SelecteurDateRetrait } from '@/components/saisie/SelecteurDateRetrait';
 import { lireHeure } from '@/domaine/reglement';
 import type { PlageOuverture } from '@/domaine/constantes';
 import { JOURS_PROPOSES_RETRAIT, PAS_CRENEAU_MINUTES, creneauxRetrait, joursProposes } from './modele';
@@ -94,6 +98,7 @@ export function BandeRetrait({
   const debut = horaires ? lireHeure(horaires.ouverture) : null;
   const fin = horaires ? lireHeure(horaires.fermeture) : null;
   const aFaire = date === null;
+  const [calendrier, setCalendrier] = useState(false);
 
   return (
     <div
@@ -117,7 +122,11 @@ export function BandeRetrait({
             const choisi = iso === date;
             const raison = etat.ferme ? 'fermé' : tropTot ? 'trop tôt' : null;
             const estAujourdhui = iso === aujourdhui;
-            const avecMois = i === 0 || iso.endsWith('-01');
+            // Date lointaine choisie au calendrier (hors de la bande) : son mois, et
+            // son année si ce n'est pas celle en cours — « 6 » seul ne dit pas quand.
+            const lointain = choisi && jours.length > JOURS_PROPOSES_RETRAIT && (i === 0 || i === jours.length - 1);
+            const annee = lointain && iso.slice(0, 4) !== aujourdhui.slice(0, 4) ? iso.slice(0, 4) : null;
+            const avecMois = i === 0 || iso.endsWith('-01') || lointain;
             const classes = etat.ferme
               ? 'jour-ferme border-line text-ink-3 cursor-not-allowed'
               : tropTot
@@ -144,13 +153,43 @@ export function BandeRetrait({
                 </span>
                 <span className={`chiffres whitespace-nowrap text-lg font-semibold ${indisponible ? 'line-through' : ''}`}>
                   {numero}
-                  {avecMois ? <span className="ml-0.5 text-[0.6875rem] font-medium">{mois}</span> : null}
+                  {avecMois ? (
+                    <span className="ml-0.5 text-[0.6875rem] font-medium">
+                      {mois}
+                      {annee ? ` ${annee}` : ''}
+                    </span>
+                  ) : null}
                 </span>
               </button>
             );
           })}
         </div>
+        <button
+          type="button"
+          onClick={() => setCalendrier(true)}
+          aria-label="Autre date : ouvrir le calendrier (jusqu’à un an)"
+          title="Autre date"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border-2 border-line-fort bg-surface text-ink-2 active:bg-surface-2"
+        >
+          <svg aria-hidden viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="5" width="18" height="16" rx="2" />
+            <path d="M3 10h18M8 3v4M16 3v4" />
+          </svg>
+        </button>
       </div>
+      {calendrier ? (
+        <CalendrierLarge
+          aujourdhui={aujourdhui}
+          date={date}
+          etatJour={etatJour}
+          premiereDate={premiereDate}
+          onChoisir={(iso) => {
+            onDate(iso);
+            setCalendrier(false);
+          }}
+          onFermer={() => setCalendrier(false)}
+        />
+      ) : null}
       {messageJour ? <div className="-mt-1 pl-14">{messageJour}</div> : null}
 
       {/* ----------------------------------------------------------- Heures */}
@@ -212,5 +251,70 @@ export function BandeRetrait({
       {messageHeure ? <div className="-mt-1 pl-14">{messageHeure}</div> : null}
       {signalements}
     </div>
+  );
+}
+
+/** Semaines montrées à la fois dans le calendrier large, et parcourues par flèche (affichage, pas une règle). */
+const SEMAINES_CALENDRIER = 5;
+const PAS_CALENDRIER = 4;
+
+/**
+ * Calendrier large pour une date lointaine : fenêtre au-dessus de l'écran,
+ * fermée par « Fermer », Échap ou un toucher à côté. Un toucher sur un jour
+ * ouvert le choisit et referme. Aucune règle ici : jours fermés et première
+ * date viennent du domaine, comme pour la bande.
+ */
+function CalendrierLarge({
+  aujourdhui,
+  date,
+  etatJour,
+  premiereDate,
+  onChoisir,
+  onFermer,
+}: {
+  aujourdhui: string;
+  date: string | null;
+  etatJour: (iso: string) => EtatJourRetrait;
+  premiereDate?: string;
+  onChoisir: (iso: string) => void;
+  onFermer: () => void;
+}) {
+  const fenetre = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const d = fenetre.current;
+    if (d && !d.open) d.showModal();
+  }, []);
+  return (
+    <dialog
+      ref={fenetre}
+      aria-label="Calendrier : choisir une date de retrait"
+      onClose={onFermer}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) e.currentTarget.close();
+      }}
+      // Ancrée en haut (pas centrée) : les flèches ne bougent pas sous le doigt
+      // quand « Revenir à aujourd'hui » apparaît et allonge la fenêtre.
+      className="fixed inset-0 mx-auto mb-auto mt-6 w-[calc(100%-1.5rem)] max-w-xl border-0 bg-transparent p-0 text-ink backdrop:bg-voile"
+    >
+      <div className="max-h-[92dvh] overflow-y-auto overscroll-contain rounded-2xl bg-surface p-4 shadow-xl">
+        <SelecteurDateRetrait
+          titre="Autre date de retrait"
+          valeur={date}
+          aujourdhui={aujourdhui}
+          premiereDate={premiereDate}
+          estJourFerme={etatJour}
+          semainesVisibles={SEMAINES_CALENDRIER}
+          pasFleches={PAS_CALENDRIER}
+          onChange={onChoisir}
+        />
+        <button
+          type="button"
+          onClick={() => fenetre.current?.close()}
+          className="mt-3 min-h-12 w-full rounded-xl bg-segment-fond text-base font-semibold text-ink"
+        >
+          Fermer
+        </button>
+      </div>
+    </dialog>
   );
 }
