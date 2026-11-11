@@ -502,3 +502,25 @@ l'avez pas confirmé ici.
     commande passe « En retard » (orange) dès son heure de retrait passée, puis en rouge à 19h
     si elle était prévue avant 19h. *(en attendant, l'application fait : une commande sans
     heure est comptée « avant 19h » : rien dans la journée, rouge à 19h.)*
+
+### Annulation d'une commande, goût des Bûches et des Cœurs (11/11/2026)
+
+95. **Que devient l'acompte d'une commande annulée ?** Rendu au client, gardé par le
+    magasin, gardé seulement si l'annulation arrive trop tard (à partir de quand) ? Même
+    sujet que l'acompte d'une commande « mise en vente » (n°85 et n°86) : une seule règle
+    pour les deux, ou deux règles ?
+    *(en attendant, l'application fait : l'annulation est acceptée et la vendeuse lit
+    « Acompte de 45,00 € reçu — voyez avec le manager ce qu'il devient. » L'application ne
+    calcule rien et ne rend rien toute seule.)*
+
+96. **Commande annulée alors que le bon est déjà imprimé : faut-il prévenir l'atelier
+    autrement ?** Par exemple imprimer un bon « ANNULÉE » à l'atelier, ou l'afficher sur la
+    liste de production.
+    *(en attendant, l'application fait : la vendeuse lit « Le bon est déjà imprimé —
+    retirez-le de l'atelier. » Rien n'est imprimé ni envoyé à l'atelier.)*
+
+97. **Bûches et Cœurs : un goût qui n'est pas dans la liste du produit, on l'accepte ?**
+    L'écran ne propose que les goûts écrits sur votre tarif, plus « Au choix du pâtissier ».
+    *(en attendant, l'application fait : si un autre goût est quand même tapé à la main, il
+    est accepté, comme pour un Bavarois — l'application ne juge pas le mot. Faut-il au
+    contraire le refuser et obliger à choisir un goût de la liste ?)*

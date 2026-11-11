@@ -234,6 +234,7 @@ Ces points ont un effet direct sur l'application :
 | Toujours indiquer nom, numéro, date et heure de prise de commande | Nom et téléphone obligatoires ; date/heure de prise enregistrées automatiquement |
 | Inventaire à **20h00, jamais avant** | Avertissement si un inventaire est commencé avant l'heure de fermeture du jour (heures d'ouverture, donnée) |
 | Vérifier devant le client que tous les produits sont remis | Liste à cocher au moment de la remise de la commande |
+| Annuler une commande (décision du propriétaire, 11/11/2026) | Réservé au **gérant** : code gérant **ressaisi à chaque annulation** (un accès gérant déjà ouvert sur la tablette ne suffit pas), vérifié à l'écran **et** au serveur (`ERR_DROIT_INSUFFISANT` sans code, `ERR_CODE_INCORRECT` si faux), **motif obligatoire**. Rien n'est effacé : la commande passe au statut « annulée », tracée dans l'historique avec le nom du gérant. Acompte déjà reçu et bon déjà imprimé : simples avertissements (sort de l'acompte **à trancher**, voir `docs/QUESTIONS-GERANT.md`) |
 
 Les autres points (tenue, hygiène, pauses, respect…) ne sont pas des règles de saisie : ils
 sont **rappelés aux vendeurs** de façon légère (voir « Rappels équipe »), jamais en bloquant.

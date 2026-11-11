@@ -12,12 +12,19 @@ import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide, LienBouton } from 
 import { useEquipe } from '@/lib/vendeurs';
 import { depuisApi, typesDeCommande, type Commande, type CommandeApi } from '@/lib/commandes';
 import { dateDuJour } from '@/lib/dateProduction';
+import { decalerJours } from '@/domaine/calendrier';
 import { RappelChargement } from '@/components/rappels';
 import { echecReseau, lireReponse } from '@/components/commande/modele';
 import { FicheCommande } from '@/components/FicheCommande';
 import { CelluleCommande, ListeGroupee } from '@/components/fiche/ElementsCommande';
 import { useMaintenant } from '@/components/fiche/useMaintenant';
 import { chercherCommandes, GROUPES, grouperCommandes, type CleGroupe } from '@/components/fiche/presentationCommande';
+
+/**
+ * Commandes annulées montrées : celles dont le retrait date de moins de N jours
+ * (et celles à venir). Réglage d'affichage, pour que la liste reste courte.
+ */
+const JOURS_ANNULEES_VISIBLES = 60;
 
 /** `useSearchParams` impose une frontière Suspense : l'écran attend l'adresse lue. */
 export default function PageCommandes() {
@@ -41,6 +48,10 @@ function EcranCommandes() {
   const [filtre, setFiltre] = useState<CleGroupe | null>(null);
   // Toucher une commande ouvre sa fiche sur place (propriétaire, 28/10/2026).
   const [ouverteId, setOuverteId] = useState<number | null>(null);
+  // Accès discret aux commandes annulées (11/11/2026) : lues seulement si on les demande.
+  const [vue, setVue] = useState<'enCours' | 'annulees'>('enCours');
+  const [annulees, setAnnulees] = useState<Commande[] | null>(null);
+  const [erreurAnnulees, setErreurAnnulees] = useState<string | null>(null);
   const aujourdhui = dateDuJour();
   // En retard dès l'heure de retrait passée, rouge à 19h (29/10/2026) : l'écran suit l'heure.
   const { minutes } = useMaintenant();
@@ -67,6 +78,37 @@ function EcranCommandes() {
     }
   }, []);
 
+  const chargerAnnulees = useCallback(async () => {
+    try {
+      const du = decalerJours(dateDuJour(), -JOURS_ANNULEES_VISIBLES);
+      const r = await lireReponse<CommandeApi[]>(await fetch(`/api/commandes?statut=annulee&du=${du}`));
+      if (!r.ok) {
+        setErreurAnnulees(r.message);
+        setAnnulees([]);
+        return;
+      }
+      // La dernière annulée en premier.
+      setAnnulees(r.donnees.map(depuisApi).sort((a, b) => (b.annuleeLe ?? '').localeCompare(a.annuleeLe ?? '')));
+      setErreurAnnulees(null);
+    } catch {
+      const e = echecReseau();
+      setErreurAnnulees(e.ok ? null : e.message);
+      setAnnulees([]);
+    }
+  }, []);
+
+  const voirAnnulees = () => {
+    setVue('annulees');
+    setAnnulees(null);
+    void chargerAnnulees();
+  };
+
+  // Après un changement dans la fiche : la liste en cours, et les annulées si elles sont à l'écran.
+  const recharger = useCallback(async () => {
+    await charger();
+    if (vue === 'annulees') await chargerAnnulees();
+  }, [charger, chargerAnnulees, vue]);
+
   useEffect(() => {
     if (!vendeur) return;
     let annule = false;
@@ -83,7 +125,8 @@ function EcranCommandes() {
     () => grouperCommandes(chercherCommandes(commandes ?? [], recherche), aujourdhui, minutes),
     [commandes, recherche, aujourdhui, minutes],
   );
-  const ouverte = (commandes ?? []).find((c) => c.id === ouverteId) ?? null;
+  const annuleesTrouvees = useMemo(() => chercherCommandes(annulees ?? [], recherche), [annulees, recherche]);
+  const ouverte = [...(commandes ?? []), ...(annulees ?? [])].find((c) => c.id === ouverteId) ?? null;
 
   /* ----------------------------------------- Qui prend la commande ? */
 
@@ -200,7 +243,7 @@ function EcranCommandes() {
           placeholder="Nom, téléphone ou numéro"
           className="min-h-11 w-full rounded-xl bg-segment-fond px-4 text-base text-ink placeholder:text-ink-2"
         />
-        {commandes && commandes.length > 0 ? (
+        {vue === 'enCours' && commandes && commandes.length > 0 ? (
           // Sur deux lignes si besoin : tous les filtres visibles, sans barre de défilement.
           <div role="group" aria-label="Filtrer les commandes" className="mt-2 flex flex-wrap gap-1.5">
             <Filtre actif={filtre === null} onClick={() => setFiltre(null)} libelle="Toutes" />
@@ -218,7 +261,42 @@ function EcranCommandes() {
         ) : null}
       </div>
 
-      {commandes === null ? (
+      {vue === 'annulees' ? (
+        <section>
+          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 px-4">
+            <h2 className="text-sm font-semibold text-ink-2">
+              Commandes annulées{annulees ? <> · <span className="chiffres">{annuleesTrouvees.length}</span></> : null}
+            </h2>
+            <button type="button" onClick={() => setVue('enCours')} className="min-h-11 px-2 text-base font-medium text-accent">
+              Revenir aux commandes en cours
+            </button>
+          </div>
+          {erreurAnnulees ? <Alerte>{erreurAnnulees}</Alerte> : null}
+          {annulees === null ? (
+            <Chargement libelle="Chargement des commandes annulées…" />
+          ) : annuleesTrouvees.length === 0 ? (
+            <div className="rounded-2xl bg-surface px-4 py-6 text-center">
+              <p className="text-base text-ink-2">
+                {recherche.trim() ? 'Aucune commande annulée ne correspond à cette recherche.' : 'Aucune commande annulée ces derniers temps.'}
+              </p>
+            </div>
+          ) : (
+            <ListeGroupee>
+              {annuleesTrouvees.map((commande) => (
+                <CelluleCommande
+                  key={commande.id}
+                  commande={commande}
+                  types={typesDeCommande(commande)}
+                  aujourdhui={aujourdhui}
+                  avecDate
+                  avecStatut
+                  onOuvrir={(c) => setOuverteId(c.id)}
+                />
+              ))}
+            </ListeGroupee>
+          )}
+        </section>
+      ) : commandes === null ? (
         <>
           <Chargement />
           <RappelChargement />
@@ -255,7 +333,16 @@ function EcranCommandes() {
         </div>
       )}
 
-      <FicheCommande commande={ouverte} onFermer={() => setOuverteId(null)} onChange={charger} />
+      {vue === 'enCours' && commandes !== null ? (
+        // Accès discret : les annulées ne sont pas du travail à faire, mais on doit pouvoir les retrouver.
+        <p className="mt-6 text-center">
+          <button type="button" onClick={voirAnnulees} className="min-h-11 px-3 text-sm text-ink-2 underline underline-offset-2">
+            Voir les commandes annulées
+          </button>
+        </p>
+      ) : null}
+
+      <FicheCommande commande={ouverte} onFermer={() => setOuverteId(null)} onChange={recharger} />
     </>
   );
 }

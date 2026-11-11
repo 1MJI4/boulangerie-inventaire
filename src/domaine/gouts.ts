@@ -1,6 +1,8 @@
 // src/domaine/gouts.ts
 //
 // R62 — goût obligatoire d'un gâteau sur commande (propriétaire, 22/10/2026).
+// R67 — goût obligatoire à liste FERMÉE, propre au produit : Bûches et Cœurs
+//       du rayon « Special fin d'année » (propriétaire, 11/11/2026).
 // Propriétaire : agent `regles-metier`.
 //
 // Quel gâteau demande quoi est une DONNÉE (src/catalogue/goutsSurCommande.ts),
@@ -21,9 +23,17 @@ import type { FicheTarifee } from './types.ts';
  *  - `parEtage` : un goût PAR ÉTAGE (pièces montées : des gâteaux posés l'un
  *    sur l'autre), le nombre d'étages venant du tarif ;
  *  - `goutsEnTete` : goûts que le magasin fait DÉJÀ pour ce gâteau, montrés en
- *    premier ; la liste du manager suit (Bavarois, propriétaire 28/10/2026).
+ *    premier ; la liste du manager suit (Bavarois, propriétaire 28/10/2026) ;
+ *  - `propre` : UN goût pris dans la liste FERMÉE du produit (`gouts` : les
+ *    goûts écrits sur le tarif, à la lettre — Bûches, Cœurs ; R67). La liste du
+ *    manager n'est jamais proposée, et il n'y a jamais de goût par étage.
  */
-export type ChoixGout = { liste: 'parfum' | 'entremet'; parEtage: boolean; goutsEnTete?: readonly string[] };
+export type ChoixGout =
+  | { liste: 'parfum' | 'entremet'; parEtage: boolean; goutsEnTete?: readonly string[] }
+  | { liste: 'propre'; parEtage: false; gouts: readonly string[] };
+
+/** Listes réglées par le gérant (goûts, recettes d'entremet), telles que l'écran les reçoit. */
+export type ListesGouts = { parfums?: readonly string[] | null; entremets?: readonly string[] | null };
 
 /** Sortie en un geste quand le client hésite : la vente n'est jamais perdue. */
 export const GOUT_AU_CHOIX = 'Au choix du pâtissier';
@@ -39,10 +49,17 @@ export function goutsAttendus(choix: ChoixGout | null | undefined, fiche: FicheT
 /**
  * Règle R62 : un gâteau sur commande porte son goût (ou sa recette
  * d'entremet), un par étage pour une pièce montée.
+ * Règle R67 : une Bûche ou un Cœur porte UN goût, pris dans sa propre liste.
  * Niveau : BLOQUANT (ERR_GOUT_MANQUANT), à la saisie de la ligne, avec la
- * sortie « Au choix du pâtissier ».
+ * sortie « Au choix du pâtissier » — sans goût, l'atelier ne peut pas produire.
  * N'interdit pas : un produit sans choix de goût (comptoir, salé, minis) ;
  * « Au choix du pâtissier » ; un goût hors de la liste (texte libre).
+ *
+ * HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°97) : pour une liste `propre`, un
+ * goût hors de la liste du produit est accepté comme pour les autres gâteaux
+ * (« Autre… ») : le domaine ne juge pas le mot. La liste est fermée à l'écran
+ * (seuls ses goûts sont proposés) ; si le propriétaire veut un refus, il se
+ * mettra ici, avec la sortie vers un goût de la liste.
  */
 export function validerGouts(
   choix: ChoixGout | null | undefined,
@@ -63,6 +80,21 @@ export function validerGouts(
     },
     { champ: 'gouts', valeurProposee: GOUT_AU_CHOIX },
   );
+}
+
+/**
+ * Goûts à proposer pour ce produit, dans l'ordre d'affichage :
+ *  - liste `propre` : les goûts du produit, dans l'ordre du tarif — jamais la
+ *    liste du manager ;
+ *  - `entremet` : les recettes d'entremet ; `parfum` : les goûts du manager —
+ *    dans les deux cas précédés des `goutsEnTete` du gâteau.
+ * Sans doublon ni entrée vide ; liste absente → vide. « Au choix du pâtissier »
+ * n'en fait pas partie : c'est une sortie, proposée à part.
+ */
+export function goutsProposes(choix: ChoixGout, listes: ListesGouts | null | undefined): string[] {
+  if (choix.liste === 'propre') return ordonnerGouts(undefined, choix.gouts);
+  const liste = (choix.liste === 'entremet' ? listes?.entremets : listes?.parfums) ?? [];
+  return ordonnerGouts(choix.goutsEnTete, liste);
 }
 
 /**

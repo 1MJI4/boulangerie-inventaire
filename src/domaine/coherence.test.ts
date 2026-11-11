@@ -8,6 +8,7 @@ import {
   reperesDoublons,
   telephonePlausible,
   validerAcompte,
+  validerAnnulation,
   validerChampObligatoire,
   validerModification,
   validerPrixConvenu,
@@ -232,4 +233,91 @@ test('écriture non précisée sur un gâteau → avertissement', () => {
   assert.equal(controlerEcriture({ contientGateau: true, texteGateau: 'Joyeux anniversaire' }).length, 0);
   assert.equal(controlerEcriture({ contientGateau: true, sansEcriture: true }).length, 0);
   assert.equal(controlerEcriture({ contientGateau: false }).length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// R68 — annulation d'une commande (propriétaire, 11/11/2026)
+// ---------------------------------------------------------------------------
+
+const ANNULATION = { statut: 'a_imprimer' as const, motif: 'Le client a appelé', gerant: 'Karim', acompteCentimes: 0 };
+
+test('R68 annulation : gérant + motif, sans acompte ni bon imprimé → acceptée, aucun signalement', () => {
+  const r = validerAnnulation({ ...ANNULATION, motif: '  Le client a appelé  ', gerant: ' Karim ' });
+  assert.ok(r.ok);
+  assert.deepEqual(r.donnees, { statut: 'annulee', motif: 'Le client a appelé', gerant: 'Karim' });
+  assert.equal(r.signalements.length, 0);
+});
+
+test('R68 annulation : commande déjà retirée ou déjà annulée → ERR_STATUT_INCOHERENT, avant tout le reste', () => {
+  for (const statut of ['remise', 'annulee'] as const) {
+    const r = validerAnnulation({ statut, motif: '', gerant: null, acompteCentimes: 0 });
+    assert.equal(r.ok, false, statut);
+    if (r.ok) continue;
+    assert.equal(r.niveau, 'bloquant');
+    assert.equal(r.code, 'ERR_STATUT_INCOHERENT');
+    assert.equal(r.champ, 'statut');
+    assert.equal(r.valeurProposee, statut);
+  }
+});
+
+test('R68 annulation sans code gérant → ERR_DROIT_INSUFFISANT, avant le motif', () => {
+  for (const gerant of [null, '', '   ']) {
+    const r = validerAnnulation({ ...ANNULATION, gerant, motif: '' });
+    assert.equal(r.ok, false);
+    if (r.ok) continue;
+    assert.equal(r.niveau, 'bloquant');
+    assert.equal(r.code, 'ERR_DROIT_INSUFFISANT');
+    assert.equal(r.champ, 'gerant');
+    assert.equal(r.message, 'Seul le manager peut annuler une commande. Demandez-lui de saisir son code, s’il vous plaît.');
+  }
+});
+
+test('R68 annulation sans motif → ERR_CHAMP_OBLIGATOIRE sur « motif »', () => {
+  for (const motif of [null, undefined, '', '   ', '\n\t']) {
+    const r = validerAnnulation({ ...ANNULATION, motif });
+    assert.equal(r.ok, false, JSON.stringify(motif));
+    if (r.ok) continue;
+    assert.equal(r.niveau, 'bloquant');
+    assert.equal(r.code, 'ERR_CHAMP_OBLIGATOIRE');
+    assert.equal(r.champ, 'motif');
+    assert.equal(r.message, 'Indiquez pourquoi la commande est annulée.');
+  }
+});
+
+test('R68 annulation avec acompte reçu → acceptée, AVERT_ACOMPTE_A_REGLER (montant formaté)', () => {
+  const r = validerAnnulation({ ...ANNULATION, acompteCentimes: 4500 });
+  assert.ok(r.ok);
+  assert.equal(r.signalements.length, 1);
+  const s = r.signalements[0];
+  assert.equal(s.niveau, 'avertissement');
+  assert.equal(s.code, 'AVERT_ACOMPTE_A_REGLER');
+  assert.equal(s.champ, 'acompte');
+  assert.equal(s.valeurProposee, 4500);
+  assert.match(s.message, /^Acompte de 45,00\s€ reçu — voyez avec le manager ce qu’il devient\.$/);
+});
+
+test('R68 annulation d’une commande imprimée → acceptée, AVERT_BON_A_RETIRER', () => {
+  const r = validerAnnulation({ ...ANNULATION, statut: 'imprimee' });
+  assert.ok(r.ok);
+  assert.deepEqual(r.signalements.map((s) => s.code), ['AVERT_BON_A_RETIRER']);
+  assert.equal(r.signalements[0].niveau, 'avertissement');
+  assert.equal(r.signalements[0].champ, 'statut');
+  assert.equal(r.signalements[0].message, 'Le bon est déjà imprimé — retirez-le de l’atelier.');
+});
+
+test('R68 annulation : imprimée ET acompte reçu → les deux avertissements, acompte d’abord', () => {
+  const r = validerAnnulation({ ...ANNULATION, statut: 'imprimee', acompteCentimes: 1 });
+  assert.ok(r.ok);
+  assert.deepEqual(r.signalements.map((s) => s.code), ['AVERT_ACOMPTE_A_REGLER', 'AVERT_BON_A_RETIRER']);
+});
+
+test('R68 annulation : acompte illisible (négatif, décimal, NaN) → ERR_SAISIE_INVALIDE, jamais d’exception', () => {
+  for (const acompteCentimes of [-1, 12.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    const r = validerAnnulation({ ...ANNULATION, acompteCentimes });
+    assert.equal(r.ok, false, String(acompteCentimes));
+    if (!r.ok) {
+      assert.equal(r.code, 'ERR_SAISIE_INVALIDE');
+      assert.equal(r.champ, 'acompte');
+    }
+  }
 });

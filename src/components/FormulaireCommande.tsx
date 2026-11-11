@@ -87,7 +87,7 @@ import {
 import { CORRESPONDANCES_COMPTOIR } from '@/catalogue/correspondancesComptoir';
 import { LIBELLES_SELON_GOUT } from '@/catalogue/libellesSelonGout';
 import { GOUTS_SUR_COMMANDE } from '@/catalogue/goutsSurCommande';
-import { GOUT_AU_CHOIX, goutsAttendus, ordonnerGouts, type ChoixGout } from '@/domaine/gouts';
+import { GOUT_AU_CHOIX, goutsAttendus, goutsProposes, type ChoixGout } from '@/domaine/gouts';
 import { gateauSurCommandeDe } from '@/domaine/prixComptoir';
 import type { Echec, Resultat } from '@/domaine/resultat';
 import type { Deverrouillage, FicheTarifee, Forme, SortieRemplacement } from '@/domaine/types';
@@ -2326,13 +2326,19 @@ function BlocGouts({
   /** Tous les goûts choisis d'un toucher (pas pendant la frappe d'« Autre… »). */
   onGoutChoisi?: () => void;
 }) {
-  const liste = (choix.liste === 'entremet' ? options?.entremets : options?.parfums) ?? [];
+  // R67 : Bûches et Cœurs ont LEURS goûts (ceux du tarif), liste fermée — ni la
+  // liste du manager, ni « Autre… », ni décoration. Quelle liste : le domaine.
+  const ferme = choix.liste === 'propre';
+  const actifs = (l: OptionsGateau['parfums'] | undefined) => (l ?? []).filter((o) => o.actif !== false).map((o) => o.nom);
   // Bavarois : les goûts que le magasin fait déjà d'abord, puis la liste du manager.
-  const noms = ordonnerGouts(choix.goutsEnTete, liste.filter((o) => o.actif !== false).map((o) => o.nom));
-  const [tout, setTout] = useState(false);
+  const noms = goutsProposes(choix, { parfums: actifs(options?.parfums), entremets: actifs(options?.entremets) });
+  const [toutOuvert, setTout] = useState(false);
+  const tout = toutOuvert || ferme;
   const [libre, setLibre] = useState<number | null>(null);
   const [deco, setDeco] = useState(decorations.length > 0);
-  const nomsDeco = (options?.decorations ?? []).filter((o) => o.actif !== false && o.nom !== 'Sans décoration').map((o) => o.nom);
+  const nomsDeco = ferme
+    ? []
+    : (options?.decorations ?? []).filter((o) => o.actif !== false && o.nom !== 'Sans décoration').map((o) => o.nom);
 
   const choisir = (etage: number, nom: string) => {
     const suivants = Array.from({ length: attendus }, (_, k) => gouts[k] ?? '');
@@ -2366,14 +2372,16 @@ function BlocGouts({
                   {nom}
                 </button>
               ))}
-              {noms.length > GOUTS_VISIBLES ? (
+              {!ferme && noms.length > GOUTS_VISIBLES ? (
                 <button type="button" onClick={() => setTout((v) => !v)} className="min-h-11 rounded-lg px-2.5 text-sm text-ink-2 underline underline-offset-2">
                   {tout ? 'Moins' : `+ ${noms.length - GOUTS_VISIBLES} autres`}
                 </button>
               ) : null}
-              <button type="button" onClick={() => setLibre(libre === etage ? null : etage)} className="min-h-11 rounded-lg px-2.5 text-sm text-ink-2 underline underline-offset-2">
-                Autre…
-              </button>
+              {ferme ? null : (
+                <button type="button" onClick={() => setLibre(libre === etage ? null : etage)} className="min-h-11 rounded-lg px-2.5 text-sm text-ink-2 underline underline-offset-2">
+                  Autre…
+                </button>
+              )}
               <button
                 type="button"
                 aria-pressed={choisi === GOUT_AU_CHOIX}

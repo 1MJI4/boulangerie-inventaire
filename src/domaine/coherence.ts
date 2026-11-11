@@ -253,6 +253,82 @@ export function validerTransitionStatut(
   return succes(vers);
 }
 
+/** Libellé du champ « motif » d'une annulation (clé de la consigne « Indiquez pourquoi… »). */
+const CHAMP_MOTIF_ANNULATION = 'motif de l’annulation';
+
+/** Ce que l'annulation enregistre : le nouveau statut, le motif et qui l'a autorisée. */
+export type AnnulationValidee = { statut: 'annulee'; motif: string; gerant: string };
+
+/**
+ * Règle R68 (propriétaire, 11/11/2026) : seul le gérant annule une commande,
+ * et il dit pourquoi.
+ * Niveaux, dans cet ordre :
+ *  1. commande déjà retirée par le client ou déjà annulée → BLOQUANT
+ *     ERR_STATUT_INCOHERENT (le refus de `validerTransitionStatut`) : on
+ *     n'annule pas ce qui est terminé ;
+ *  2. pas de code gérant (`gerant` null ou vide) → BLOQUANT
+ *     ERR_DROIT_INSUFFISANT, sortie « Saisir le code du manager » ;
+ *  3. motif vide → BLOQUANT ERR_CHAMP_OBLIGATOIRE sur `motif` : une annulation
+ *     sans raison ne s'explique pas en cas de litige (R31) ;
+ *  4. sinon ACCEPTÉE, avec deux AVERTISSEMENTS possibles (signalés, tracés,
+ *     jamais bloquants — l'annulation décidée par le gérant ne se perd pas) :
+ *     - acompte déjà reçu → AVERT_ACOMPTE_A_REGLER (`valeurProposee` = l'acompte
+ *       en centimes) ;
+ *       HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°95) : le sort de l'acompte
+ *       n'est pas décidé, l'application le rappelle sans rien calculer ;
+ *     - bon déjà imprimé → AVERT_BON_A_RETIRER.
+ *       HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°96) : l'atelier n'est prévenu
+ *       que par ce message à la vendeuse.
+ * Acompte illisible (négatif, décimal) → BLOQUANT ERR_SAISIE_INVALIDE : dans le
+ * doute sur de l'argent, on ne laisse pas passer (règle de doute).
+ * `gerant` : nom du gérant dont le code a été vérifié PAR L'APPELANT (route,
+ * `gerantActif`) — le domaine ne vérifie pas un code, il exige une identité.
+ * N'interdit pas : annuler une commande « à imprimer » ou « imprimée », avec ou
+ * sans acompte, quel que soit le jour de retrait (même passé, même un mardi).
+ */
+export function validerAnnulation(entree: {
+  statut: StatutCommande;
+  motif: string | null | undefined;
+  gerant: string | null;
+  acompteCentimes: number;
+}): Resultat<AnnulationValidee> {
+  // `validerTransitionStatut` laisse passer « aucun changement » (annulée →
+  // annulée) : ici, une commande déjà annulée ne s'annule pas une 2e fois.
+  if (entree.statut === 'annulee') {
+    const libelle = LIBELLE_STATUT.annulee;
+    return signaler('ERR_STATUT_INCOHERENT', { de: libelle, vers: libelle }, { champ: 'statut', valeurProposee: 'annulee' });
+  }
+  const transition = validerTransitionStatut(entree.statut, 'annulee');
+  if (!transition.ok) return transition;
+
+  const gerant = String(entree.gerant ?? '').trim();
+  if (gerant === '') {
+    return signaler('ERR_DROIT_INSUFFISANT', { action: 'annuler une commande', role: 'gérant' }, { champ: 'gerant' });
+  }
+
+  const motif = validerChampObligatoire(entree.motif, CHAMP_MOTIF_ANNULATION, 'motif');
+  if (!motif.ok) return motif;
+
+  if (!Number.isSafeInteger(entree.acompteCentimes) || entree.acompteCentimes < 0) {
+    return signaler('ERR_SAISIE_INVALIDE', { champLibelle: 'acompte' }, { champ: 'acompte' });
+  }
+
+  const signalements: Signalement[] = [];
+  if (entree.acompteCentimes > 0) {
+    signalements.push(
+      signaler(
+        'AVERT_ACOMPTE_A_REGLER',
+        { acompteFormate: formaterEuros(entree.acompteCentimes) },
+        { champ: 'acompte', valeurProposee: entree.acompteCentimes },
+      ),
+    );
+  }
+  if (entree.statut === 'imprimee') {
+    signalements.push(signaler('AVERT_BON_A_RETIRER', {}, { champ: 'statut' }));
+  }
+  return succes({ statut: 'annulee', motif: motif.donnees, gerant }, ...signalements);
+}
+
 export type EtatCommandeExistante = {
   statut: StatutCommande;
   retraitLe: DateISO;

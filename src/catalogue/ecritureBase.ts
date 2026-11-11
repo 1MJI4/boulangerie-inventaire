@@ -22,8 +22,15 @@
 // pas, ou qui diffère, l'import est REFUSÉ en entier (rien n'est écrit) :
 // c'est au gérant de trancher, pas au script.
 //
+// Identifiant corrigé (./clesRemplacees.ts, décision du propriétaire) : si la
+// base porte encore l'ANCIENNE clé d'un produit et pas la nouvelle, la fiche
+// existante est RENOMMÉE (cleCatalogue) — même ligne, mêmes prix, mêmes
+// commandes passées. Sans cela l'import créerait un second produit à côté de
+// l'ancien, resté actif : deux cartes à l'écran et un historique coupé en deux.
+//
 // Textes du rapport : catalogue unique des messages, via ./rapport.ts.
 
+import { CLES_REMPLACEES } from "./clesRemplacees.ts";
 import { dateEnTexte, veille } from "./normaliser.ts";
 import { dateBaseVersIso, dateIsoVersBase, type ProduitAvecPrixBase } from "./lectureBase.ts";
 import { entreeRapport, type CodeRapport } from "./rapport.ts";
@@ -122,6 +129,8 @@ export function attenduDepuisCatalogue(catalogue: Catalogue): { produits: Produi
 // ------------------------------------------------------------ Plan
 
 export type ChampsProduitModifiables = Partial<{
+  /** Seulement pour un identifiant corrigé (./clesRemplacees.ts). */
+  cleCatalogue: string;
   nom: string;
   categorie: string;
   sousCategorie: string | null;
@@ -179,9 +188,14 @@ export function planifierEcriture(
   let produitsInchanges = 0;
   const hier = veille(aujourdhui);
   const parCle = new Map(existants.map((e) => [e.cleCatalogue, e]));
+  /** Anciennes clés reprises par un renommage : elles ne sont pas « hors fichiers ». */
+  const clesRenommees = new Set<string>();
 
   for (const a of attendus) {
-    const e = parCle.get(a.cle);
+    // Identifiant corrigé : la fiche est encore en base sous son ancienne clé.
+    const ancienneCle = CLES_REMPLACEES[a.cle];
+    const renomme = !parCle.has(a.cle) && ancienneCle !== undefined && parCle.has(ancienneCle);
+    const e = parCle.get(renomme ? ancienneCle : a.cle);
     if (!e) {
       creations.push({ type: "creerProduit", produit: a });
       for (const prix of a.prix) insertions.push({ type: "insererVersion", cle: a.cle, prix });
@@ -199,6 +213,10 @@ export function planifierEcriture(
       continue;
     }
     const champs: ChampsProduitModifiables = {};
+    if (renomme) {
+      champs.cleCatalogue = a.cle;
+      clesRenommees.add(e.cleCatalogue);
+    }
     if (e.regimePrix === null) champs.regimePrix = a.regimePrix;
     if (e.nom !== a.nom) champs.nom = a.nom;
     if (e.categorie !== a.categorie) champs.categorie = a.categorie;
@@ -219,7 +237,9 @@ export function planifierEcriture(
       // Un produit désactivé à la main (écran de gestion) n'est jamais réactivé en silence.
       signalements.push(surProduit("INFO_RESTE_ARCHIVE", a.nom, a.cle));
     }
-    if (champs.nom !== undefined || champs.categorie !== undefined || champs.sousCategorie !== undefined) {
+    if (renomme) {
+      signalements.push(surProduit("AVERT_LIBELLE_MODIFIE", a.nom, a.cle, `identifiant corrigé « ${e.cleCatalogue} » → « ${a.cle} »`));
+    } else if (champs.nom !== undefined || champs.categorie !== undefined || champs.sousCategorie !== undefined) {
       signalements.push(surProduit("AVERT_LIBELLE_MODIFIE", a.nom, a.cle, `« ${e.nom} » → « ${a.nom} »`));
     }
     if (Object.keys(champs).length > 0) modifications.push({ type: "modifierProduit", idBase: e.id, cle: a.cle, champs });
@@ -266,7 +286,7 @@ export function planifierEcriture(
   }
 
   for (const e of existants) {
-    if (!attendus.some((a) => a.cle === e.cleCatalogue)) {
+    if (!clesRenommees.has(e.cleCatalogue) && !attendus.some((a) => a.cle === e.cleCatalogue)) {
       signalements.push(surProduit("AVERT_PRODUIT_HORS_FICHIERS", e.nom, e.cleCatalogue, e.cleCatalogue));
     }
   }
@@ -343,7 +363,9 @@ export async function ecrireCatalogueEnBase(
       for (const [cle, id] of await depot.creerProduits(aCreer)) ids.set(cle, id);
     }
     for (const o of plan.operations) {
-      if (o.type === "modifierProduit") await depot.modifierProduit(o.idBase, o.champs);
+      if (o.type !== "modifierProduit") continue;
+      await depot.modifierProduit(o.idBase, o.champs);
+      if (o.champs.cleCatalogue !== undefined) ids.set(o.champs.cleCatalogue, o.idBase);
     }
     // Étape 1 : fermer les versions courantes AVANT d'insérer les nouvelles.
     for (const o of plan.operations) {

@@ -24,12 +24,18 @@ export function AccesGerant({
   raison,
   onAccorde,
   onAnnuler,
+  sansAnnuler = false,
 }: {
   /** Ce qui est déverrouillé, dit à l'employé (« Prix sous le plancher : Layer Cake »). */
   raison: string;
   /** Accès ouvert : nom déclaré de la personne qui autorise. */
   onAccorde: (par: string) => void;
   onAnnuler: () => void;
+  /**
+   * true : pas de bouton « Annuler » ici — l'écran qui l'accueille porte déjà sa
+   * propre sortie (fenêtre « Annuler la commande » : « Garder la commande »).
+   */
+  sansAnnuler?: boolean;
 }) {
   const [nom, setNom] = useState('');
   const [code, setCode] = useState('');
@@ -73,7 +79,7 @@ export function AccesGerant({
           <input
             value={nom}
             onChange={(e) => setNom(e.target.value)}
-            placeholder="Gérant"
+            placeholder="Prénom du manager"
             autoComplete="off"
             className={CHAMP}
           />
@@ -117,13 +123,15 @@ export function AccesGerant({
         >
           {envoi ? 'Vérification…' : 'Autoriser'}
         </button>
-        <button
-          type="button"
-          onClick={onAnnuler}
-          className="min-h-12 rounded-xl border border-line-fort px-5 text-base text-ink-2"
-        >
-          Annuler
-        </button>
+        {sansAnnuler ? null : (
+          <button
+            type="button"
+            onClick={onAnnuler}
+            className="min-h-12 rounded-xl border border-line-fort px-5 text-base text-ink-2"
+          >
+            Annuler
+          </button>
+        )}
       </div>
     </div>
   );

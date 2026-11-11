@@ -54,6 +54,17 @@ function ligneBrute(predicat: (champs: string[]) => boolean): string {
 }
 const codes = (imp: ResultatImport) => imp.signalements.map((s) => s.code);
 
+/**
+ * Bûches et Cœurs du rayon « Special fin d'année » (propriétaire, 11/11/2026) :
+ * la colonne sous_categorie du tarif porte leurs GOÛTS, pas une sous-catégorie.
+ * Libellés du tarif, à la lettre.
+ */
+const RAYON_FIN_ANNEE = "Special fin d'année";
+const SANS_GOUT_DANS_LE_NOM = ["Bûches 4P", "Bûches 6P", "Bûches 8P", "Bûches 10P", "Bûchette", "Petit Cœurs", "Cœurs 5P", "Cœurs 7P", "Cœurs 9P"];
+/** Sous-catégorie du PRODUIT pour une ligne du tarif (vide pour les 9 produits ci-dessus). */
+const sousCategorieProduit = (categorie: string, produit: string, sous: string) =>
+  categorie === RAYON_FIN_ANNEE && SANS_GOUT_DANS_LE_NOM.includes(produit) ? "" : sous;
+
 // ------------------------------------------------------------ non-régression
 
 test("le CSV compte 351 lignes de produits, toutes lues", () => {
@@ -72,11 +83,67 @@ test("chacune des 351 lignes retrouve exactement son prix_cents via getPrix", ()
         ? [...cat.produits.values()].find(
             (p) => p.estFavori && identifiantProduit("x", p.produit, p.sousCategorie) === identifiantProduit("x", produit, sous),
           )!.id
-        : identifiantProduit(categorie, produit, sous);
+        : identifiantProduit(categorie, produit, sousCategorieProduit(categorie, produit, sous));
     const prix = getPrix(cat, id, "2026-09-15");
     assert.ok(prix.ok, `${categorie} / ${produit} / ${sous}`);
     assert.equal(prix.donnees.prixCentimes, Number.parseInt(prixCentimes, 10));
   }
+});
+
+// ------------------------------------------------------------ bûches et Cœurs (11/11/2026)
+
+test("bûches et Cœurs : identifiant court, libellé sans goût, prix du tarif inchangé (LOI 1)", () => {
+  const cat = charger();
+  const api = creerApiCatalogue(cat);
+  for (const nom of SANS_GOUT_DANS_LE_NOM) {
+    const brutes = lignesCsv.filter((l) => l[0] === RAYON_FIN_ANNEE && l[1] === nom);
+    assert.equal(brutes.length, 1, `${nom} : une seule ligne au tarif`);
+    const [categorie, produit, sous, , prixCentimes, unite] = brutes[0];
+    assert.notEqual(sous, "", `${nom} : le tarif porte bien des goûts dans la colonne`);
+
+    const id = identifiantProduit(categorie, produit, "");
+    assert.equal(id.split("/").length, 2, id); // rayon/produit, sans goûts
+    const fiche = api.getProduit(id);
+    assert.ok(fiche.ok, `${id} absent du catalogue`);
+    assert.equal(fiche.donnees.produit, nom); // à la lettre (LOI 5)
+    assert.equal(fiche.donnees.sousCategorie, ""); // plus de goût collé au nom affiché
+    assert.equal(fiche.donnees.categorie, categorie);
+    assert.equal(fiche.donnees.regimePrix, "A");
+    assert.equal(fiche.donnees.unite, unite);
+    assert.equal(fiche.donnees.estFavori, false);
+
+    const prix = api.getPrix(id, "2026-09-15");
+    assert.ok(prix.ok, id);
+    assert.equal(prix.donnees.prixCentimes, Number.parseInt(prixCentimes, 10));
+    assert.equal(prix.donnees.basePrix, unite);
+    assert.equal(prix.donnees.prixEstPlancher, false);
+
+    // L'ancien identifiant long (goûts compris) n'existe plus.
+    assert.equal(api.getProduit(identifiantProduit(categorie, produit, sous)).ok, false);
+  }
+});
+
+test("bûches et Cœurs : aucun produit du rayon ne porte de liste de goûts dans son libellé", () => {
+  const cat = charger();
+  const rayon = [...cat.produits.values()].filter((p) => p.categorie === RAYON_FIN_ANNEE);
+  assert.equal(rayon.length, lignesCsv.filter((l) => l[0] === RAYON_FIN_ANNEE).length); // aucun produit perdu ni créé
+  for (const p of rayon) assert.equal(/[,/]/.test(p.sousCategorie), false, `${p.produit} — ${p.sousCategorie}`);
+});
+
+test("bûches et Cœurs : un tarif dont les goûts diffèrent de la table des goûts est bloqué", () => {
+  const ligne = ligneBrute((c) => c[1] === "Bûchette");
+  // Un goût de plus au tarif que dans goutsSurCommande.ts : on ne devine pas, on bloque.
+  const avecUnGoutDePlus = importer(remplacerLigne(CSV, ligne, ligne.replace("Noisette, ", "Noisette, Vanille, ")));
+  assert.equal(avecUnGoutDePlus.ok, false);
+  assert.ok(codes(avecUnGoutDePlus).includes("ERR_VARIANTES_INVALIDES"));
+  // Même liste, ordre différent : bloqué aussi (l'ordre du tarif est celui de l'écran).
+  const autreOrdre = importer(remplacerLigne(CSV, ligne, ligne.replace("Noisette, Exotique coco", "Exotique coco, Noisette")));
+  assert.equal(autreOrdre.ok, false);
+  // Colonne vidée dans un tarif futur : le tarif ne contredit pas la table, l'import passe.
+  const champs = analyserCsv(ligne)[0].champs;
+  const sansGouts = importer(remplacerLigne(CSV, ligne, [champs[0], champs[1], "", ...champs.slice(3)].join(",")));
+  assert.equal(sansGouts.ok, true);
+  assert.ok(sansGouts.produits.some((p) => p.id === identifiantProduit(champs[0], champs[1], "")));
 });
 
 test("tous les prix sont des entiers strictement positifs (centimes)", () => {

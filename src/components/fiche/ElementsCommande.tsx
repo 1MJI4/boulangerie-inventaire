@@ -36,13 +36,15 @@ export function EtiquetteType({ type }: { type: TypeCommande }) {
 /* --------------------------------------------------------------- Pastilles */
 
 /** Pastille de statut ou d'état : texte toujours présent, icône pour ce qui demande une action. */
-export function Pastille({ ton, children }: { ton: 'accent' | 'avertissement' | 'alerte' | 'neutre' | 'ok'; children: ReactNode }) {
+export function Pastille({ ton, children }: { ton: 'accent' | 'avertissement' | 'alerte' | 'neutre' | 'ok' | 'annulee'; children: ReactNode }) {
   const styles = {
     accent: 'bg-accent-doux text-accent',
     avertissement: 'bg-avertissement-doux text-avertissement',
     alerte: 'bg-bloquant-doux text-bloquant',
     neutre: 'bg-segment-fond text-ink-2',
     ok: 'bg-ok-doux text-ok',
+    // Commande annulée (11/11/2026) : rouge doux SANS icône — un état, pas une action à faire.
+    annulee: 'bg-bloquant-doux text-bloquant',
   }[ton];
   return (
     <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${styles}`}>
@@ -55,7 +57,8 @@ export function Pastille({ ton, children }: { ton: 'accent' | 'avertissement' | 
 
 /** Statut à l'écran (« Bon à imprimer », « Retirée par le client »…). */
 export function PastilleStatut({ commande }: { commande: Pick<Commande, 'statut'> }) {
-  const ton = commande.statut === 'a_imprimer' ? 'accent' : commande.statut === 'remise' ? 'ok' : 'neutre';
+  const ton =
+    commande.statut === 'a_imprimer' ? 'accent' : commande.statut === 'remise' ? 'ok' : commande.statut === 'annulee' ? 'annulee' : 'neutre';
   return <Pastille ton={ton}>{LIBELLE_STATUT_ECRAN[commande.statut]}</Pastille>;
 }
 

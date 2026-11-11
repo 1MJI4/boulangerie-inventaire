@@ -40,12 +40,15 @@ import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { reponseEchec, traiterErreur } from '@/lib/erreurBase';
-import { JOURS_AVANT_ANONYMISATION, MENTION_ANONYME, STATUTS, formaterNumero, lignesSurLeGateau, resumeEcritures } from '@/lib/commandes';
+import { HISTORIQUE_FICHE, HISTORIQUE_LISTE, JOURS_AVANT_ANONYMISATION, MENTION_ANONYME, STATUTS, formaterNumero, lignesSurLeGateau, resumeEcritures } from '@/lib/commandes';
 import { dateDuJour } from '@/lib/dateProduction';
+import { LIMITEURS_GERANT, verifierCode } from '@/lib/auth/codes';
+import { adresseClient, lireConfiguration } from '@/lib/auth/config';
 import { exigerRole, gerantActif } from '@/lib/auth/garde';
 import { nomDeclare } from '@/lib/auth/identite';
 import { controlerCommande, type CommandeSaisie, type LigneSaisie } from '@/domaine/commande';
 import {
+  validerAnnulation,
   validerChampObligatoire,
   validerModification,
   validerTelephone,
@@ -68,7 +71,8 @@ import { decalerJours, estDateISO, validerDateRetrait } from '@/domaine/calendri
 import { JOURS_AVANT_ARCHIVAGE, REGLES_FORME, SUPPLEMENT_ECRITURE, SUPPLEMENT_PHOTO, TAILLES_INTERDITES } from '@/domaine/constantes';
 import { signaler } from '@/domaine/messages';
 import { changementsLisibles, detailModification, type Apres, type LigneTexte } from '@/components/commande/historique';
-import type { Echec } from '@/domaine/resultat';
+import type { Echec, Signalement } from '@/domaine/resultat';
+import { formaterEuros } from '@/domaine/argent';
 import type { Deverrouillage } from '@/domaine/types';
 import { chargerContexte, correspondancesServeur, priseBruxelles, resoudreServeur } from './contexteServeur';
 import { GOUTS_SUR_COMMANDE } from '@/catalogue/goutsSurCommande';
@@ -82,7 +86,13 @@ import { journaliser } from '@/lib/journal';
 // « 1 gâteau — 20 PARTS » d'après la DONNÉE, jamais d'après le régime seul (LOI 6).
 const inclusions = {
   lignes: { orderBy: { ordre: 'asc' } as const, include: { produitCatalogue: { select: { cleCatalogue: true, categorie: true, nom: true, regimePrix: true } }, prixProduit: { select: { basePrix: true } } } },
-  evenements: { orderBy: { quand: 'desc' } as const, take: 20 },
+  evenements: { orderBy: { quand: 'desc' } as const, take: HISTORIQUE_LISTE },
+};
+
+// Lecture d'UNE commande (fiche) : tout l'historique, sans alourdir les listes (11/11/2026).
+const inclusionsFiche = {
+  ...inclusions,
+  evenements: { orderBy: { quand: 'desc' } as const, take: HISTORIQUE_FICHE },
 };
 
 function texte(valeur: unknown, max = 200): string {
@@ -191,13 +201,13 @@ export async function GET(request: Request) {
     const recherche = texte(searchParams.get('q'), 60);
 
     if (Number.isSafeInteger(id) && id > 0) {
-      const commande = await prisma.commande.findUnique({ where: { id }, include: inclusions });
+      const commande = await prisma.commande.findUnique({ where: { id }, include: inclusionsFiche });
       if (!commande) return introuvable('GET /api/commandes');
       return NextResponse.json(commande);
     }
 
     if (numero) {
-      const commande = await prisma.commande.findUnique({ where: { numero }, include: inclusions });
+      const commande = await prisma.commande.findUnique({ where: { numero }, include: inclusionsFiche });
       if (!commande) return introuvable('GET /api/commandes');
       return NextResponse.json(commande);
     }
@@ -716,6 +726,10 @@ export async function PATCH(request: Request) {
     const statut = existante.statut as StatutCommande;
     const donnees: Prisma.CommandeUpdateInput = {};
     let detail: string | null = null;
+    // Auteur de l'événement : la personne déclarée, sauf annulation (le manager qui l'autorise).
+    let auteurEvenement = auteur;
+    // Avertissements du domaine à montrer à la vendeuse après l'action (annulation : acompte, bon).
+    let signalements: Signalement[] = [];
     let nouvellesLignes: ReturnType<typeof lignesAEnregistrer> | null = null;
     // Commande à l'ancien tarif : seule l'écriture des gâteaux change sur les lignes (lot 2).
     let majEcritures: { id: number; texteGateau: string | null; sansEcriture: boolean | null; photoImprimee: boolean | null }[] | null = null;
@@ -727,7 +741,9 @@ export async function PATCH(request: Request) {
 
     switch (action) {
       case 'impression': {
-        // Réimprimer une commande remise ou annulée ne change pas son statut.
+        // R68 : une commande annulée ne s'imprime plus (un bon sorti = un gâteau produit).
+        if (statut === 'annulee') return refus(signaler('ERR_COMMANDE_FIGEE', { etat: 'annulée' }, { champ: 'statut' }), route);
+        // Réimprimer une commande remise ne change pas son statut.
         if (statut === 'a_imprimer' || statut === 'imprimee') {
           const r = transition('imprimee');
           if (r) return refus(r, route);
@@ -762,12 +778,57 @@ export async function PATCH(request: Request) {
         break;
 
       case 'annulation': {
-        const r = transition('annulee');
-        if (r) return refus(r, route);
-        donnees.statut = 'annulee';
+        // R68 (propriétaire, 11/11/2026) : seul le manager annule, et il dit pourquoi.
+        // Le PATCH reste ouvert à toute tablette ; c'est CETTE action qui exige le code.
+        // Le nom est une identité DÉCLARÉE (« Qui autorise ? »), comme pour les accords.
+        // Décision du propriétaire (11/11/2026) : le code du manager est ressaisi à
+        // CHAQUE annulation. Un accès manager déjà ouvert sur la tablette ne suffit
+        // pas : le code voyage avec la demande et est vérifié plus bas, une fois le
+        // reste en ordre (un motif oublié ne consomme pas un essai de code).
+        const codeSaisi = typeof corps.codeGerant === 'string' && corps.codeGerant.trim() !== '';
+        const gerant = codeSaisi ? nomDeclare(corps.gerant) || 'manager' : null;
+        // Statut et acompte lus EN BASE, jamais reçus de la tablette.
+        const r = validerAnnulation({
+          statut,
+          motif: texte(corps.motif, 200),
+          gerant,
+          // Seul l'argent réellement encaissé est « à régler » : un virement prévu
+          // mais jamais constaté n'avertit pas (l'historique, lui, le mentionne).
+          acompteCentimes: existante.acompteRecuLe ? existante.acompteCentimes : 0,
+        });
+        if (!r.ok) return refus(r, route);
+        // Même vérification que l'ouverture du profil manager : durée constante,
+        // essais limités par adresse, par tablette et au total.
+        const conf = lireConfiguration('gerant');
+        if (!conf.ok) return refus(signaler('ERR_CONFIGURATION_SERVEUR', { reference: conf.reference }), route);
+        const verdict = verifierCode(
+          corps.codeGerant,
+          conf.code,
+          [`ip:${adresseClient(request.headers)}`, `tablette:${garde.tablette.appareil}`],
+          LIMITEURS_GERANT,
+          Date.now(),
+        );
+        if (!verdict.ok) return refus(verdict, route);
+        donnees.statut = r.donnees.statut;
         donnees.annuleeLe = maintenant;
-        donnees.motif = texte(corps.motif, 200) || 'Sans motif';
-        detail = donnees.motif as string;
+        donnees.motif = r.donnees.motif;
+        auteurEvenement = r.donnees.gerant;
+        signalements = r.signalements;
+        // Historique (litige, R31) : le motif, puis l'état de l'argent et du bon à ce moment-là.
+        const mentions = [r.donnees.motif];
+        if (existante.acompteCentimes > 0) {
+          const montant = formaterEuros(existante.acompteCentimes);
+          mentions.push(
+            existante.acompteRecuLe
+              ? `acompte de ${montant} reçu`
+              : `acompte de ${montant} prévu par virement, pas encore constaté`,
+          );
+        }
+        if (statut === 'imprimee') mentions.push('bon déjà imprimé');
+        // Qui a touché l'écran (prénom déclaré de la tablette), en plus du manager qui autorise.
+        const saisiPar = nomDeclare(corps.auteur);
+        if (saisiPar && saisiPar !== r.donnees.gerant) mentions.push(`saisi par ${saisiPar}`);
+        detail = mentions.join(' · ');
         break;
       }
 
@@ -967,12 +1028,14 @@ export async function PATCH(request: Request) {
       }
       return tx.commande.update({
         where: { id },
-        data: { ...donnees, evenements: { create: { auteur, action, detail, idClient } } },
+        data: { ...donnees, evenements: { create: { auteur: auteurEvenement, action, detail, idClient } } },
         include: inclusions,
       });
     }));
 
-    return rejoue ? dejaRecue(commande) : NextResponse.json(commande);
+    if (rejoue) return dejaRecue(commande);
+    // Avertissements du domaine joints à la commande (vide pour les autres actions).
+    return NextResponse.json(signalements.length > 0 ? { ...commande, signalements } : commande);
   } catch (error) {
     const { corps, statut } = traiterErreur(error, route);
     return NextResponse.json(corps, { status: statut });

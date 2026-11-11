@@ -8,6 +8,12 @@
 //   différent bloque l'import (jamais de fusion silencieuse).
 // - Le régime « A » vient de la SOURCE (grille comptoir), pas du libellé.
 // - La famille (pâtisserie, salé…) vient du RAYON, via ./familles.ts.
+// - Bûches et Cœurs (propriétaire, 11/11/2026) : pour un produit qui a une
+//   liste de goûts PROPRE dans ./goutsSurCommande.ts, la colonne
+//   `sous_categorie` du tarif est la liste de ses goûts, pas une
+//   sous-catégorie. Elle n'entre ni dans l'identifiant ni dans le libellé
+//   (« Bûches 6P »). Le fichier du gérant n'est pas retouché ; si ses goûts
+//   diffèrent de la table, l'import est bloqué (on ne devine pas).
 // - Textes du rapport : catalogue unique des messages, via ./rapport.ts.
 
 import { analyserCsv } from "./csv.ts";
@@ -19,6 +25,7 @@ import {
   SEUIL_ALERTE_PIECE_HAUT_CENTS,
 } from "./controles.ts";
 import { FAMILLE_PAR_DEFAUT, estSupplement, regleFamille } from "./familles.ts";
+import { goutsDeLaColonne, goutsPropres } from "./goutsSurCommande.ts";
 import {
   aDesEspacesSuspects,
   centimesEnTexte,
@@ -85,9 +92,28 @@ export function importerCsvComptoir(texte: string, options: OptionsImportComptoi
       signale("ERR_LIGNE_MALFORMEE", { ou: ouLigne(ligne), precision: `${champs.length} colonnes au lieu de ${COLONNES_CSV.length}` }, ligne);
       continue;
     }
-    const [categorie, produit, sousCategorie, prixEur, prixCentsTexte, uniteTexte, favoriTexte] = champs;
-    const ou = ouLigne(ligne, { categorie, produit, sousCategorie });
+    const [categorie, produit, colonneSousCategorie, prixEur, prixCentsTexte, uniteTexte, favoriTexte] = champs;
+    const ou = ouLigne(ligne, { categorie, produit, sousCategorie: colonneSousCategorie });
     let valide = true;
+
+    // Produit à liste de goûts propre (table explicite, par identifiant) : la
+    // colonne porte ses goûts. Sous-catégorie du produit = vide.
+    const gouts = goutsPropres(identifiantProduit(categorie, produit, ""));
+    const sousCategorie = gouts ? "" : colonneSousCategorie;
+    if (gouts && colonneSousCategorie.trim() !== "") {
+      const auTarif = goutsDeLaColonne(colonneSousCategorie);
+      if (auTarif.length !== gouts.length || auTarif.some((g, i) => g !== gouts[i])) {
+        // HYPOTHÈSE À VALIDER : goûts du tarif ≠ goûts proposés à l'écran → import
+        // bloqué, la table goutsSurCommande.ts est à mettre à jour avec le gérant.
+        // DÉPENDANCE `gestion-erreurs` : code dédié (ERR_GOUTS_TARIF_DIFFERENTS) à créer.
+        signale(
+          "ERR_VARIANTES_INVALIDES",
+          { ou, precision: `goûts du tarif différents de ceux de l’application : « ${auTarif.join(", ")} » au lieu de « ${gouts.join(", ")} »` },
+          ligne,
+        );
+        valide = false;
+      }
+    }
 
     if (slug(produit) === "" || slug(categorie) === "") {
       signale("ERR_LIBELLE_VIDE", { ou: ouLigne(ligne) }, ligne);
@@ -134,7 +160,7 @@ export function importerCsvComptoir(texte: string, options: OptionsImportComptoi
     }
 
     // LOI 5 : on ne corrige pas, on signale.
-    for (const champ of [categorie, produit, sousCategorie]) {
+    for (const champ of [categorie, produit, colonneSousCategorie]) {
       if (contientInvisibles(champ)) {
         signale("AVERT_CARACTERE_INVISIBLE", { ou, precision: "conservé tel quel" }, ligne);
       }

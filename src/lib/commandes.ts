@@ -125,12 +125,24 @@ export type Commande = {
   statut: StatutCommande;
   imprimeeLe: string | null;
   remiseLe: string | null;
+  /** Annulation (R68, 11/11/2026) : quand, et le motif donné par le manager. Absents : commande non annulée. */
+  annuleeLe?: string | null;
+  motif?: string | null;
   avertissements: AvertissementTrace[];
   anonymiseeLe: string | null;
   lignes: LigneCommande[];
-  /** Historique (20 derniers, du plus récent au plus ancien), tel que renvoyé par l'API. */
+  /**
+   * Historique, du plus récent au plus ancien, tel que renvoyé par l'API :
+   * les `HISTORIQUE_LISTE` derniers dans une liste, jusqu'à `HISTORIQUE_FICHE`
+   * à la lecture d'une seule commande (`?id=`).
+   */
   evenements?: { quand: string; action: string; detail: string | null; auteur?: string }[];
 };
+
+/** Événements d'historique joints à chaque commande d'une LISTE (liste légère, réseau faible). */
+export const HISTORIQUE_LISTE = 20;
+/** Événements joints à la lecture d'UNE commande (`?id=`, `?numero=`) : tout l'historique en pratique. */
+export const HISTORIQUE_FICHE = 500;
 
 /** Commande telle que renvoyée par GET /api/commandes (dates en ISO, avertissements en JSON). */
 export type CommandeApi = Omit<Commande, 'retraitLe' | 'avertissements'> & {

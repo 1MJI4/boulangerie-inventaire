@@ -140,6 +140,8 @@ const EXEMPLES: Partial<Record<CodeCatalogue, unknown>> = {
   AVERT_ECRITURE_NON_PRECISEE: {},
   AVERT_GATEAU_COMPLEXE: {},
   AVERT_COMMANDE_DEJA_IMPRIMEE: {},
+  AVERT_ACOMPTE_A_REGLER: { acompteFormate: '45,00 €' },
+  AVERT_BON_A_RETIRER: {},
   AVERT_SOUS_PLANCHER_AUTORISE: { produit: 'P', par: 'Karim' },
   AVERT_REMISE_AUTORISEE: { par: 'Karim' },
   AVERT_QUANTITE_INHABITUELLE: { produit: 'P', reference: '12' },
@@ -459,6 +461,7 @@ test('champ obligatoire : accord correct quel que soit le libellé (masculin, f�
     ['date de retrait', 'Choisissez le jour de retrait.'],
     ['heure de retrait', 'Choisissez l’heure de retrait.'],
     ['Description de la demande', 'Décrivez ce que veut le client.'],
+    ['motif de l’annulation', 'Indiquez pourquoi la commande est annulée.'],
   ];
   for (const [champLibelle, attendu] of consignes) assert.equal(messagePour('ERR_CHAMP_OBLIGATOIRE', { champLibelle }), attendu);
   assert.deepEqual(sortiePour('ERR_CHAMP_OBLIGATOIRE', { champLibelle: 'heure de retrait' }), {

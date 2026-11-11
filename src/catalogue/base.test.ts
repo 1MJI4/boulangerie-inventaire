@@ -10,7 +10,12 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chargerCatalogueDepuisDossier } from "./chargerFichiers.ts";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { chargerCatalogueDepuisDossier, DOSSIER_DATA_PAR_DEFAUT } from "./chargerFichiers.ts";
+import { CLES_REMPLACEES } from "./clesRemplacees.ts";
+import { analyserCsv } from "./csv.ts";
+import { identifiantProduit } from "./normaliser.ts";
 import { ajouterVersion, getPrix, listerParCategorie } from "./catalogue.ts";
 import {
   attenduDepuisCatalogue,
@@ -94,6 +99,9 @@ class FausseBase {
       modifierProduit: async (id, champs) => {
         this.ecrire();
         const p = this.produits.find((x) => x.id === id)!;
+        if (champs.cleCatalogue !== undefined && this.produits.some((x) => x.id !== id && x.cleCatalogue === champs.cleCatalogue)) {
+          throw new ErreurBase("unique cleCatalogue");
+        }
         Object.assign(p, champs);
       },
       fermerVersion: async (id, valideAu) => {
@@ -545,4 +553,104 @@ test("adaptateur Prisma : vise ProduitCatalogue, ne touche jamais « Produit » 
   await src.compterPrixCatalogue();
   await ecrireCatalogueEnBase(clientEcriturePrisma(client), CAT, { aujourdhui: AUJOURDHUI });
   assert.ok(appels.length > 0 && appels.every((a) => a.startsWith("produitCatalogue.") || a.startsWith("prixProduit.")), appels.join(","));
+});
+
+// ------------------------------------------------------------ Identifiants corrigés (bûches et Cœurs, 11/11/2026)
+
+/** Lignes du tarif comptoir dont l'identifiant a été corrigé (nouvelle clé, ancienne clé, colonne sous_categorie). */
+function lignesCorrigees(): { cle: string; ancienne: string; colonne: string; nom: string }[] {
+  const csv = readFileSync(join(DOSSIER_DATA_PAR_DEFAUT, "catalogue_prix_2026-09.csv"), "utf8");
+  const lignes = analyserCsv(csv).slice(1).map((l) => l.champs);
+  return Object.entries(CLES_REMPLACEES).map(([cle, ancienne]) => {
+    const l = lignes.find((c) => identifiantProduit(c[0], c[1], "") === cle);
+    assert.ok(l, `${cle} absent du tarif`);
+    return { cle, ancienne, colonne: l[2], nom: l[1] };
+  });
+}
+
+/** Base telle que les imports PRÉCÉDENTS l'ont laissée : clé longue, goûts en sous-catégorie. */
+async function baseAvantCorrection() {
+  const base = await baseRemplie();
+  for (const { cle, ancienne, colonne } of lignesCorrigees()) {
+    const p = base.produits.find((x) => x.cleCatalogue === cle)!;
+    p.cleCatalogue = ancienne;
+    p.sousCategorie = colonne;
+  }
+  return base;
+}
+
+test("identifiants corrigés : l'ancienne clé est exactement celle des imports précédents (rayon/produit/goûts)", () => {
+  const corrigees = lignesCorrigees();
+  assert.equal(corrigees.length, 9);
+  for (const { cle, ancienne, colonne } of corrigees) {
+    assert.equal(ancienne, `${cle}/${identifiantProduit("", "", colonne)}`);
+    assert.ok(CAT.produits.has(cle), `${cle} absent du catalogue`);
+    assert.ok(!CAT.produits.has(ancienne), `${ancienne} encore au catalogue`);
+  }
+});
+
+test("identifiants corrigés : la fiche existante est RENOMMÉE — même ligne, mêmes prix, rien de créé", async () => {
+  const base = await baseAvantCorrection();
+  const corrigees = lignesCorrigees();
+  const avant = new Map(corrigees.map(({ cle, ancienne }) => [cle, { ...base.produits.find((p) => p.cleCatalogue === ancienne)! }]));
+  const prixAvant = JSON.stringify(base.prix);
+  const nbProduits = base.produits.length;
+
+  const r = await ecrireCatalogueEnBase(base.client(), CAT, { aujourdhui: AUJOURDHUI });
+  assert.ok(r.ok && r.ecrit, JSON.stringify(r.signalements.filter((s) => s.niveau === "bloquant")));
+  assert.equal(r.resume.produitsCrees, 0);
+  assert.equal(r.resume.produitsModifies, 9);
+  assert.equal(r.resume.versionsFermees, 0);
+  assert.equal(r.resume.versionsInserees, 0);
+  assert.equal(base.produits.length, nbProduits, "aucun produit en double");
+  assert.equal(JSON.stringify(base.prix), prixAvant, "aucun prix touché (LOI 1)");
+  assert.ok(!r.signalements.some((s) => s.code === "AVERT_PRODUIT_HORS_FICHIERS"));
+  assert.equal(r.signalements.filter((s) => s.code === "AVERT_LIBELLE_MODIFIE").length, 9, "chaque renommage est dit au gérant");
+
+  const lecteur = creerLecteurBase(base.source());
+  for (const { cle, ancienne, nom } of corrigees) {
+    const a = avant.get(cle)!;
+    const b = base.produits.find((p) => p.cleCatalogue === cle)!;
+    assert.ok(b, `${cle} absent de la base`);
+    // Même ligne : les commandes passées (LigneCommande.produitCatalogueId) pointent toujours dessus.
+    assert.equal(b.id, a.id);
+    assert.equal(b.nom, nom);
+    assert.equal(b.sousCategorie, null);
+    assert.deepEqual({ ...b, cleCatalogue: "", sousCategorie: null }, { ...a, cleCatalogue: "", sousCategorie: null });
+    assert.ok(!base.produits.some((p) => p.cleCatalogue === ancienne));
+    for (const date of ["2026-09-15", "2026-10-20"]) {
+      const attendu = getPrix(CAT, cle, date);
+      const lu = await lecteur.getPrix(cle, date);
+      assert.ok(attendu.ok && lu.ok, cle);
+      assert.equal(lu.donnees.prixCentimes, attendu.donnees.prixCentimes);
+      assert.equal(lu.donnees.produitIdBase, a.id);
+    }
+    const ancien = await lecteur.getProduit(ancienne);
+    assert.equal(!ancien.ok && ancien.code, "ERR_PRODUIT_INCONNU");
+  }
+
+  // Et c'est à nouveau idempotent.
+  const encore = await ecrireCatalogueEnBase(base.client(), CAT, { aujourdhui: AUJOURDHUI });
+  assert.ok(encore.ok);
+  assert.equal(encore.ecrit, false);
+  assert.equal(encore.operations.length, 0);
+});
+
+test("identifiants corrigés : ancienne ET nouvelle clé déjà en base → rien n'est renommé, l'ancienne est signalée", async () => {
+  const base = await baseRemplie();
+  const { cle, ancienne, colonne } = lignesCorrigees()[0];
+  const nouveau = base.produits.find((p) => p.cleCatalogue === cle)!;
+  base.produits.push({ ...nouveau, id: 100000, cleCatalogue: ancienne, sousCategorie: colonne });
+  const r = await ecrireCatalogueEnBase(base.client(), CAT, { aujourdhui: AUJOURDHUI });
+  assert.ok(r.ok);
+  assert.equal(r.ecrit, false);
+  assert.ok(r.signalements.some((s) => s.code === "AVERT_PRODUIT_HORS_FICHIERS" && s.produitId === ancienne));
+});
+
+test("identifiants corrigés : panne pendant le renommage → rien n'est écrit", async () => {
+  const base = await baseAvantCorrection();
+  const avant = JSON.stringify(base.produits);
+  base.echouerA = base.ecritures + 5;
+  await assert.rejects(ecrireCatalogueEnBase(base.client(), CAT, { aujourdhui: AUJOURDHUI }));
+  assert.equal(JSON.stringify(base.produits), avant);
 });

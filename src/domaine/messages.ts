@@ -210,6 +210,10 @@ export type ParametresMessages = {
   AVERT_ECRITURE_NON_PRECISEE: Record<string, never>;
   AVERT_GATEAU_COMPLEXE: Record<string, never>;
   AVERT_COMMANDE_DEJA_IMPRIMEE: Record<string, never>;
+  /** R68 — annulation : acompte déjà reçu. `acompteFormate` : montant formaté par `formaterEuros`. */
+  AVERT_ACOMPTE_A_REGLER: { acompteFormate: string };
+  /** R68 — annulation d'une commande dont le bon est déjà parti à l'atelier. */
+  AVERT_BON_A_RETIRER: Record<string, never>;
   /** `par` : nom déclaré du gérant qui a déverrouillé. */
   AVERT_SOUS_PLANCHER_AUTORISE: { produit: string; par: string };
   AVERT_REMISE_AUTORISEE: { par: string };
@@ -404,6 +408,7 @@ const CONSIGNES_CHAMP_VIDE: Readonly<Record<string, string>> = {
   'date de retrait': 'Choisissez le jour de retrait.',
   'heure de retrait': 'Choisissez l’heure de retrait.',
   'Description de la demande': 'Décrivez ce que veut le client.',
+  'motif de l’annulation': 'Indiquez pourquoi la commande est annulée.',
 };
 
 /** Entrée du rapport d'import : « <où> — <constat> (<précision>). <quoi faire> ». */
@@ -894,6 +899,17 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     cas: 'Modification d’une commande déjà imprimée.',
     message: () => `Cette commande est déjà imprimée : réimprimez les bons après la modification.`,
     correction: () => 'Réimprimer',
+  },
+  AVERT_ACOMPTE_A_REGLER: {
+    niveau: 'avertissement',
+    cas: 'Annulation d’une commande dont un acompte a déjà été reçu (R68, 11/11/2026) — sort de l’acompte non décidé.',
+    // HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°95) : le sort de l'acompte n'est pas décidé.
+    message: (p) => `Acompte de ${p.acompteFormate} reçu — voyez avec le manager ce qu’il devient.`,
+  },
+  AVERT_BON_A_RETIRER: {
+    niveau: 'avertissement',
+    cas: 'Annulation d’une commande déjà imprimée : le bon est à l’atelier (R68, 11/11/2026).',
+    message: () => `Le bon est déjà imprimé — retirez-le de l’atelier.`,
   },
   AVERT_SOUS_PLANCHER_AUTORISE: {
     niveau: 'avertissement',
