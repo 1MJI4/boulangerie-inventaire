@@ -34,7 +34,7 @@ import { libelleProduitFiche } from './libelles.ts';
 import { controlerSupplementEcriture, controlerSupplementPhoto, controlerSupplements, gateauxDeLigne } from './supplements.ts';
 import { controlerUnGateauParLigne } from './unGateauParLigne.ts';
 import { symbolesDuTexte, validerQuantiteMin, validerMaximum, validerTailleGateau } from './minimums.ts';
-import { GOUT_AU_CHOIX, validerGouts, type ChoixGout } from './gouts.ts';
+import { GOUT_AU_CHOIX, validerGoutReserve, validerGouts, type ChoixGout } from './gouts.ts';
 import { deverrouillageValide, prixLigne } from './regimes.ts';
 import { gateauSurCommandeDe, validerComptoirSelonGout, validerPrixComptoir } from './prixComptoir.ts';
 import type { CorrespondanceComptoir } from './prixComptoir.ts';
@@ -134,6 +134,12 @@ export type LigneSaisie = {
    */
   deverrouillageTaille?: Deverrouillage | null;
   /**
+   * R70 : accord du manager pour un goût réservé (Crème fraîche autre que
+   * vanille). Distinct des autres accords : autoriser un prix ou une taille
+   * n'autorise pas un goût.
+   */
+  deverrouillageGout?: Deverrouillage | null;
+  /**
    * Lot 2 (propriétaire, 28/10/2026 : « une écriture par gâteau ») : ce qui
    * s'écrit sur CE gâteau, orthographe comprise. Gardé seulement si la ligne
    * est un gâteau (`nbGateaux` > 0). Une saisie dont AUCUNE ligne ne porte
@@ -167,6 +173,8 @@ export type LigneControlee = {
   /** Prix sous plancher ou ligne libre : qui a autorisé, quand (à tracer en base). */
   autorisation?: Deverrouillage;  /** Taille hors standard : qui a autorisé, quand (à tracer en base). */
   autorisationTaille?: Deverrouillage;
+  /** R70 : goût réservé accepté : qui a autorisé, quand (à tracer en base). */
+  autorisationGout?: Deverrouillage;
   /** R63 : forme retenue (carré d'office au-dessus du seuil), seulement pour un gâteau concerné. */
   forme?: Forme;
   /** R64 : la ligne est un supplément par personne (Pâte à sucre), pas un gâteau. */
@@ -452,6 +460,15 @@ function controlerLigneSansPrefixe(
   const cleGout = saisie.origineSurCommande && saisie.origineSurCommande === origine ? origine : fiche.produit.id;
   const gouts = validerGouts(ctx.goutsSurCommande?.[cleGout], fiche, saisie.gouts);
   if (!gouts.ok) return gouts;
+  // R70 : goût réservé (Crème fraîche → Vanille) : un autre goût demande le manager.
+  const goutReserve = validerGoutReserve(
+    ctx.goutsSurCommande?.[cleGout],
+    libelleProduit(fiche),
+    gouts.donnees,
+    saisie.deverrouillageGout,
+  );
+  if (!goutReserve.ok) return goutReserve;
+  signalements.push(...goutReserve.signalements);
 
   // R63 : forme du gâteau, après le goût. Ligne devenue gâteau du comptoir (R60) :
   // la forme est celle du gâteau commandé, à ses parts (pas la quantité 1).
@@ -520,6 +537,9 @@ function controlerLigneSansPrefixe(
   if (prix.donnees.sousPlancher) ligne.autorisation = prix.donnees.sousPlancher;
   if (taille.signalements.length > 0 && saisie.deverrouillageTaille) {
     ligne.autorisationTaille = { par: saisie.deverrouillageTaille.par.trim(), le: saisie.deverrouillageTaille.le };
+  }
+  if (goutReserve.signalements.length > 0 && saisie.deverrouillageGout) {
+    ligne.autorisationGout = { par: saisie.deverrouillageGout.par.trim(), le: saisie.deverrouillageGout.le };
   }
   return succes(ligne, ...signalements);
 }

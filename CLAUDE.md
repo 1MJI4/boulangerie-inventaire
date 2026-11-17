@@ -144,6 +144,8 @@ vitrine = 31,00 €. Le même commandé en régime C = 4,50 €/pers minimum, pr
   sinon `ERR_GOUT_MANQUANT` avec la sortie « Au choix du pâtissier ». Qui demande quoi = donnée
   (`src/catalogue/goutsSurCommande.ts`). Oreo, Speculoos, Kinder, Raffaello, Ferrero, Nutella
   sont des **décorations** (facultatives), pas des goûts.
+→ Crème fraîche (R70, propriétaire 17/11/2026) : goût **Vanille** pré-rempli ; tout autre goût
+  est refusé (`ERR_GOUT_RESERVE`) sauf **code du manager**, tracé sur la ligne (nom + heure).
 
 ## LOI N°7 — Tous les minimums sont BLOQUANTS
 

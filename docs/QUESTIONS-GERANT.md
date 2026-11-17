@@ -538,3 +538,10 @@ l'avez pas confirmé ici.
     Croissant et Couque au chocolat, 16 pièces par plateau. Croissant au chocolat, Croissant
     aux amandes, Couque au beurre… restent à la pièce. *(La contenance est un réglage par
     produit : en ajouter un ne demande aucun changement de l'écran.)*
+
+### Crème fraîche à la vanille (17/11/2026)
+
+100. **La règle « vanille, sinon le manager » vaut-elle aussi pour une Crème fraîche 6 ou 8
+     parts (la taille du comptoir) ?** *(en attendant, l'application fait : oui, partout où
+     on choisit le goût d'une Crème fraîche sur commande ; « Au choix du pâtissier » demande
+     aussi le code du manager.)*

@@ -42,7 +42,14 @@ const GOUTS_COEURS = [
 
 export const GOUTS_SUR_COMMANDE: Readonly<Record<string, ChoixGout>> = {
   'gateaux-sur-commande/cake-nature': { liste: 'parfum', parEtage: false },
-  'gateaux-sur-commande/creme-fraiche': { liste: 'parfum', parEtage: false },
+  // R70 (propriétaire, 17/11/2026) : vanille d'office, un autre goût avec le
+  // code du manager. « Vanille » : libellé de la liste des goûts du manager.
+  'gateaux-sur-commande/creme-fraiche': {
+    liste: 'parfum',
+    parEtage: false,
+    goutParDefaut: 'Vanille',
+    reserveAuGerant: true,
+  },
   // Bavarois : d'abord les goûts que le magasin fait déjà au comptoir (rayon
   // Gâteaux et tartes, libellés du catalogue à la lettre), puis la liste du
   // manager (propriétaire, 28/10/2026).

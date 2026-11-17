@@ -281,6 +281,8 @@ const CHECKS: Record<string, CibleCheck> = {
   // Accord du gérant pour une taille de gâteau hors liste (migration 20261015150000).
   LigneCommande_taille_trace: { code: 'ERR_DROIT_INSUFFISANT', champ: 'tailleAutoriseePar' },
   LigneCommande_taille_nom_non_vide: { code: 'ERR_SAISIE_INVALIDE', champ: 'tailleAutoriseePar', champLibelle: 'nom du manager' },
+  LigneCommande_gout_trace: { code: 'ERR_DROIT_INSUFFISANT', champ: 'goutAutorisePar' },
+  LigneCommande_gout_nom_non_vide: { code: 'ERR_SAISIE_INVALIDE', champ: 'goutAutorisePar', champLibelle: 'nom du manager' },
   // L'écran des réglages ÉCRIT dans Reglage : une valeur refusée par le CHECK
   // (fonction "reglage_valeur_valide", étendue par 20261015150000 ; le nom de
   // la contrainte, lui, reste "Reglage_reglement_valide") est une saisie mal

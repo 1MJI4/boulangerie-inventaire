@@ -83,6 +83,8 @@ export type ParametresMessages = {
   /** `produit` absent quand le refus vient de la base. */
   ERR_NB_SYMBOLES_MANQUANT: { produit?: string };
   ERR_GOUT_MANQUANT: { produit: string; objet: string; etage: number | null };
+  /** R70 — goût autre que le goût par défaut (Crème fraîche → Vanille) sans le code du manager. */
+  ERR_GOUT_RESERVE: { produit: string; gout: string; goutParDefaut: string };
   ERR_CONFLIT_COMPTAGE: { produit: string };
   /**
    * Supplément (option comptée une fois par gâteau) en quantité supérieure au
@@ -219,6 +221,8 @@ export type ParametresMessages = {
   AVERT_REMISE_AUTORISEE: { par: string };
   /** LOI 11 — taille de gâteau hors standard, déverrouillée par le gérant (tracé). */
   AVERT_TAILLE_NON_STANDARD_AUTORISEE: { par: string };
+  /** R70 — goût réservé accepté par le manager (tracé). */
+  AVERT_GOUT_AUTORISE: { gout: string; par: string };
   /** LOI 11 — commande inhabituelle (ingrédients, moules spéciaux…). */
   AVERT_COMMANDE_INHABITUELLE: Record<string, never>;
   /**
@@ -511,6 +515,14 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
       `Choisissez ${p.objet} ${p.etage !== null ? `de l’étage ${p.etage} ` : ''}pour « ${p.produit} ». ` +
       `Si le client hésite : « au choix du pâtissier ».`,
     correction: () => 'Au choix du pâtissier',
+  },
+  ERR_GOUT_RESERVE: {
+    niveau: 'bloquant',
+    cas: 'Crème fraîche (goût par défaut réservé) commandée dans un autre goût sans le code du manager (R70, 17/11/2026).',
+    message: (p) =>
+      `« ${p.produit} » se fait au goût ${p.goutParDefaut}. ` +
+      `Pour « ${p.gout} », il faut ${ACCORD_DU_MANAGER} : demandez-lui son code, ou remettez ${p.goutParDefaut}.`,
+    correction: (p) => `Remettre ${p.goutParDefaut}`,
   },
   ERR_NB_SYMBOLES_MANQUANT: {
     niveau: 'bloquant',
@@ -925,6 +937,11 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
     niveau: 'avertissement',
     cas: 'Gâteau simple dans une taille hors standard, acceptée par le manager (tracé, LOI 11).',
     message: (p) => `Taille hors standard acceptée par ${p.par}. L’accord du manager est enregistré.`,
+  },
+  AVERT_GOUT_AUTORISE: {
+    niveau: 'avertissement',
+    cas: 'Goût réservé (Crème fraîche autre que vanille) accepté par le manager (tracé, R70).',
+    message: (p) => `Goût « ${p.gout} » accepté par ${p.par}. L’accord du manager est enregistré.`,
   },
   AVERT_COMMANDE_INHABITUELLE: {
     niveau: 'avertissement',

@@ -89,6 +89,9 @@ function parametres(s: S, uniteQuantite: string): Record<string, unknown> {
       return { attendus: entier(v) ?? 0, objet: '' };
     case 'ERR_DROIT_INSUFFISANT':
       return { action: '', role: 'manager' };
+    // R70 : `valeurProposee` = goût par défaut (« Remettre Vanille »).
+    case 'ERR_GOUT_RESERVE':
+      return { produit: '', gout: '', goutParDefaut: typeof v === 'string' ? v : '' };
     case 'ERR_STATUT_INCOHERENT':
       return { de: statutLisible(v), vers: '' };
     default:

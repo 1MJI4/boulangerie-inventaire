@@ -478,6 +478,10 @@ model LigneCommande {
   // elle-meme est controlee par le domaine + la route (pas de declencheur).
   tailleAutoriseePar String?
   tailleAutoriseeLe  DateTime?
+  // R70 (17/11/2026) : gout reserve accepte par le manager (Creme fraiche
+  // autre que vanille) — les deux ou aucun.
+  goutAutorisePar    String?
+  goutAutoriseLe     DateTime?
 
   @@index([commandeId])
   @@index([produitCatalogueId])

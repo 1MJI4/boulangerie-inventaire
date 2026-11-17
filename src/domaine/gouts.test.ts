@@ -3,7 +3,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { GOUT_AU_CHOIX, goutsAttendus, goutsProposes, validerGouts } from './gouts.ts';
+import { GOUT_AU_CHOIX, goutsAttendus, goutsInitiaux, goutsProposes, validerGoutReserve, validerGouts } from './gouts.ts';
+import { GOUTS_SUR_COMMANDE } from '../catalogue/goutsSurCommande.ts';
 import type { ChoixGout } from './gouts.ts';
 import type { FicheTarifee } from './types.ts';
 
@@ -112,4 +113,48 @@ test('goutsProposes : entremet → liste des recettes ; liste absente → vide (
   assert.deepEqual(goutsProposes({ liste: 'entremet', parEtage: false }, LISTES), ['Javanais', 'Saint-Michel']);
   assert.deepEqual(goutsProposes({ liste: 'entremet', parEtage: false }, { parfums: ['Vanille'] }), []);
   assert.deepEqual(goutsProposes(PARFUM, undefined), []);
+});
+
+// --- R70 (propriétaire, 17/11/2026) : Crème fraîche à la vanille, autre goût = manager.
+
+const CREME = GOUTS_SUR_COMMANDE['gateaux-sur-commande/creme-fraiche'];
+const MANAGER = { par: 'Sara', le: '2026-11-17T20:00:00.000Z' };
+
+test('R70 : la Crème fraîche part à la vanille, les autres gâteaux sans goût imposé', () => {
+  assert.deepEqual(goutsInitiaux(CREME), ['Vanille']);
+  assert.deepEqual(goutsInitiaux(GOUTS_SUR_COMMANDE['gateaux-sur-commande/layer-cake']), []);
+  assert.deepEqual(goutsInitiaux(GOUTS_SUR_COMMANDE['special-fin-dannee/buches-6p']), []);
+  assert.deepEqual(goutsInitiaux(null), []);
+});
+
+test('R70 : vanille acceptée sans code, quelle que soit la casse', () => {
+  for (const g of ['Vanille', 'vanille', ' Vanille ']) {
+    assert.equal(validerGoutReserve(CREME, 'Crème fraîche', [g]).ok, true, g);
+  }
+  assert.equal(validerGoutReserve(CREME, 'Crème fraîche', []).ok, true);
+});
+
+test('R70 : un autre goût sans le manager est refusé, avec « Remettre Vanille »', () => {
+  for (const g of ['Fraise', 'Au choix du pâtissier']) {
+    const r = validerGoutReserve(CREME, 'Crème fraîche', [g]);
+    assert.equal(r.ok, false, g);
+    if (!r.ok) {
+      assert.equal(r.code, 'ERR_GOUT_RESERVE');
+      assert.equal(r.valeurProposee, 'Vanille');
+      assert.match(r.message, /manager/);
+    }
+  }
+});
+
+test('R70 : un autre goût avec le code du manager est accepté et tracé', () => {
+  const r = validerGoutReserve(CREME, 'Crème fraîche', ['Fraise'], MANAGER);
+  assert.equal(r.ok, true);
+  if (r.ok) assert.equal(r.signalements[0]?.code, 'AVERT_GOUT_AUTORISE');
+  const vide = validerGoutReserve(CREME, 'Crème fraîche', ['Fraise'], { par: '  ', le: MANAGER.le });
+  assert.equal(vide.ok, false);
+});
+
+test('R70 : les autres gâteaux gardent le libre choix du goût', () => {
+  const layer = GOUTS_SUR_COMMANDE['gateaux-sur-commande/layer-cake'];
+  assert.equal(validerGoutReserve(layer, 'Layer Cake', ['Fraise']).ok, true);
 });

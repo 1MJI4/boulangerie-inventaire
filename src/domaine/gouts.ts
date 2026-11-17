@@ -13,7 +13,7 @@
 import type { Resultat } from './resultat.ts';
 import { succes } from './resultat.ts';
 import { signaler } from './messages.ts';
-import type { FicheTarifee } from './types.ts';
+import type { Deverrouillage, FicheTarifee } from './types.ts';
 
 /**
  * Ce qu'un gâteau sur commande demande :
@@ -29,7 +29,18 @@ import type { FicheTarifee } from './types.ts';
  *    manager n'est jamais proposée, et il n'y a jamais de goût par étage.
  */
 export type ChoixGout =
-  | { liste: 'parfum' | 'entremet'; parEtage: boolean; goutsEnTete?: readonly string[] }
+  | {
+      liste: 'parfum' | 'entremet';
+      parEtage: boolean;
+      goutsEnTete?: readonly string[];
+      /**
+       * R70 (propriétaire, 17/11/2026) : goût posé d'office à la création de la
+       * ligne (Crème fraîche → « Vanille »). Avec `reserveAuGerant`, tout autre
+       * goût demande le code du manager, tracé avec son nom.
+       */
+      goutParDefaut?: string;
+      reserveAuGerant?: boolean;
+    }
   | { liste: 'propre'; parEtage: false; gouts: readonly string[] };
 
 /** Listes réglées par le gérant (goûts, recettes d'entremet), telles que l'écran les reçoit. */
@@ -79,6 +90,53 @@ export function validerGouts(
       etage: attendus > 1 ? manquants[0] + 1 : null,
     },
     { champ: 'gouts', valeurProposee: GOUT_AU_CHOIX },
+  );
+}
+
+/** Comparaison de goûts sans casse ni espaces en bord (« vanille » = « Vanille »). */
+function memeGout(a: string, b: string): boolean {
+  return a.trim().toLocaleLowerCase('fr') === b.trim().toLocaleLowerCase('fr');
+}
+
+/**
+ * R70 : goûts posés d'office sur une ligne neuve (Crème fraîche → [« Vanille »]).
+ * Aucun goût par défaut → [] : le vendeur choisit (R62).
+ */
+export function goutsInitiaux(choix: ChoixGout | null | undefined): string[] {
+  if (!choix || choix.liste === 'propre' || !choix.goutParDefaut) return [];
+  return [choix.goutParDefaut];
+}
+
+/**
+ * Règle R70 (propriétaire, 17/11/2026) : la Crème fraîche se fait à la
+ * vanille ; un autre goût (« Au choix du pâtissier » compris) se décide avec
+ * le manager.
+ * Niveau : BLOQUANT (ERR_GOUT_RESERVE), à la saisie de la ligne. Sorties :
+ * « Remettre Vanille » (valeurProposee), ou le code du manager.
+ * Avec l'accord du manager : accepté, AVERT_GOUT_AUTORISE (tracé : nom, heure).
+ * N'interdit pas : le goût par défaut ; un gâteau sans goût réservé ; une
+ * ligne sans goût (c'est ERR_GOUT_MANQUANT, R62, qui en décide).
+ */
+export function validerGoutReserve(
+  choix: ChoixGout | null | undefined,
+  produit: string,
+  gouts: readonly string[],
+  deverrouillage?: Deverrouillage | null,
+): Resultat<string[]> {
+  if (!choix || choix.liste === 'propre' || !choix.reserveAuGerant || !choix.goutParDefaut) return succes([...gouts]);
+  const defaut = choix.goutParDefaut;
+  const autre = gouts.find((g) => g.trim() !== '' && !memeGout(g, defaut));
+  if (autre === undefined) return succes([...gouts]);
+  if (deverrouillage && deverrouillage.par.trim() !== '' && deverrouillage.le) {
+    return succes(
+      [...gouts],
+      signaler('AVERT_GOUT_AUTORISE', { gout: autre.trim(), par: deverrouillage.par.trim() }, { champ: 'gouts' }),
+    );
+  }
+  return signaler(
+    'ERR_GOUT_RESERVE',
+    { produit, gout: autre.trim(), goutParDefaut: defaut },
+    { champ: 'gouts', valeurProposee: defaut },
   );
 }
 

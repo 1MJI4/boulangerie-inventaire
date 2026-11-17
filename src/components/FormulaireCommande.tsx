@@ -796,6 +796,10 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
     }
     // Photo de modèle refusée (identifiant inconnu) : on retire la photo, jamais la ligne.
     if (i !== null && ligne && champ === 'photoModele') return setLignes((ls) => retirerPhoto(ls, ligne.cle));
+    if (i !== null && ligne && s.code === 'ERR_GOUT_RESERVE' && typeof s.valeurProposee === 'string') {
+      // R70 : « Remettre Vanille » (goût par défaut, donnée).
+      return majLigne(i, { gouts: [s.valeurProposee] });
+    }
     if (i !== null && ligne && s.code === 'ERR_GOUT_MANQUANT') {
       // R62 : « Au choix du pâtissier » sur chaque goût encore vide (jamais retirer la ligne).
       const n = goutsDeLaLigne(ligne);
@@ -947,6 +951,24 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
           const so = sortieDe(s, unite);
           const boutons: ReactNode[] = [];
           const iLigne = indexLigne(s.champ);
+          // R70 : goût réservé → le code du manager (l'autre sortie, « Remettre
+          // Vanille », est le bouton principal).
+          if (s.code === 'ERR_GOUT_RESERVE' && iLigne !== null) {
+            const gout = lignes[iLigne]?.gouts.find((g) => g.trim() !== '') ?? '';
+            boutons.push(
+              <BoutonSortie
+                key="gout-gerant"
+                onClick={() =>
+                  avecGerant(`Goût « ${gout} » au lieu du goût prévu.`, (d) =>
+                    majLigne(iLigne, { deverrouillageGout: d }),
+                  )
+                }
+              >
+                {libelleCorrection('ERR_DROIT_INSUFFISANT', { action: '', role: 'manager' })}
+              </BoutonSortie>,
+            );
+            return <>{boutons}</>;
+          }
           // R62 : goût manquant → « Au choix du pâtissier » sur chaque goût encore vide.
           if (s.code === 'ERR_GOUT_MANQUANT' && iLigne !== null) {
             const l = lignes[iLigne];
@@ -2023,6 +2045,12 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
 
 /* ================================================== Lignes d'une commande */
 
+/** R70 : accord de goût enregistré sur une ligne (colonnes `goutAutorisePar` / `goutAutoriseLe`). */
+function accordGout(l: object): Deverrouillage | null {
+  const g = l as { goutAutorisePar?: string | null; goutAutoriseLe?: string | null };
+  return g.goutAutorisePar && g.goutAutoriseLe ? { par: g.goutAutorisePar, le: g.goutAutoriseLe } : null;
+}
+
 /** Accord de taille enregistré sur une ligne (colonnes `tailleAutoriseePar` / `tailleAutoriseeLe`). */
 function accordTaille(l: Commande['lignes'][number]): Deverrouillage | null {
   const t = l as typeof l & { tailleAutoriseePar?: string | null; tailleAutoriseeLe?: string | null };
@@ -2067,6 +2095,8 @@ function lignesDepuisCommande(c: Commande): LigneEcran[] {
       // Taille hors standard déjà accordée (LOI 11) : renvoyée telle quelle, le
       // serveur ne la conserve que pour ce produit à cette quantité exacte.
       deverrouillageTaille: accordTaille(l),
+      // R70 : goût réservé déjà accordé, renvoyé tel quel (conservé pour les MÊMES goûts).
+      deverrouillageGout: accordGout(l),
       // R63 : forme enregistrée (colonne `forme`), relue telle quelle ; autre valeur → à rechoisir.
       forme: formeEnregistree(l),
       // Galerie (26/10/2026) : photo de modèle enregistrée, relue telle quelle.
@@ -2888,6 +2918,9 @@ function LigneDuBon({
 
       {ligne.deverrouillage ? (
         <p className="mt-1 text-sm text-ink-2">Accord de {ligne.deverrouillage.par} enregistré avec la commande.</p>
+      ) : null}
+      {ligne.deverrouillageGout ? (
+        <p className="mt-1 text-sm text-ink-2">Goût accordé par {ligne.deverrouillageGout.par}.</p>
       ) : null}
       {ligne.deverrouillageTaille ? (
         <p className="mt-1 text-sm text-ink-2">Taille accordée par {ligne.deverrouillageTaille.par}.</p>

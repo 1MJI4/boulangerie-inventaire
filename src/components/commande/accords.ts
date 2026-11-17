@@ -46,6 +46,19 @@ export type AccordEnregistre =
       le: Date;
       /** Nombre de parts autorisé. */
       quantite: number;
+    }
+  | {
+      /**
+       * R70 : goût réservé accepté (Crème fraîche autre que vanille), tracé sur
+       * la ligne (`goutAutorisePar` / `goutAutoriseLe`).
+       */
+      type: 'gout';
+      /** Clé catalogue du produit. */
+      cle: string;
+      par: string;
+      le: Date;
+      /** Goûts autorisés, tels qu'enregistrés. */
+      gouts: readonly string[];
     };
 
 /** Accord renvoyé par la tablette : nom et horodatage lus tels qu'enregistrés. */
@@ -96,23 +109,33 @@ export function tailleCouverte(a: AccordEnregistre, ligne: { produitId: string |
 }
 
 /**
+ * R70 : goût réservé déjà accepté — même produit, MÊMES goûts (sans casse ni
+ * espaces en bord). Fraise acceptée ne devient pas Chocolat sans le manager.
+ */
+export function goutCouvert(a: AccordEnregistre, ligne: { produitId: string | null; gouts: readonly string[] }): boolean {
+  if (a.type !== 'gout' || ligne.produitId === null || a.cle !== ligne.produitId) return false;
+  const norme = (l: readonly string[]) => l.map((g) => g.trim().toLocaleLowerCase('fr')).filter(Boolean).join('|');
+  return norme(a.gouts) === norme(ligne.gouts);
+}
+
+/**
  * Accords renvoyés par la tablette que personne n'a confirmés (gérant absent,
  * pas d'accord enregistré qui les couvre) : par ligne, prix et/ou taille ;
  * pour la commande, la remise.
  */
 export type AccordsNonConfirmes = {
-  lignes: { prix: boolean; taille: boolean }[];
+  lignes: { prix: boolean; taille: boolean; gout?: boolean }[];
   remise: boolean;
 };
 
 /** Ce que le domaine a réellement utilisé (autorisations tracées). */
 export type AccordsUtilises = {
-  lignes: { autorisation?: unknown; autorisationTaille?: unknown }[];
+  lignes: { autorisation?: unknown; autorisationTaille?: unknown; autorisationGout?: unknown }[];
   remise?: unknown;
 };
 
 export type AccordManquant =
-  | { type: 'prix' | 'taille'; ligne: number }
+  | { type: 'prix' | 'taille' | 'gout'; ligne: number }
   | { type: 'remise' };
 
 /**
@@ -129,6 +152,7 @@ export function accordManquant(attente: AccordsNonConfirmes, utilises: AccordsUt
     if (!a) continue;
     if (a.prix && l.autorisation) return { type: 'prix', ligne: i };
     if (a.taille && l.autorisationTaille) return { type: 'taille', ligne: i };
+    if (a.gout && l.autorisationGout) return { type: 'gout', ligne: i };
   }
   if (attente.remise && utilises.remise) return { type: 'remise' };
   return null;

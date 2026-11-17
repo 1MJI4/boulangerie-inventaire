@@ -24,6 +24,8 @@ import { heureChamp, lireHeure } from '../../domaine/reglement.ts';
 import type { DelaisCommande, PlageOuverture, RegleSupplementParPersonne, ReglementCommande } from '../../domaine/constantes.ts';
 import { FAMILLE_SUPPLEMENT, FAMILLES_GATEAU, SUPPLEMENT_ECRITURE, SUPPLEMENT_PHOTO } from '../../domaine/constantes.ts';
 import type { ChoixGout } from '../../domaine/gouts.ts';
+import { goutsInitiaux } from '../../domaine/gouts.ts';
+import { GOUTS_SUR_COMMANDE } from '../../catalogue/goutsSurCommande.ts';
 
 // ---------------------------------------------------------------------------
 // Données reçues du serveur
@@ -340,6 +342,11 @@ export type LigneEcran = {
   /** Accord du gérant pour une taille de gâteau hors standard (LOI 11) — distinct du prix. */
   deverrouillageTaille: Deverrouillage | null;
   /**
+   * R70 : accord du manager pour un goût réservé (Crème fraîche autre que
+   * vanille). Porte sur LES goûts choisis : un autre goût le fait tomber.
+   */
+  deverrouillageGout?: Deverrouillage | null;
+  /**
    * R60 : gâteau sur commande d'origine quand la ligne a été remplacée par le
    * gâteau du comptoir à une taille standard (les boutons de taille restent
    * affichés pour revenir à une autre taille). Absent / null sinon.
@@ -390,7 +397,8 @@ export function ligneVide(produitId: string | null): LigneEcran {
     nbSymboles: null,
     formes: '',
     formesLibres: false,
-    gouts: [],
+    // R70 : goût posé d'office (Crème fraîche → Vanille, donnée GOUTS_SUR_COMMANDE).
+    gouts: produitId ? goutsInitiaux(GOUTS_SUR_COMMANDE[produitId]) : [],
     decorations: [],
     nbObjets: null,
     precision: '',
@@ -425,6 +433,7 @@ export function versLigneSaisie(l: LigneEcran, fiche: FicheTarifee | null): Lign
     forme: l.forme ?? null,
     deverrouillage: l.deverrouillage,
     deverrouillageTaille: l.deverrouillageTaille,
+    deverrouillageGout: l.deverrouillageGout ?? null,
     // Lot 2 : toujours transmis (format « une écriture par gâteau ») ; le domaine
     // ne les garde que sur un gâteau. « Pas d'écriture » l'emporte sur le texte.
     texteGateau: l.sansEcriture === true ? null : (l.texteGateau ?? '').trim() || null,
@@ -701,6 +710,10 @@ export function majLigneEcran(l: LigneEcran, partiel: Partial<LigneEcran>): Lign
   const suivante = { ...l, ...partiel };
   if ('quantite' in partiel && partiel.quantite !== l.quantite && !('deverrouillageTaille' in partiel)) {
     suivante.deverrouillageTaille = null;
+  }
+  // R70 : l'accord de goût porte sur LES goûts choisis ; un autre goût le fait tomber.
+  if ('gouts' in partiel && !('deverrouillageGout' in partiel) && (partiel.gouts ?? []).join('|') !== l.gouts.join('|')) {
+    suivante.deverrouillageGout = null;
   }
   return suivante;
 }
@@ -1058,6 +1071,7 @@ export function appliquerRemplacement(
       prixUnitaireCentimes: null,
       deverrouillage: null,
       deverrouillageTaille: null,
+      deverrouillageGout: null,
       gouts: meme.gout ? [meme.gout] : [...l.gouts],
     };
   }
@@ -1072,8 +1086,10 @@ export function appliquerRemplacement(
     prixUnitaireCentimes: null,
     deverrouillage: null,
     deverrouillageTaille: null,
+    deverrouillageGout: null,
     forme: null,
-    gouts: memeListe ? [...l.gouts] : [],
+    // R70 : le nouveau gâteau repart de SON goût par défaut s'il en a un.
+    gouts: memeListe && goutsInitiaux(b).length === 0 ? [...l.gouts] : goutsInitiaux(b),
   };
 }
 

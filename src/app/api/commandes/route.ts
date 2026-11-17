@@ -61,6 +61,7 @@ import {
   accordManquant,
   ligneCouverte,
   memeAccord,
+  goutCouvert,
   remiseCouverte,
   tailleCouverte,
   type AccordEnregistre,
@@ -361,7 +362,15 @@ function preparer(
       lireAccord(l.deverrouillageTaille),
       (a) => tailleCouverte(a, { produitId, quantite }),
     );
-    nonConfirmes.lignes[i] = { prix: prixEnAttente, taille: enAttente };
+    const tailleEnAttente = enAttente;
+    // R70 : goût réservé (Crème fraîche autre que vanille), accord distinct.
+    // Conservé sans le gérant seulement pour ce produit avec les MÊMES goûts.
+    const goutsRecus = listeDeMots(l.gouts);
+    const deverrouillageGout = confirmer(
+      lireAccord(l.deverrouillageGout),
+      (a) => goutCouvert(a, { produitId, gouts: goutsRecus }),
+    );
+    nonConfirmes.lignes[i] = { prix: prixEnAttente, taille: tailleEnAttente, gout: enAttente };
     lignes.push({
       produitId,
       libelle,
@@ -377,12 +386,13 @@ function preparer(
       // Ligne « Autre demande » (sans produit) : « Décrivez la demande » plutôt que « sans produit ».
       ligneLibre: !produitId,
       nbObjets: entierOuNull(l.nbObjets),
-      gouts: listeDeMots(l.gouts),
+      gouts: goutsRecus,
       origineSurCommande: texte(l.origineSurCommande, 200) || null,
       // R63 : transmise telle quelle (texte court) ; le domaine refuse une forme inconnue.
       forme: texte(l.forme, 20) || null,
       deverrouillage: accord,
       deverrouillageTaille,
+      deverrouillageGout,
       // Lot 2 (28/10/2026) : écriture et photo à imprimer PAR GÂTEAU. Absents
       // (tablette pas à jour, file hors ligne) → ancien format : le domaine
       // reporte l'écriture de la commande sur son premier gâteau.
@@ -437,6 +447,13 @@ function refusAccordManquant(prep: Extract<Preparation, { ok: true }>, r: Ok): E
       'ERR_DROIT_INSUFFISANT',
       { action: 'accepter une taille de gâteau hors standard', role: 'gérant' },
       { champ: `lignes[${i}].quantite` },
+    );
+  }
+  if (manque.type === 'gout') {
+    return signaler(
+      'ERR_DROIT_INSUFFISANT',
+      { action: 'accepter un autre goût que le goût prévu', role: 'gérant' },
+      { champ: `lignes[${i}].gouts` },
     );
   }
   const libre = prep.saisie.lignes[i]?.produitId === null;
@@ -495,6 +512,11 @@ function lignesAEnregistrer(r: Ok, fiches: Controle['fiches'], prep: Extract<Pre
     const tailleLe = l.autorisationTaille
       ? ((accordTaille && prep.quand.get(accordTaille)) ?? new Date(l.autorisationTaille.le))
       : null;
+    // R70 : goût réservé, accord distinct, tracé dans ses propres colonnes.
+    const accordGout = prep.saisie.lignes[ordre].deverrouillageGout;
+    const goutLe = l.autorisationGout
+      ? ((accordGout && prep.quand.get(accordGout)) ?? new Date(l.autorisationGout.le))
+      : null;
     const libre = l.produitId === null;
     return {
       libelle: l.libelle,
@@ -523,6 +545,8 @@ function lignesAEnregistrer(r: Ok, fiches: Controle['fiches'], prep: Extract<Pre
       ligneLibreAutoriseeLe: libre && l.autorisation ? accordLe : null,
       tailleAutoriseePar: l.autorisationTaille ? l.autorisationTaille.par : null,
       tailleAutoriseeLe: tailleLe,
+      goutAutorisePar: l.autorisationGout ? l.autorisationGout.par : null,
+      goutAutoriseLe: goutLe,
     };
   });
 }
@@ -926,6 +950,11 @@ export async function PATCH(request: Request) {
               const cle = l.produitCatalogue?.cleCatalogue;
               if (!cle || !l.tailleAutoriseePar || !l.tailleAutoriseeLe) return [];
               return [{ type: 'taille', cle, par: l.tailleAutoriseePar, le: l.tailleAutoriseeLe, quantite: l.quantite }];
+            }),
+            ...existante.lignes.flatMap((l): AccordEnregistre[] => {
+              const cle = l.produitCatalogue?.cleCatalogue;
+              if (!cle || !l.goutAutorisePar || !l.goutAutoriseLe) return [];
+              return [{ type: 'gout', cle, par: l.goutAutorisePar, le: l.goutAutoriseLe, gouts: l.gouts ?? [] }];
             }),
             ...(existante.remiseAutoriseePar && existante.remiseAutoriseeLe
               ? [
