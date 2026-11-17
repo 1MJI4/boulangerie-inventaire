@@ -12,7 +12,7 @@
 
 import { PrismaClient } from '@prisma/client';
 import 'dotenv/config';
-import { CATALOGUE } from '../src/lib/catalogue.mjs';
+import { CATALOGUE, PIECES_PAR_PLATEAU } from '../src/lib/catalogue.mjs';
 
 const prisma = new PrismaClient();
 
@@ -34,10 +34,11 @@ async function main() {
 
     const existant = await prisma.produit.findUnique({ where: { nom }, select: { id: true } });
 
+    const piecesParPlateau = PIECES_PAR_PLATEAU[nom] ?? null;
     await prisma.produit.upsert({
       where: { nom },
-      update: { ordre, categorie, poste },
-      create: { nom, ordre, categorie, poste },
+      update: { ordre, categorie, poste, piecesParPlateau },
+      create: { nom, ordre, categorie, poste, piecesParPlateau },
     });
 
     existant ? majs++ : crees++;

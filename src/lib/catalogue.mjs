@@ -13,6 +13,17 @@
 /** Groupe homogène : même catégorie, même poste. */
 const g = (categorie, poste, noms) => noms.map((nom) => ({ nom, categorie, poste }));
 
+/**
+ * Prévisions en plateaux entiers (propriétaire, 17/11/2026) : contenance d'un
+ * plateau, par nom exact. Les autres produits se planifient à la pièce.
+ * Le comptage des restes reste en pièces pour tous.
+ * @type {Record<string, number>}
+ */
+export const PIECES_PAR_PLATEAU = {
+  Croissant: 16,
+  'Couque au chocolat': 16,
+};
+
 /** @type {ArticleCatalogue[]} */
 export const CATALOGUE = [
   // ============================== 1. PAINS ==============================

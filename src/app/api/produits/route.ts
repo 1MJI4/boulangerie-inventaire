@@ -31,7 +31,7 @@ export async function GET(request: Request) {
       where,
       orderBy: [{ ordre: 'asc' }, { nom: 'asc' }],
       // unite : LOI 2 — l'écran choisit le pavé (pièces ou poids) selon le produit.
-      select: { id: true, nom: true, ordre: true, categorie: true, poste: true, actif: true, unite: true },
+      select: { id: true, nom: true, ordre: true, categorie: true, poste: true, actif: true, unite: true, piecesParPlateau: true },
     });
 
     return NextResponse.json(produits);

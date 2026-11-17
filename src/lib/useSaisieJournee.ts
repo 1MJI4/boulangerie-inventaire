@@ -40,6 +40,8 @@ export type Produit = {
   poste: Poste;
   /** LOI 2 — 'kg' : valeurs en grammes, saisies au pavé décimal. */
   unite: Unite;
+  /** Prévisions en plateaux entiers de N pièces ; null = à la pièce (`domaine/plateaux`). */
+  piecesParPlateau?: number | null;
 };
 
 export type LigneInventaire = {

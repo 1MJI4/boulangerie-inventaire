@@ -89,6 +89,10 @@ model Produit {
   // quantites en GRAMMES. Figee des qu'il a un historique d'inventaire
   // (declencheur Produit_controler -> ERR_UNITE_FIGEE).
   unite     Unite   @default(piece)
+  // Previsions en PLATEAUX entiers (proprietaire, 17/11/2026) : contenance
+  // d'un plateau, ex. 16 pour Croissant et Couque au chocolat. null = a la
+  // piece. Les quantites restent stockees en PIECES (src/domaine/plateaux.ts).
+  piecesParPlateau Int?
 
   inventaires Inventaire[]
   releves     Releve[]

@@ -524,3 +524,17 @@ l'avez pas confirmé ici.
     *(en attendant, l'application fait : si un autre goût est quand même tapé à la main, il
     est accepté, comme pour un Bavarois — l'application ne juge pas le mot. Faut-il au
     contraire le refuser et obliger à choisir un goût de la liste ?)*
+
+### Prévisions de viennoiserie en plateaux (17/11/2026)
+
+98. **Le repère « semaine passée », traduit en plateaux : on arrondit comment ?** Le
+    manager demande désormais les croissants et les couques au chocolat en plateaux de 16.
+    Le bouton qui reprend la moyenne des jours passés doit la traduire en plateaux.
+    *(en attendant, l'application fait : arrondi au plateau le plus proche, au moins 1 —
+    40 pièces deviennent 3 plateaux, 39 pièces deviennent 2. Faut-il plutôt toujours
+    arrondir au-dessus, pour ne jamais manquer ?)*
+
+99. **D'autres viennoiseries se sortent-elles aussi par plateau ?** Pour l'instant :
+    Croissant et Couque au chocolat, 16 pièces par plateau. Croissant au chocolat, Croissant
+    aux amandes, Couque au beurre… restent à la pièce. *(La contenance est un réglage par
+    produit : en ajouter un ne demande aucun changement de l'écran.)*

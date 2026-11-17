@@ -62,6 +62,13 @@ proposer un pavé décimal, jamais un bouton « +1 ».
 Un produit `kg` compté à la pièce est une erreur silencieuse — exactement ce que ce
 dispositif existe pour empêcher.
 
+**Plateaux** (décision du propriétaire, 17/11/2026, R69) : Croissant et Couque au chocolat
+se **demandent au fournil en plateaux entiers** de 16 pièces (prévisions manager + feuille
+pâtissier). Ce n'est **pas une troisième unité** : la base garde des **pièces**
+(plateaux × contenance + part commandée), la part commandée reste en pièces, et le
+**comptage des restes reste en pièces**. Contenance = donnée du produit
+(`Produit.piecesParPlateau`), jamais déduite du nom. Règles : `src/domaine/plateaux.ts`.
+
 ## LOI N°3 — Le jour de fermeture
 
 ```

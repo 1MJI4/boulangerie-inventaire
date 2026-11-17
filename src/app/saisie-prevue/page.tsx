@@ -27,6 +27,13 @@ import { DispositionAvecPave } from '@/components/saisie/DispositionAvecPave';
 import { SignalementsLigne } from '@/components/inventaire/SignalementsLigne';
 import { RappelChargement } from '@/components/rappels';
 import { formaterQuantite } from '@/domaine/unites';
+import {
+  enPlateaux,
+  formaterPlateaux,
+  piecesDePlateaux,
+  sePlanifieEnPlateaux,
+  suggestionEnPlateaux,
+} from '@/domaine/plateaux';
 
 /** Le rayon que le manager planifie tous les jours. */
 const RAYON_PRINCIPAL = 'Viennoiserie';
@@ -51,6 +58,32 @@ export default function SaisiePrevisions() {
   const produitPese = pesee === null ? null : (saisie.produits.find((p) => p.id === pesee) ?? null);
   const afficher = (produit: Produit, n: number) =>
     produit.unite === 'kg' ? formaterQuantite('kg', n) : String(n);
+
+  /*
+   * Plateaux (domaine/plateaux) : pour Croissant et Couque au chocolat, le
+   * manager tape un nombre de PLATEAUX entiers. La base garde des pièces :
+   * prévue = plateaux × contenance + part commandée (le « + », en pièces).
+   */
+  const lireEntier = (v: string) => {
+    const n = Number(String(v).replace(/[^0-9]/g, ''));
+    return Number.isFinite(n) ? n : 0;
+  };
+  const partCommandee = (produitId: number) => lireEntier(commande.valeurs[produitId] ?? '');
+  const plateauxAffiches = (produit: Produit, parPlateau: number) => {
+    const brut = saisie.valeurs[produit.id] ?? '';
+    if (brut === '') return '';
+    const base = Math.max(0, lireEntier(brut) - partCommandee(produit.id));
+    return String(enPlateaux(base, parPlateau).plateaux);
+  };
+  const definirPlateaux = (produit: Produit, parPlateau: number, saisieBrute: string) => {
+    const chiffres = saisieBrute.replace(/[^0-9]/g, '');
+    const commandees = partCommandee(produit.id);
+    if (chiffres === '') {
+      saisie.definir(produit.id, commandees > 0 ? String(commandees) : '');
+      return;
+    }
+    saisie.definir(produit.id, String(piecesDePlateaux(Number(chiffres), parPlateau) + commandees));
+  };
 
   /**
    * Le complément s'ajoute au total, il ne le remplace pas : le manager avait
@@ -117,7 +150,13 @@ export default function SaisiePrevisions() {
     for (const produit of produits) {
       if ((saisie.valeurs[produit.id] ?? '') !== '') continue;
       const moyenne = reperes.get(produit.id)?.moyenneProduite;
-      if (moyenne != null && moyenne > 0) saisie.definir(produit.id, String(moyenne));
+      if (moyenne == null || moyenne <= 0) continue;
+      if (sePlanifieEnPlateaux(produit.piecesParPlateau)) {
+        const plateaux = suggestionEnPlateaux(moyenne, produit.piecesParPlateau);
+        if (plateaux != null) definirPlateaux(produit, produit.piecesParPlateau, String(plateaux));
+      } else {
+        saisie.definir(produit.id, String(moyenne));
+      }
     }
   };
 
@@ -308,6 +347,21 @@ export default function SaisiePrevisions() {
                           const repere = reperes.get(produit.id);
                           const auPoids = produit.unite === 'kg';
                           const refus = saisie.refus.get(produit.id) ?? commande.refus.get(produit.id);
+                          const parPlateau = sePlanifieEnPlateaux(produit.piecesParPlateau)
+                            ? produit.piecesParPlateau
+                            : null;
+                          const suggestionPlateaux =
+                            parPlateau !== null
+                              ? suggestionEnPlateaux(repere?.moyenneProduite, parPlateau)
+                              : null;
+                          // Ancienne prévision en pièces qui ne tombe pas juste :
+                          // on l'affiche telle quelle, le manager la retape en plateaux.
+                          const baseHorsCommande =
+                            parPlateau !== null && (saisie.valeurs[produit.id] ?? '') !== ''
+                              ? Math.max(0, lireEntier(saisie.valeurs[produit.id]) - partCommandee(produit.id))
+                              : 0;
+                          const resteAncien =
+                            parPlateau !== null ? enPlateaux(baseHorsCommande, parPlateau).reste : 0;
                           return (
                             <LigneSaisie
                               key={produit.id}
@@ -317,8 +371,17 @@ export default function SaisiePrevisions() {
                               unite={produit.unite}
                               selectionne={pesee === produit.id}
                               onSelectionner={auPoids ? () => setPesee(produit.id) : undefined}
-                              valeur={saisie.valeurs[produit.id] ?? ''}
-                              onChange={(v) => saisie.definir(produit.id, v)}
+                              valeur={
+                                parPlateau !== null
+                                  ? plateauxAffiches(produit, parPlateau)
+                                  : (saisie.valeurs[produit.id] ?? '')
+                              }
+                              onChange={(v) =>
+                                parPlateau !== null
+                                  ? definirPlateaux(produit, parPlateau, v)
+                                  : saisie.definir(produit.id, v)
+                              }
+                              suffixe={parPlateau !== null ? 'plateaux' : undefined}
                               signalements={
                                 refus ? (
                                   <SignalementsLigne
@@ -327,14 +390,34 @@ export default function SaisiePrevisions() {
                                   />
                                 ) : undefined
                               }
-                              suggestion={auPoids ? null : (repere?.moyenneProduite ?? null)}
+                              suggestion={
+                                auPoids
+                                  ? null
+                                  : parPlateau !== null
+                                    ? suggestionPlateaux
+                                    : (repere?.moyenneProduite ?? null)
+                              }
                               onAppliquerSuggestion={
-                                repere?.moyenneProduite != null
-                                  ? () => saisie.definir(produit.id, String(repere.moyenneProduite))
-                                  : undefined
+                                parPlateau !== null
+                                  ? suggestionPlateaux != null
+                                    ? () => definirPlateaux(produit, parPlateau, String(suggestionPlateaux))
+                                    : undefined
+                                  : repere?.moyenneProduite != null
+                                    ? () => saisie.definir(produit.id, String(repere.moyenneProduite))
+                                    : undefined
                               }
                               indice={
-                                repere?.dernier?.produite != null ? (
+                                parPlateau !== null || repere?.dernier?.produite != null ? (
+                                  <>
+                                    {parPlateau !== null ? (
+                                      <span className={resteAncien > 0 ? 'text-attention' : ''}>
+                                        {resteAncien > 0
+                                          ? `ancienne demande : ${formaterPlateaux(baseHorsCommande, parPlateau)} — retapez en plateaux`
+                                          : `1 plateau = ${parPlateau} pièces`}
+                                        {repere?.dernier?.produite != null ? ' · ' : ''}
+                                      </span>
+                                    ) : null}
+                                    {repere?.dernier?.produite != null ? (
                                   <>
                                     semaine passée :{' '}
                                     <span className="chiffres">
@@ -366,6 +449,8 @@ export default function SaisiePrevisions() {
                                             : ''}
                                         </span>
                                       </>
+                                    ) : null}
+                                  </>
                                     ) : null}
                                   </>
                                 ) : null

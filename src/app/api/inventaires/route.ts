@@ -397,7 +397,7 @@ export async function GET(request: Request) {
         where,
         include: {
           produit: {
-            select: { id: true, nom: true, ordre: true, categorie: true, poste: true, unite: true },
+            select: { id: true, nom: true, ordre: true, categorie: true, poste: true, unite: true, piecesParPlateau: true },
           },
         },
         orderBy: [{ dateInventaire: 'desc' }, { produit: { ordre: 'asc' } }],

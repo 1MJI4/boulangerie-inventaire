@@ -66,6 +66,7 @@ export function LigneSaisie({
   hauteurFixe,
   niveauSignalement,
   surimpressionVers = 'bas',
+  suffixe,
 }: {
   /** Grille plein écran : hauteur imposée de la ligne en px (signalements en surimpression). */
   hauteurFixe?: number;
@@ -104,6 +105,12 @@ export function LigneSaisie({
     onChange: (valeur: string) => void;
     titre: string;
   };
+  /**
+   * Unité tapée dans le champ principal quand ce n'est pas la pièce, écrite
+   * juste à côté (« plateaux ») : le manager ne doit jamais se demander s'il
+   * tape des pièces ou des plateaux.
+   */
+  suffixe?: string;
 }) {
   const rempli = valeur !== '';
   const zero = valeur === '0';
@@ -282,7 +289,7 @@ export function LigneSaisie({
           }}
           onClick={fixe ? undefined : onSelectionner}
           placeholder={auPoids ? '— kg' : '—'}
-          aria-label={auPoids ? `${nom}, poids en kg` : nom}
+          aria-label={auPoids ? `${nom}, poids en kg` : suffixe ? `${nom}, en ${suffixe}` : nom}
           className={`chiffres rounded-lg border text-center transition-colors placeholder:text-ink-3 focus:border-accent focus:outline-none ${hauteurChamp} ${largeurChamp} ${
             compact ? 'text-sm' : grande ? 'text-xl' : 'text-base'
           } ${
@@ -293,6 +300,10 @@ export function LigneSaisie({
                 : 'border-line bg-surface-2 text-ink-2'
           }`}
         />
+
+        {suffixe ? (
+          <span className="shrink-0 text-xs font-medium text-ink-2">{suffixe}</span>
+        ) : null}
 
         {complement ? (
           <>

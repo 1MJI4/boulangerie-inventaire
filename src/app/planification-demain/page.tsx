@@ -17,6 +17,43 @@ import { useProfil } from '@/components/ProfilAppareil';
 import { useMemoireLocale } from '@/lib/memoireLocale';
 import { DEFINITIONS } from '@/lib/profils';
 import { DESCRIPTION_POSTE, LIBELLE_POSTE, POSTES, estPoste, type Poste } from '@/lib/postes';
+import { enPlateaux, formaterPlateaux, sePlanifieEnPlateaux } from '@/domaine/plateaux';
+
+/**
+ * Croissant, Couque au chocolat : le pâtissier sort des PLATEAUX. Le gros
+ * chiffre est le nombre de plateaux ; dessous, l'équivalent en pièces, puis
+ * la part commandée par des clients, qui reste en pièces.
+ */
+function QuantiteEnPlateaux({
+  prevue,
+  commandee,
+  parPlateau,
+  fait,
+}: {
+  prevue: number;
+  commandee: number;
+  parPlateau: number;
+  fait: boolean;
+}) {
+  const base = Math.max(0, prevue - commandee);
+  const { plateaux, reste } = enPlateaux(base, parPlateau);
+  return (
+    <span className={`shrink-0 text-right ${fait ? 'text-ink-3' : 'text-ink'}`}>
+      <span className="flex items-baseline justify-end gap-1.5 leading-none">
+        <span className="chiffres text-3xl font-semibold tabular-nums">{plateaux}</span>
+        <span className="text-sm font-medium">plateau{plateaux > 1 ? 'x' : ''}</span>
+      </span>
+      <span className="chiffres mt-0.5 block text-xs text-ink-3">
+        {reste > 0 ? `${formaterPlateaux(base, parPlateau)} · ` : ''}= {base} pièces
+      </span>
+      {commandee > 0 ? (
+        <span className="chiffres mt-0.5 block text-xs font-medium text-accent">
+          + {commandee} pièce{commandee > 1 ? 's' : ''} commandée{commandee > 1 ? 's' : ''}
+        </span>
+      ) : null}
+    </span>
+  );
+}
 
 type LigneFournil = {
   produitId: number;
@@ -24,7 +61,15 @@ type LigneFournil = {
   quantiteCommande: number | null;
   quantiteProduite: number | null;
   faitLe: string | null;
-  produit: { id: number; nom: string; categorie: string; poste: Poste; ordre: number };
+  produit: {
+    id: number;
+    nom: string;
+    categorie: string;
+    poste: Poste;
+    ordre: number;
+    /** Demandé en plateaux entiers de N pièces (domaine/plateaux) ; null = à la pièce. */
+    piecesParPlateau?: number | null;
+  };
 };
 
 /** Le manager saisit pendant que le fournil regarde : on va rechercher souvent. */
@@ -326,6 +371,14 @@ export default function Fournil() {
                       {/* « 12 + 5 » : ce qui sort normalement, et ce qu'une
                           commande ajoute. Le total reste le chiffre à produire,
                           mais le pâtissier voit d'où vient le surplus. */}
+                      {sePlanifieEnPlateaux(ligne.produit.piecesParPlateau) ? (
+                        <QuantiteEnPlateaux
+                          prevue={ligne.quantitePrevue ?? 0}
+                          commandee={ligne.quantiteCommande ?? 0}
+                          parPlateau={ligne.produit.piecesParPlateau}
+                          fait={fait}
+                        />
+                      ) : (
                       <span
                         className={`shrink-0 text-right ${fait ? 'text-ink-3' : 'text-ink'}`}
                       >
@@ -339,6 +392,7 @@ export default function Fournil() {
                           </span>
                         ) : null}
                       </span>
+                      )}
                     </li>
                   );
                 })}
