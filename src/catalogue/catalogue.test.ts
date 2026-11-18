@@ -19,6 +19,7 @@ import {
   listerParCategorie,
 } from "./catalogue.ts";
 import { comparerVersions, formaterRapportDiff } from "./diff.ts";
+import { chargerCatalogueDepuisDossier } from "./chargerFichiers.ts";
 import { identifiantProduit } from "./normaliser.ts";
 import type { Catalogue, ResultatImport } from "./types.ts";
 
@@ -386,4 +387,31 @@ test("constat : aucun des 4 produits au kilo n'est un favori dans le CSV (Halwa 
   assert.equal(auKilo.length, 4);
   assert.ok(auKilo.every((p) => !p.estFavori));
   assert.ok(!lignesCsv.some((l) => l[0] === "Favoris" && l[1] === "Halwa arbia"), "aucune ligne Favoris « Halwa arbia »");
+});
+
+// ------------------------------------------------------------ tarif du 19/11/2026
+
+test("tarif 11/2026 : en vigueur le 19/11, l'ancien prix reste servi la veille (LOI 1)", () => {
+  const charge = chargerCatalogueDepuisDossier();
+  assert.equal(charge.ok, true, JSON.stringify(charge.rapports));
+  const novembre = analyserCsv(readFileSync(join(DOSSIER_DATA_PAR_DEFAUT, "catalogue_prix_2026-11.csv"), "utf8"))
+    .slice(1)
+    .map((l) => l.champs);
+  // Même liste de produits, dans le même ordre : seuls des prix changent.
+  assert.equal(novembre.length, lignesCsv.length);
+  let modifies = 0;
+  novembre.forEach(([categorie, produit, sous, , prixNovembre], i) => {
+    const [catSept, prodSept, sousSept, , prixSeptembre] = lignesCsv[i];
+    assert.deepEqual([categorie, produit, sous], [catSept, prodSept, sousSept], `ligne ${i + 2}`);
+    if (categorie === "Favoris") return; // doublon d'accès rapide : même produit que son jumeau
+    const id = identifiantProduit(categorie, produit, sousCategorieProduit(categorie, produit, sous));
+    const veille = getPrix(charge.catalogue, id, "2026-11-18");
+    const jour = getPrix(charge.catalogue, id, "2026-11-19");
+    assert.ok(veille.ok && jour.ok, id);
+    assert.equal(veille.donnees.prixCentimes, Number.parseInt(prixSeptembre, 10), `${id} la veille`);
+    assert.equal(jour.donnees.prixCentimes, Number.parseInt(prixNovembre, 10), `${id} le 19/11`);
+    if (prixNovembre !== prixSeptembre) modifies++;
+  });
+  // Les prix relevés dans l'Excel du propriétaire (11/2026) : 4 produits, pas un de plus.
+  assert.equal(modifies, 4);
 });

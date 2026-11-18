@@ -20,6 +20,12 @@
       "code": "sur-commande_2026-10-26",
       "fichier": "tarifs-sur-commande_2026-10-26.json",
       "valideDu": "2026-10-26"
+    },
+    {
+      "grille": "comptoir",
+      "code": "tarif_2026-11",
+      "fichier": "catalogue_prix_2026-11.csv",
+      "valideDu": "2026-11-19"
     }
   ]
 }

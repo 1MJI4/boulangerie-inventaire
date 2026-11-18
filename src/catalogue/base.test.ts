@@ -173,13 +173,16 @@ class FausseBase {
   }
 }
 
-/** Catalogue + une version comptoir « tarif_2026-11 » où un produit prend 10 centimes. */
+/**
+ * Catalogue + une version comptoir D'ESSAI où un produit prend 10 centimes. Elle part du
+ * DERNIER tarif comptoir réel et porte un code qui ne peut pas être celui d'un vrai tarif.
+ */
 function catalogueAvecHausse(valideDu: DateISO): { cat: Catalogue; id: string; ancien: number; nouveau: number } {
-  const v1 = CAT.versions.find((v) => v.grille === "comptoir")!;
+  const v1 = CAT.versions.filter((v) => v.grille === "comptoir").at(-1)!;
   const [id, ligne] = [...v1.lignes].find(([, l]) => l.basePrix === "piece")!;
   const lignes = new Map(v1.lignes);
   lignes.set(id, { ...ligne, prixCentimes: ligne.prixCentimes + 10 });
-  const version: VersionTarif = { code: "tarif_2026-11", grille: "comptoir", valideDu, valideAu: null, source: "test", lignes };
+  const version: VersionTarif = { code: "tarif_essai_hausse", grille: "comptoir", valideDu, valideAu: null, source: "test", lignes };
   const produits = [...CAT.produits.values()].filter((p) => p.grille === "comptoir");
   const r = ajouterVersion(CAT, version, produits);
   assert.ok(r.ok, JSON.stringify(r.signalements));
@@ -347,7 +350,7 @@ test("idempotence : relancer l'import n'écrit rien", async () => {
 
 test("changement de prix à date future : fermer l'ancienne version puis insérer", async () => {
   const base = await baseRemplie();
-  const { cat, id, ancien, nouveau } = catalogueAvecHausse("2026-11-01");
+  const { cat, id, ancien, nouveau } = catalogueAvecHausse("2027-01-01");
   const nbComptoir = [...cat.produits.values()].filter((p) => p.grille === "comptoir").length;
   const r = await ecrireCatalogueEnBase(base.client(), cat, { aujourdhui: AUJOURDHUI });
   assert.ok(r.ok && r.ecrit, JSON.stringify(r.signalements.filter((s) => s.niveau === "bloquant")));
@@ -355,11 +358,11 @@ test("changement de prix à date future : fermer l'ancienne version puis insére
   assert.equal(r.resume.versionsFermees, nbComptoir);
   assert.equal(r.resume.versionsInserees, nbComptoir);
   const lecteur = creerLecteurBase(base.source());
-  const avant = await lecteur.getPrix(id, "2026-10-31");
-  const apres = await lecteur.getPrix(id, "2026-11-01");
+  const avant = await lecteur.getPrix(id, "2026-12-31");
+  const apres = await lecteur.getPrix(id, "2027-01-01");
   assert.ok(avant.ok && apres.ok);
   assert.equal(avant.donnees.prixCentimes, ancien);
-  assert.equal(avant.donnees.valideAu, "2026-10-31");
+  assert.equal(avant.donnees.valideAu, "2026-12-31");
   assert.equal(apres.donnees.prixCentimes, nouveau);
   assert.notEqual(avant.donnees.prixProduitId, apres.donnees.prixProduitId, "l'ancienne version n'est pas écrasée");
   // Et c'est à nouveau idempotent.
@@ -369,9 +372,10 @@ test("changement de prix à date future : fermer l'ancienne version puis insére
 
 test("nouveau tarif à date passée : refusé, rien n'est écrit", async () => {
   const base = await baseRemplie();
-  const { cat } = catalogueAvecHausse("2026-10-01");
+  // Tarif daté du 01/01/2027, importé seulement le 01/03/2027 : rétroactif, donc refusé.
+  const { cat } = catalogueAvecHausse("2027-01-01");
   const avant = base.ecritures;
-  const r = await ecrireCatalogueEnBase(base.client(), cat, { aujourdhui: AUJOURDHUI });
+  const r = await ecrireCatalogueEnBase(base.client(), cat, { aujourdhui: "2027-03-01" });
   assert.equal(r.ok, false);
   assert.ok(r.signalements.some((s) => s.code === "ERR_DATE_EFFET_PASSEE"));
   assert.equal(base.ecritures, avant);
