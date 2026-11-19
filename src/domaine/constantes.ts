@@ -265,3 +265,16 @@ export const TAILLES_INTERDITES: readonly TailleInterdite[] = [
 // d'ouverture réglées par le gérant, 18/10/2026). Cette valeur n'est que le repli
 // de l'écran si les réglages sont illisibles : la fermeture par défaut.
 export const HEURE_FERMETURE_HYPOTHESE = FERMETURE_PAR_DEFAUT;
+
+// ---------------------------------------------------------------------------
+// R74 — avance des postes de production (propriétaire, 19/11/2026)
+// ---------------------------------------------------------------------------
+/**
+ * Avance, en minutes, de la part d'un poste sur l'heure de retrait : le
+ * boulanger doit avoir fini 2 heures avant (retrait 10h00 → prêt à 8h00).
+ * Réglage, pas un chiffre en dur dans un écran ou un bon. Poste absent : pas
+ * d'échéance propre.
+ */
+export const AVANCE_POSTE_MINUTES: Readonly<Partial<Record<'patissier' | 'atelier' | 'boulanger', number>>> = {
+  boulanger: 120,
+};
