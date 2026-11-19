@@ -135,9 +135,16 @@ vitrine = 31,00 €. Le même commandé en régime C = 4,50 €/pers minimum, pr
 → Un prix/personne saisi **sous** le plancher est refusé (`ERR_SOUS_PLANCHER`), sauf
   déverrouillage explicite par le gérant, tracé avec son identité.
 → Exception (décision du propriétaire, 18/10/2026, R60) : un gâteau simple commandé dans une
-  taille qui existe au comptoir (Bavarois 4/6/8/10, Crème fraîche 6/8) devient le gâteau du
-  comptoir, au prix exact du tarif, **non modifiable**. Correspondance = donnée explicite
+  taille qui existe au comptoir, **jusqu'à 8 parts** (Bavarois et ses goûts du comptoir —
+  Fraisier, Matadi chocolat, Forêt noire… — 4/6/8, Crème fraîche 6/8), devient le gâteau du
+  comptoir, au prix exact du tarif, **non modifiable**. **Au-dessus de 8 parts : prix par
+  personne** (décision du propriétaire, 19/11/2026 — le Bavarois 10P ne remplace plus un
+  gâteau commandé). Correspondance = donnée explicite
   (`src/catalogue/correspondancesComptoir.ts`), jamais déduite du nom.
+→ Accès direct (R71, propriétaire 19/11/2026) : les gâteaux du comptoir ont leur **tuile** en
+  tête de la famille « Gâteau » (Fraisier, Matadi chocolat, Mousse chocolat, Forêt noire,
+  Bavarois framboise / fruits de la passion / mangue, croûtes). Ce sont des **raccourcis**
+  (`src/catalogue/raccourcisGateaux.ts`), pas des produits : même prix, mêmes règles.
 → Chaque produit porte un `regime_prix` explicite. **Le régime ne se déduit jamais du nom.**
 → Goût obligatoire (R62, propriétaire 22/10/2026) : tout gâteau sur commande porte **un goût**
   (Entremet : **une recette**, Saint-Michel, Javanais… ; pièce montée : **un goût par étage**),

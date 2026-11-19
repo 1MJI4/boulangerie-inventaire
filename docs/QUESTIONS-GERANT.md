@@ -447,7 +447,10 @@ l'avez pas confirmé ici.
 86. **L'acompte d'une commande mise en vente** : il est gardé par le magasin ? Et si le client
     revient après la mise en vente, que lui dit-on ?
 
-87. **Bavarois goût Fraisier en 10 parts** : le comptoir ne fait le Fraisier qu'en 4P, 6P et
+87. ✅ **Répondu le 19/11/2026** — au-dessus de 8 parts, tout gâteau commandé est au prix
+    par personne : un Fraisier de 10 parts = 10 × le prix par personne du Bavarois, et il
+    s'écrit « Fraisier ». Ce qui suit est l'ancienne question, gardée pour mémoire.
+    **Bavarois goût Fraisier en 10 parts** : le comptoir ne fait le Fraisier qu'en 4P, 6P et
     8P. Un Bavarois commandé en 10 parts au goût Fraisier se fait-il, et à quel prix ?
     *(en attendant, l'application fait : il se vend comme le Bavarois 10P du comptoir, à son
     prix, et s'écrit « Fraisier 10P » à l'écran et sur le bon. Les autres goûts du comptoir
@@ -545,3 +548,13 @@ l'avez pas confirmé ici.
      parts (la taille du comptoir) ?** *(en attendant, l'application fait : oui, partout où
      on choisit le goût d'une Crème fraîche sur commande ; « Au choix du pâtissier » demande
      aussi le code du manager.)*
+
+### Gâteaux du comptoir en accès direct (19/11/2026)
+
+101. **Croûte (fraises, framboises, fruits) en 10 parts : à quel prix ?** Vous avez le moule,
+     mais le tarif ne donne que le 6P et le 8P. *(en attendant, l'application fait : la
+     tuile « Croûte » ne propose que 6P et 8P, au prix du comptoir ; rien au-dessus.)*
+
+102. **Les tartes (riz, fromage, pommes…) doivent-elles avoir leur tuile en accès direct ?**
+     Elles n'existent qu'en 6P. *(en attendant, l'application fait : elles restent dans le
+     rayon « Gâteaux et tartes » et se trouvent par la recherche.)*
