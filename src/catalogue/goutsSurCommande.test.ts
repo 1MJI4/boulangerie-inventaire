@@ -26,12 +26,17 @@ const BUCHES_ET_COEURS: Record<string, string> = {
 };
 
 test('Bavarois sur commande : les goûts du comptoir en premier (propriétaire, 28/10/2026 ; Forêt noire, 19/11/2026)', () => {
-  assert.deepEqual(BAVAROIS.goutsEnTete, ['Mangue', 'Fruits de la passion', 'Framboise', 'Fraisier', 'Matadi chocolat', 'Mousse chocolat', 'Forêt noire']);
+  assert.deepEqual(BAVAROIS.goutsEnTete, ['Mangue', 'Fruits de la passion', 'Framboise', 'Fraisier', 'Matadi chocolat', 'Mousse chocolat', 'Forêt noire',
+    'Fraise', 'Chocolat au lait praliné', 'Fleur caramel chocolat',
+  ]);
 });
 
 test('chaque goût en tête du Bavarois est un gâteau du comptoir, libellé à la lettre (LOI 5)', () => {
   const noms = new Set([...chargerCatalogueDepuisDossier().catalogue.produits.values()].map((p) => p.produit));
-  for (const g of BAVAROIS.goutsEnTete ?? []) {
+  // Trois goûts n'ont pas de gâteau entier au tarif (propriétaire, 19/11/2026 :
+  // « même prix que… ») : ils se vendent comme le Bavarois.
+  const sansLigne = ['Fraise', 'Chocolat au lait praliné', 'Fleur caramel chocolat'];
+  for (const g of (BAVAROIS.goutsEnTete ?? []).filter((x) => !sansLigne.includes(x))) {
     assert.ok(noms.has(g) || noms.has(`Bavarois ${g.toLocaleLowerCase('fr')}`), `${g} absent du comptoir`);
   }
 });
@@ -39,7 +44,8 @@ test('chaque goût en tête du Bavarois est un gâteau du comptoir, libellé à 
 test('la liste du manager suit, sans doublon ni casse en double', () => {
   const liste = ['Chocolat', 'Vanille', 'Framboise', 'mousse chocolat', 'Pistache'];
   assert.deepEqual(ordonnerGouts(BAVAROIS.goutsEnTete, liste), [
-    'Mangue', 'Fruits de la passion', 'Framboise', 'Fraisier', 'Matadi chocolat', 'Mousse chocolat', 'Forêt noire', 'Chocolat', 'Vanille', 'Pistache',
+    'Mangue', 'Fruits de la passion', 'Framboise', 'Fraisier', 'Matadi chocolat', 'Mousse chocolat', 'Forêt noire',
+    'Fraise', 'Chocolat au lait praliné', 'Fleur caramel chocolat', 'Chocolat', 'Vanille', 'Pistache',
   ]);
   // Sans goûts en tête : la liste du manager telle quelle.
   assert.deepEqual(ordonnerGouts(undefined, ['Vanille', 'Vanille ', 'Fraise']), ['Vanille', 'Fraise']);

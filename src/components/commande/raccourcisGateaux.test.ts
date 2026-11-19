@@ -13,12 +13,15 @@ import { creerApiCatalogue } from '../../catalogue/catalogue.ts';
 import { CORRESPONDANCES_COMPTOIR } from '../../catalogue/correspondancesComptoir.ts';
 import { GOUTS_SUR_COMMANDE } from '../../catalogue/goutsSurCommande.ts';
 import { RACCOURCIS_GATEAUX, type RaccourciGateau } from '../../catalogue/raccourcisGateaux.ts';
+import { LIBELLES_SELON_GOUT } from '../../catalogue/libellesSelonGout.ts';
+import { libelleSelonGout } from '../../domaine/libelles.ts';
 import { controlerLigne, type ContexteCommande } from '../../domaine/commande.ts';
 import { DELAIS_PAR_DEFAUT, FAMILLES_GATEAU, REGLEMENT_COMMANDE, TAILLES_INTERDITES } from '../../domaine/constantes.ts';
 import {
   choisirTaille,
   ficheDe,
   goutDitParLaTuile,
+  libelleLigneEcran,
   ligneVide,
   resoudreLocal,
   suivreGout,
@@ -78,11 +81,12 @@ const toucher = (libelle: string, lignes: readonly LigneEcran[] = []) => {
   assert.ok(r, `${libelle} : toucher sans effet`);
   return r;
 };
+const SANS_LIGNE_AU_TARIF = ['Bavarois fraise', 'Bavarois chocolat au lait praliné', 'Fleur caramel chocolat'];
 const sc = (r: RaccourciGateau) => (r.type === 'surCommande' ? r : null);
 
 test('donnée : chaque raccourci pointe vers des produits du catalogue, libellés à la lettre (LOI 5, LOI 6)', () => {
-  assert.equal(RACCOURCIS_GATEAUX.length, 10);
-  assert.equal(new Set(RACCOURCIS_GATEAUX.map((r) => r.cle)).size, 10, 'clés uniques');
+  assert.equal(RACCOURCIS_GATEAUX.length, 13);
+  assert.equal(new Set(RACCOURCIS_GATEAUX.map((r) => r.cle)).size, 13, 'clés uniques');
   const choix = GOUTS_SUR_COMMANDE[BAV];
   const enTete = choix.liste === 'parfum' ? (choix.goutsEnTete ?? []) : [];
   for (const r of RACCOURCIS_GATEAUX) {
@@ -93,8 +97,14 @@ test('donnée : chaque raccourci pointe vers des produits du catalogue, libellé
       assert.ok(enTete.includes(r.gout), `${r.libelle} : goût « ${r.gout} » absent des goûts en tête`);
       // Le libellé est celui du gâteau du comptoir que ce goût désigne.
       const six = T.find((c) => c.surCommande === r.surCommande && c.parts === 6 && c.gout === r.gout);
-      assert.ok(six, `${r.libelle} : pas de correspondance 6 parts`);
-      assert.equal(fiche(six.comptoir).produit.produit, r.libelle);
+      if (six) {
+        assert.equal(fiche(six.comptoir).produit.produit, r.libelle);
+      } else {
+        // Gâteau sans ligne propre au tarif (propriétaire, 19/11/2026 : « même prix
+        // que… ») : il se vend comme le Bavarois, et porte son nom par la table des libellés.
+        assert.ok(SANS_LIGNE_AU_TARIF.includes(r.libelle), `${r.libelle} : pas de correspondance 6 parts`);
+        assert.equal(libelleSelonGout(r.surCommande, [r.gout], LIBELLES_SELON_GOUT), r.libelle);
+      }
     } else {
       assert.ok(r.tailles.length > 0, r.libelle);
       for (const t of r.tailles) {
@@ -115,7 +125,7 @@ test('tuilesRaccourcis : visibles dans la famille Gâteau, absentes ailleurs et 
 });
 
 test('tuilesRaccourcis : la recherche « frais » montre Fraisier et Croûte Fraises, quel que soit le rayon', () => {
-  assert.deepEqual(tuilesRaccourcis(catalogue, [], 'frais', null).map((t) => t.raccourci.libelle), ['Fraisier', 'Croûte Fraises']);
+  assert.deepEqual(tuilesRaccourcis(catalogue, [], 'frais', null).map((t) => t.raccourci.libelle), ['Fraisier', 'Bavarois fraise', 'Croûte Fraises']);
   assert.deepEqual(tuilesRaccourcis(catalogue, [], 'FORET', 'Viennoiserie').map((t) => t.raccourci.libelle), ['Forêt noire']);
   assert.deepEqual(tuilesRaccourcis(catalogue, [], 'baguette', RAYON_GATEAU), []);
 });
@@ -252,4 +262,32 @@ test('goût déjà dit par la tuile : la liste des goûts n’a pas à rester ou
   assert.equal(goutDitParLaTuile(toucherProduit([], fiche('gateaux-et-tartes/croute/fraises-8p')).lignes[0]), false);
   assert.equal(goutDitParLaTuile({ ...ligneVide('gateaux-sur-commande/layer-cake'), gouts: ['Fraisier'] }), false);
   assert.equal(goutDitParLaTuile(ligneVide(null)), false);
+});
+
+test('gâteaux sans ligne au tarif (propriétaire, 19/11/2026) : prix du Bavarois, nom du gâteau à toutes les tailles', () => {
+  const prix = (id: string) => fiche(id).prix.prixCentimes;
+  // « Même prix que le Bavarois framboise » / « que la Forêt noire » : c'est le prix
+  // du Bavarois. Si ces prix se séparent un jour, ce test le dit : il faudra une ligne au tarif.
+  for (const n of [4, 6, 8]) {
+    assert.equal(prix(`gateaux-et-tartes/bavarois/${n}p`), prix(`gateaux-et-tartes/bavarois-framboise/${n}p`), `${n}P framboise`);
+    assert.equal(prix(`gateaux-et-tartes/bavarois/${n}p`), prix(`gateaux-et-tartes/foret-noire/${n}p`), `${n}P forêt noire`);
+  }
+  for (const nom of SANS_LIGNE_AU_TARIF) {
+    const l = toucher(nom).lignes[0];
+    for (const n of [4, 6, 8]) {
+      const g = choisirTaille(l, n, catalogue, T);
+      assert.equal(g.produitId, `gateaux-et-tartes/bavarois/${n}p`, `${nom} ${n} parts`);
+      assert.equal(libelleLigneEcran(g, ficheDe(catalogue, g.produitId)!, LIBELLES_SELON_GOUT), `${nom} ${n}P`);
+      const r = controler({ ...g, sansEcriture: true, forme: 'rond' });
+      assert.ok(r.ok, JSON.stringify(r));
+      assert.equal(r.donnees.totalCentimes, prix(`gateaux-et-tartes/bavarois/${n}p`));
+    }
+    const dix = choisirTaille(l, 10, catalogue, T);
+    assert.equal(dix.produitId, BAV);
+    assert.equal(libelleLigneEcran(dix, ficheDe(catalogue, BAV)!, LIBELLES_SELON_GOUT), nom);
+    const r10 = controler({ ...dix, sansEcriture: true, forme: 'carre' });
+    assert.ok(r10.ok, JSON.stringify(r10));
+    assert.equal(r10.donnees.totalCentimes, 10 * prix(BAV));
+    assert.equal(goutDitParLaTuile(dix), true);
+  }
 });

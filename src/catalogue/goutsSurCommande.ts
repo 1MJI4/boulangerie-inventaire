@@ -56,7 +56,10 @@ export const GOUTS_SUR_COMMANDE: Readonly<Record<string, ChoixGout>> = {
   'gateaux-sur-commande/bavarois': {
     liste: 'parfum',
     parEtage: false,
-    goutsEnTete: ['Mangue', 'Fruits de la passion', 'Framboise', 'Fraisier', 'Matadi chocolat', 'Mousse chocolat', 'Forêt noire'],
+    goutsEnTete: ['Mangue', 'Fruits de la passion', 'Framboise', 'Fraisier', 'Matadi chocolat', 'Mousse chocolat', 'Forêt noire',
+      // Sans ligne propre au tarif, au prix du Bavarois (propriétaire, 19/11/2026).
+      'Fraise', 'Chocolat au lait praliné', 'Fleur caramel chocolat',
+    ],
   },
   'gateaux-sur-commande/layer-cake': { liste: 'parfum', parEtage: false },
   'gateaux-sur-commande/number-cake': { liste: 'parfum', parEtage: false },

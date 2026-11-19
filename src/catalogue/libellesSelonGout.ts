@@ -25,4 +25,22 @@ export const LIBELLES_SELON_GOUT: readonly LibelleSelonGout[] = [
   { produit: "gateaux-sur-commande/bavarois", gout: "Matadi chocolat", libelle: "Matadi chocolat" },
   { produit: "gateaux-sur-commande/bavarois", gout: "Mousse chocolat", libelle: "Mousse chocolat" },
   { produit: "gateaux-sur-commande/bavarois", gout: "Forêt noire", libelle: "Forêt noire" },
+  // Gâteaux SANS ligne propre au tarif (propriétaire, 19/11/2026 : Bavarois
+  // fraise et Bavarois chocolat au lait praliné « même prix que le Bavarois
+  // framboise », Fleur caramel chocolat « même prix que la Forêt noire »). Ils se
+  // vendent comme le Bavarois (Bavarois 4P / 6P / 8P du comptoir, prix par
+  // personne au-dessus) et portent leur nom à l'écran et sur le bon.
+  // HYPOTHÈSE À VALIDER (QUESTIONS-GERANT) : l'orthographe exacte de ces noms.
+  { produit: "gateaux-sur-commande/bavarois", gout: "Fraise", libelle: "Bavarois fraise" },
+  { produit: "gateaux-et-tartes/bavarois/4p", gout: "Fraise", libelle: "Bavarois fraise 4P" },
+  { produit: "gateaux-et-tartes/bavarois/6p", gout: "Fraise", libelle: "Bavarois fraise 6P" },
+  { produit: "gateaux-et-tartes/bavarois/8p", gout: "Fraise", libelle: "Bavarois fraise 8P" },
+  { produit: "gateaux-sur-commande/bavarois", gout: "Chocolat au lait praliné", libelle: "Bavarois chocolat au lait praliné" },
+  { produit: "gateaux-et-tartes/bavarois/4p", gout: "Chocolat au lait praliné", libelle: "Bavarois chocolat au lait praliné 4P" },
+  { produit: "gateaux-et-tartes/bavarois/6p", gout: "Chocolat au lait praliné", libelle: "Bavarois chocolat au lait praliné 6P" },
+  { produit: "gateaux-et-tartes/bavarois/8p", gout: "Chocolat au lait praliné", libelle: "Bavarois chocolat au lait praliné 8P" },
+  { produit: "gateaux-sur-commande/bavarois", gout: "Fleur caramel chocolat", libelle: "Fleur caramel chocolat" },
+  { produit: "gateaux-et-tartes/bavarois/4p", gout: "Fleur caramel chocolat", libelle: "Fleur caramel chocolat 4P" },
+  { produit: "gateaux-et-tartes/bavarois/6p", gout: "Fleur caramel chocolat", libelle: "Fleur caramel chocolat 6P" },
+  { produit: "gateaux-et-tartes/bavarois/8p", gout: "Fleur caramel chocolat", libelle: "Fleur caramel chocolat 8P" },
 ];

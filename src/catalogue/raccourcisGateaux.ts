@@ -39,6 +39,10 @@ export const RACCOURCIS_GATEAUX: readonly RaccourciGateau[] = [
     gout: 'Fruits de la passion',
   },
   { cle: 'bavarois-mangue', libelle: 'Bavarois mangue', type: 'surCommande', surCommande: BAVAROIS, gout: 'Mangue' },
+  // Sans ligne propre au tarif : au prix du Bavarois (propriétaire, 19/11/2026).
+  { cle: 'bavarois-fraise', libelle: 'Bavarois fraise', type: 'surCommande', surCommande: BAVAROIS, gout: 'Fraise' },
+  { cle: 'bavarois-chocolat-au-lait-praline', libelle: 'Bavarois chocolat au lait praliné', type: 'surCommande', surCommande: BAVAROIS, gout: 'Chocolat au lait praliné' },
+  { cle: 'fleur-caramel-chocolat', libelle: 'Fleur caramel chocolat', type: 'surCommande', surCommande: BAVAROIS, gout: 'Fleur caramel chocolat' },
   {
     cle: 'croute-fraises',
     libelle: 'Croûte Fraises',

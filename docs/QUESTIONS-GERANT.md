@@ -560,3 +560,16 @@ l'avez pas confirmé ici.
 102. **Les tartes (riz, fromage, pommes…) doivent-elles avoir leur tuile en accès direct ?**
      Elles n'existent qu'en 6P. *(en attendant, l'application fait : elles restent dans le
      rayon « Gâteaux et tartes » et se trouvent par la recherche.)*
+
+103. **Bavarois fraise, Bavarois chocolat au lait praliné, Fleur caramel chocolat en gâteau
+     entier : les noms sont-ils bien écrits ?** Ils n'ont pas de ligne en gâteau entier dans
+     l'Excel ; vous avez dit « même prix que le Bavarois framboise » et « que la Forêt
+     noire ». *(en attendant, l'application fait : trois tuiles, vendues au prix du Bavarois
+     — 4P, 6P, 8P du comptoir, prix par personne au-dessus —, avec ces noms à l'écran et sur
+     le bon. Si un jour leur prix diffère de celui du Bavarois, il faudra une ligne au
+     tarif.)*
+
+104. **Sablé breton en gâteau entier : à quel prix ?** L'Excel ne l'a qu'en viennoiserie, à la
+     pièce. *(en attendant, l'application fait : pas de tuile ; la pièce se commande dans le
+     rayon Viennoiserie.)* La tarte citron meringuée n'est pas ajoutée (votre réponse du
+     19/11/2026 : « mets pas s'il n'y a pas »).
