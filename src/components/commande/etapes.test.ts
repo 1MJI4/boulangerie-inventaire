@@ -11,6 +11,7 @@ import { creerApiCatalogue } from '../../catalogue/catalogue.ts';
 import {
   etapeDuChamp,
   groupesDuCarnet,
+  ligneOuverteDuBon,
   ligneVide,
   SUPPLEMENT_ECRITURE,
   type CatalogueCommande,
@@ -72,4 +73,23 @@ test('étape d’un champ : client → 1, ligne du bon → 2, argent et signatur
   for (const c of ['lignes', 'lignes[0].quantite', 'lignes[3].gouts', 'lignes[1].texteGateau']) assert.equal(etapeDuChamp(c), 2, c);
   for (const c of ['acompte', 'total', 'vendeur', 'remarques']) assert.equal(etapeDuChamp(c), 3, c);
   for (const c of [undefined, '', 'statut', 'inconnu']) assert.equal(etapeDuChamp(c), null, String(c));
+});
+
+test('bon en accordéon : une seule ligne ouverte — celle du pavé, sinon la dernière touchée, sinon la dernière du bon', () => {
+  const a = l('sur-commande/mini-burger');
+  const b = l('gateaux-et-tartes/fraisier/6p');
+  const c = l('gateaux-sur-commande/bavarois');
+  const lignes = [a, b, c];
+  // Rien de choisi : la dernière ligne du bon (celle qu'on vient d'ajouter).
+  assert.equal(ligneOuverteDuBon(lignes, null, null), c.cle);
+  // Ligne touchée (carte produit, tuile, ligne repliée) : elle s'ouvre.
+  assert.equal(ligneOuverteDuBon(lignes, null, a.cle), a.cle);
+  // Un champ de ligne ouvert au pavé l'emporte : on voit ce qu'on est en train de saisir.
+  assert.equal(ligneOuverteDuBon(lignes, `${b.cle}.quantite`, a.cle), b.cle);
+  // Champ qui n'est pas une ligne (acompte, téléphone) : sans effet.
+  assert.equal(ligneOuverteDuBon(lignes, 'acompte', a.cle), a.cle);
+  // Ligne retirée depuis : on retombe sur la dernière du bon ; bon vide : aucune.
+  assert.equal(ligneOuverteDuBon([a, b], null, c.cle), b.cle);
+  assert.equal(ligneOuverteDuBon([a, b], `${c.cle}.quantite`, null), b.cle);
+  assert.equal(ligneOuverteDuBon([], null, a.cle), null);
 });

@@ -1391,3 +1391,20 @@ export function groupesDuCarnet(lignes: readonly LigneEcran[], catalogue: Catalo
   }
   return groupes.filter((g) => g.lignes.length > 0);
 }
+
+/**
+ * Bon « en accordéon » à l'étape Produits (propriétaire, 19/11/2026 : « quand
+ * j'écris sur le carnet, je vois rapidement ce que j'ai déjà écrit ») : UNE
+ * ligne est ouverte avec tous ses réglages, les autres sont repliées en une
+ * ligne de carnet. Ouverte : la ligne dont un champ est au pavé (`actif` =
+ * « <clé>.<champ> »), sinon la dernière ligne touchée (`choisie`), sinon la
+ * dernière du bon. Clé de la ligne ouverte, ou null si le bon est vide.
+ */
+export function ligneOuverteDuBon(lignes: readonly LigneEcran[], actif: string | null, choisie: string | null): string | null {
+  if (lignes.length === 0) return null;
+  const existe = (cle: string | null | undefined) => (cle ? lignes.some((l) => l.cle === cle) : false);
+  const auPave = actif && actif.includes('.') ? actif.slice(0, actif.indexOf('.')) : null;
+  if (existe(auPave)) return auPave;
+  if (existe(choisie)) return choisie;
+  return lignes[lignes.length - 1].cle;
+}
