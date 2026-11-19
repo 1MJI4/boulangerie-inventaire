@@ -11,10 +11,10 @@ import { creerApiCatalogue } from './catalogue.ts';
 import { CORRESPONDANCES_COMPTOIR, controlerCorrespondancesComptoir } from './correspondancesComptoir.ts';
 import { LIBELLES_SELON_GOUT } from './libellesSelonGout.ts';
 import { GOUTS_SUR_COMMANDE } from './goutsSurCommande.ts';
-import { produitComptoirPourTaille, validerComptoirSelonGout } from '../domaine/prixComptoir.ts';
+import { gateauSurCommandeDe, produitComptoirPourTaille, validerComptoirSelonGout } from '../domaine/prixComptoir.ts';
 import { libelleSelonGout } from '../domaine/libelles.ts';
 import { controlerLigne, type ContexteCommande } from '../domaine/commande.ts';
-import { DELAIS_PAR_DEFAUT, REGLEMENT_COMMANDE } from '../domaine/constantes.ts';
+import { DELAIS_PAR_DEFAUT, REGLEMENT_COMMANDE, REGLES_FORME } from '../domaine/constantes.ts';
 import {
   ficheDe,
   ligneVide,
@@ -46,6 +46,8 @@ const ctx: ContexteCommande = {
   delais: DELAIS_PAR_DEFAUT,
   reglement: { ...REGLEMENT_COMMANDE, acomptePourcentageMin: 0 },
   correspondancesComptoir: T,
+  goutsSurCommande: GOUTS_SUR_COMMANDE,
+  formes: REGLES_FORME,
   supplementEcriture: SUPPLEMENT_ECRITURE,
   supplementPhoto: SUPPLEMENT_PHOTO,
 };
@@ -55,7 +57,7 @@ test('R60 : au-dessus de 8 parts, plus de prix du comptoir', () => {
   for (const g of [null, 'Fraisier', 'Matadi chocolat', 'Forêt noire']) {
     assert.equal(produitComptoirPourTaille(BAV, 10, T, g), null, `10 parts, goût ${g ?? '(aucun)'}`);
   }
-  assert.ok(T.every((c) => c.parts <= 8), 'aucune correspondance au-dessus de 8 parts');
+  assert.ok(T.every((c) => c.parts <= 8 || c.retiree === true), 'au-dessus de 8 parts : seulement des correspondances retirées');
 });
 
 test('Forêt noire : 4, 6, 8 parts = le gâteau du comptoir ; goût proposé en tête', () => {
@@ -88,10 +90,25 @@ test('10 parts au goût Fraisier : prix par personne du Bavarois, libellé « Fr
   assert.equal(libelleSelonGout(BAV, ['Vanille'], LIBELLES_SELON_GOUT), null);
 });
 
-test('commande ancienne : « Bavarois 10P » issu d’un Bavarois sur commande reste accepté, à son prix', () => {
+test('commande ancienne : « Bavarois 10P » issu d’un Bavarois sur commande est toujours RECONNU, à son prix', () => {
+  // La correspondance est retirée de la VENTE (plus proposée pour 10 parts)…
+  assert.equal(produitComptoirPourTaille(BAV, 10, T), null);
+  // …mais une ligne déjà enregistrée reste un gâteau commandé : c'est ce que
+  // l'écran relit à la réouverture d'une commande (lignesDepuisCommande).
+  assert.deepEqual(gateauSurCommandeDe(BAV_10P, T), { surCommande: BAV, parts: 10, gout: null });
   assert.equal(validerComptoirSelonGout(BAV_10P, BAV, ['Fraisier'], T, 'Bavarois').ok, true);
-  const ancienne: LigneEcran = { ...ligneVide(BAV_10P), quantite: 1, origineSurCommande: BAV, gouts: ['Fraisier'], sansEcriture: true, forme: 'carre' };
+  const origine = gateauSurCommandeDe(BAV_10P, T)?.surCommande ?? null;
+  const ancienne: LigneEcran = { ...ligneVide(BAV_10P), quantite: 1, origineSurCommande: origine, gouts: ['Fraisier'], sansEcriture: true };
+  // Forme : celle d'un gâteau de 10 parts (carré d'office), elle ne se perd pas à la modification.
   const r = controler(ancienne);
   assert.ok(r.ok, JSON.stringify(r));
   assert.equal(r.donnees.totalCentimes, fiche(BAV_10P).prix.prixCentimes);
+  assert.equal(r.donnees.forme, 'carre');
+  // Le goût et la forme restent contrôlés comme avant.
+  const sansGout = controler({ ...ancienne, gouts: [] });
+  assert.equal(sansGout.ok, false);
+  if (!sansGout.ok) assert.equal(sansGout.code, 'ERR_GOUT_MANQUANT');
+  const rond = controler({ ...ancienne, forme: 'rond' });
+  assert.equal(rond.ok, false);
+  if (!rond.ok) assert.equal(rond.code, 'ERR_FORME_ROND_IMPOSSIBLE');
 });

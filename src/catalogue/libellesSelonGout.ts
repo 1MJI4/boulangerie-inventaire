@@ -16,6 +16,9 @@ import type { LibelleSelonGout } from "../domaine/libelles.ts";
 
 export const LIBELLES_SELON_GOUT: readonly LibelleSelonGout[] = [
   { produit: "gateaux-sur-commande/bavarois", gout: "Fraisier", libelle: "Fraisier" },
+  // Commandes prises avant le 19/11/2026 : un Fraisier de 10 parts était le
+  // « Bavarois 10P » du comptoir (correspondance retirée depuis) ; il garde son nom.
+  { produit: "gateaux-et-tartes/bavarois/10p", gout: "Fraisier", libelle: "Fraisier 10P" },
   // Même règle pour les autres gâteaux du comptoir qui portent leur propre nom
   // (propriétaire, 19/11/2026) : au-dessus de 8 parts la ligne est le Bavarois
   // sur commande au prix par personne, et elle garde le nom du gâteau.

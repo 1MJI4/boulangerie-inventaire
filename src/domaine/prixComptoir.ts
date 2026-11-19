@@ -31,6 +31,14 @@ export type CorrespondanceComptoir = {
    * 6P »). Absent : l'entrée vaut pour tout autre goût (ou aucun).
    */
   gout?: string;
+  /**
+   * Correspondance RETIRÉE de la vente (propriétaire, 19/11/2026 : plus de prix
+   * du comptoir au-dessus de 8 parts). Elle ne remplace plus un gâteau commandé
+   * (`produitComptoirPourTaille` l'ignore), mais une ligne DÉJÀ enregistrée
+   * reste reconnue comme ce gâteau commandé (`gateauSurCommandeDe`) : goût,
+   * forme et libellé d'une commande ancienne ne se perdent pas à la modification.
+   */
+  retiree?: boolean;
 };
 
 /** Comparaison de goûts : sans casse ni espaces en trop (« framboise » = « Framboise »). */
@@ -61,7 +69,7 @@ export function produitComptoirPourTaille(
   gout?: string | null,
 ): string | null {
   if (!produitId || typeof parts !== 'number') return null;
-  const taille = table.filter((c) => c.surCommande === produitId && c.parts === parts);
+  const taille = table.filter((c) => c.surCommande === produitId && c.parts === parts && c.retiree !== true);
   const auGout = gout ? taille.find((c) => c.gout !== undefined && memeGout(c.gout, gout)) : undefined;
   return (auGout ?? taille.find((c) => c.gout === undefined))?.comptoir ?? null;
 }
@@ -69,7 +77,9 @@ export function produitComptoirPourTaille(
 /**
  * Inverse : de quel gâteau sur commande, à quelle taille, ce produit du
  * comptoir est l'équivalent (null sinon). Sert à l'écran (boutons de taille)
- * et à reconnaître un gâteau commandé (écriture sur le gâteau).
+ * et à reconnaître un gâteau commandé (écriture sur le gâteau). Les
+ * correspondances retirées de la vente comptent : elles reconnaissent les
+ * lignes des commandes déjà prises.
  */
 export function gateauSurCommandeDe(
   cleComptoir: string | null | undefined,
@@ -124,6 +134,9 @@ export function validerComptoirSelonGout(
 ): Resultat<string> {
   const de = gateauSurCommandeDe(produitId, table);
   if (!de || !origineSurCommande || origineSurCommande !== de.surCommande) return succes(produitId);
+  // Correspondance retirée de la vente : la ligne d'une commande ancienne reste
+  // ce qu'elle est, à son prix (on ne re-tarife pas une commande déjà prise).
+  if (table.some((c) => c.comptoir === produitId && c.retiree === true)) return succes(produitId);
   const attendu = produitComptoirPourTaille(de.surCommande, de.parts, table, goutDeLaLigne(gouts));
   if (attendu === produitId) return succes(produitId);
   return signaler(

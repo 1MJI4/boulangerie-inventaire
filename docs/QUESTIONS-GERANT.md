@@ -332,7 +332,9 @@
     Le bouton et le bon disent « Carré » : le pâtissier comprend-il « carré ou rectangle » ?
     *(en attendant, l'application fait : « Carré » veut dire carré ou rectangle.)*
 
-66. **Bavarois 10 parts** : il devient le Bavarois 10P du comptoir (prix du comptoir), et
+66. *(Mise à jour du 19/11/2026 : un Bavarois commandé en 10 parts n'est plus le Bavarois 10P
+    du comptoir — il est au prix par personne, carré d'office. Le reste de la question tient.)*
+    **Bavarois 10 parts** : il devient le Bavarois 10P du comptoir (prix du comptoir), et
     au-dessus de 8 parts il est carré d'office. Le Bavarois 10P de la vitrine est-il bien
     carré / rectangle ? Et un gâteau de la vitrine commandé directement (Bavarois 6P choisi
     au comptoir, sans passer par « gâteau sur commande ») : faut-il aussi demander la forme ?

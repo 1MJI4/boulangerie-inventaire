@@ -2,8 +2,8 @@
 // R60 — Gâteaux sur commande vendus au prix du COMPTOIR dans les tailles qui
 // existent au comptoir (décision du propriétaire du 18/10/2026), JUSQU'À 8
 // PARTS (propriétaire, 19/11/2026) : au-dessus, prix par personne. Aucune
-// entrée ne dépasse 8 parts — le « Bavarois 10P » reste un produit de la
-// vitrine, il ne remplace plus un gâteau commandé.
+// entrée EN VENTE ne dépasse 8 parts — le « Bavarois 10P » reste un produit de
+// la vitrine, il ne remplace plus un gâteau commandé (entrée `retiree`).
 // Propriétaire de la donnée : `catalogue-prix` ; règle appliquée par
 // `regles-metier` (src/domaine/prixComptoir.ts).
 //
@@ -29,6 +29,10 @@ export const CORRESPONDANCES_COMPTOIR: readonly CorrespondanceComptoir[] = [
   { surCommande: "gateaux-sur-commande/bavarois", parts: 4, comptoir: "gateaux-et-tartes/bavarois/4p" },
   { surCommande: "gateaux-sur-commande/bavarois", parts: 6, comptoir: "gateaux-et-tartes/bavarois/6p" },
   { surCommande: "gateaux-sur-commande/bavarois", parts: 8, comptoir: "gateaux-et-tartes/bavarois/8p" },
+  // RETIRÉE de la vente le 19/11/2026 (au-dessus de 8 parts : prix par personne).
+  // Gardée pour RECONNAÎTRE les commandes déjà prises avec un « Bavarois 10P »
+  // issu d'un Bavarois commandé : goût, forme et libellé restent ceux du gâteau.
+  { surCommande: "gateaux-sur-commande/bavarois", parts: 10, comptoir: "gateaux-et-tartes/bavarois/10p", retiree: true },
   // Le goût choisit le Bavarois du comptoir (propriétaire, 28/10/2026 :
   // « Matadi chocolat sur commande = Matadi du comptoir, même prix »). Goûts =
   // ceux de `goutsEnTete` (goutsSurCommande.ts), à la lettre. Le comptoir ne
