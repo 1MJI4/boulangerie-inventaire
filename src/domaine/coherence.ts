@@ -159,16 +159,19 @@ export function validerPrixConvenu(
  * Niveau : AVERTISSEMENT — deux variantes d'un même produit sont légitimes.
  * N'est jamais signalé : deux lignes de GÂTEAU (`nbGateaux` > 0) — une ligne par
  * gâteau, chacun ses caractéristiques (propriétaire, 28/10/2026) ; les fusionner
- * mélangerait deux gâteaux.
+ * mélangerait deux gâteaux. Ni deux lignes d'un même burger à deux viandes
+ * différentes (R73, 19/11/2026 : « une ligne 15 kefta et 15 tenders »).
  */
 export function reperesDoublons(
-  lignes: readonly { produitId?: string | null; libelle: string; nbGateaux?: number }[],
+  lignes: readonly { produitId?: string | null; libelle: string; nbGateaux?: number; variante?: string | null }[],
 ): Signalement[] {
   const parId = new Map<string, number[]>();
   lignes.forEach((l, i) => {
     if (!l.produitId) return;
     if ((l.nbGateaux ?? 0) > 0) return;
-    parId.set(l.produitId, [...(parId.get(l.produitId) ?? []), i]);
+    // R73 : un même burger à deux viandes = deux lignes voulues (`variante` = la viande).
+    const cle = `${l.produitId}|${(l.variante ?? '').trim().toLocaleLowerCase('fr')}`;
+    parId.set(cle, [...(parId.get(cle) ?? []), i]);
   });
   const sortie: Signalement[] = [];
   for (const indices of parId.values()) {

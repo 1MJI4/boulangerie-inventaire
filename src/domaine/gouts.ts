@@ -41,7 +41,22 @@ export type ChoixGout =
       goutParDefaut?: string;
       reserveAuGerant?: boolean;
     }
-  | { liste: 'propre'; parEtage: false; gouts: readonly string[] };
+  | {
+      liste: 'propre';
+      parEtage: false;
+      gouts: readonly string[];
+      /**
+       * R73 (propriétaire, 19/11/2026) : la liste est celle des VIANDES d'un
+       * burger. Liste réellement fermée : sans viande, hors liste ou « Au choix
+       * du pâtissier » → refus (`ERR_VIANDE_MANQUANTE`), sortie = les viandes.
+       */
+      viande?: boolean;
+    };
+
+/** Le produit demande une viande (R73) : donnée du catalogue, jamais le nom. */
+export function demandeUneViande(choix: ChoixGout | null | undefined): choix is Extract<ChoixGout, { liste: 'propre' }> {
+  return choix !== null && choix !== undefined && choix.liste === 'propre' && choix.viande === true;
+}
 
 /** Listes réglées par le gérant (goûts, recettes d'entremet), telles que l'écran les reçoit. */
 export type ListesGouts = { parfums?: readonly string[] | null; entremets?: readonly string[] | null };
@@ -77,6 +92,17 @@ export function validerGouts(
   fiche: FicheTarifee,
   gouts: readonly (string | null | undefined)[] | null | undefined,
 ): Resultat<string[]> {
+  // R73 : viande d'un burger — une seule, prise dans la liste, sans sortie « au choix ».
+  if (demandeUneViande(choix)) {
+    const saisie = String((gouts ?? [])[0] ?? '').trim();
+    const viande = saisie === '' ? undefined : choix.gouts.find((v) => memeGout(v, saisie));
+    if (viande !== undefined) return succes([viande]);
+    return signaler(
+      'ERR_VIANDE_MANQUANTE',
+      { produit: fiche.produit.produit, viandes: [...choix.gouts] },
+      { champ: 'gouts', valeurProposee: [...choix.gouts] },
+    );
+  }
   const attendus = goutsAttendus(choix, fiche);
   const remplis = (gouts ?? []).map((g) => String(g ?? '').trim());
   if (attendus === 0) return succes(remplis.filter(Boolean));

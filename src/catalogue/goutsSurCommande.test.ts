@@ -73,7 +73,10 @@ test('chaque bûche et chaque Cœur a sa liste propre, non vide, un seul goût',
     for (const g of gouts) assert.equal(g, g.trim(), `${libelle} : « ${g} » a un espace en bord`);
     assert.equal(new Set(gouts).size, gouts.length, `${libelle} : goût en double`);
   }
-  const propres = Object.entries(GOUTS_SUR_COMMANDE).filter(([, c]) => c.liste === 'propre').map(([id]) => id);
+  // Hors viandes des burgers (R73, 19/11/2026) : liste du propriétaire, pas une colonne du tarif.
+  const propres = Object.entries(GOUTS_SUR_COMMANDE)
+    .filter(([, c]) => c.liste === 'propre' && c.viande !== true)
+    .map(([id]) => id);
   assert.deepEqual(propres.sort(), Object.values(BUCHES_ET_COEURS).sort());
 });
 

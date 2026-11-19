@@ -40,7 +40,19 @@ const GOUTS_COEURS = [
   'Chocolat blanc spéculos', 'Crème fraîche', 'Matadi',
 ] as const;
 
+// R73 (propriétaire, 19/11/2026) : viandes d'un burger, « éviter qu'on mette un
+// burger sans viande ». Ce ne sont PAS des goûts écrits sur le tarif : liste
+// décidée par le propriétaire, la même pour les trois burgers.
+// HYPOTHÈSE À VALIDER (QUESTIONS-GERANT) : liste et produits exacts.
+const VIANDES_BURGER = ['Poulet tenders', 'Kefta', 'Viande hachée de poulet'] as const;
+const VIANDE: ChoixGout = { liste: 'propre', parEtage: false, gouts: VIANDES_BURGER, viande: true };
+
 export const GOUTS_SUR_COMMANDE: Readonly<Record<string, ChoixGout>> = {
+  // --- Burgers (comptoir et sur commande) : une viande obligatoire (R73).
+  'sales/burger': VIANDE,
+  'sales/mini-burger': VIANDE,
+  'sur-commande/mini-burger': VIANDE,
+
   'gateaux-sur-commande/cake-nature': { liste: 'parfum', parEtage: false },
   // R70 (propriétaire, 17/11/2026) : vanille d'office, un autre goût avec le
   // code du manager. « Vanille » : libellé de la liste des goûts du manager.
@@ -92,5 +104,6 @@ export function goutsDeLaColonne(colonne: string): string[] {
 /** Liste propre d'un produit (bûche, Cœur), ou null s'il n'en a pas. */
 export function goutsPropres(produitId: string): readonly string[] | null {
   const choix = GOUTS_SUR_COMMANDE[produitId];
-  return choix && choix.liste === 'propre' ? choix.gouts : null;
+  // Les viandes d'un burger (R73) ne sont pas une colonne du tarif : l'import ne les y cherche pas.
+  return choix && choix.liste === 'propre' && choix.viande !== true ? choix.gouts : null;
 }

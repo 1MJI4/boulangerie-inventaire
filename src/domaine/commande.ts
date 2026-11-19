@@ -34,7 +34,7 @@ import { libelleProduitFiche } from './libelles.ts';
 import { controlerSupplementEcriture, controlerSupplementPhoto, controlerSupplements, gateauxDeLigne } from './supplements.ts';
 import { controlerUnGateauParLigne } from './unGateauParLigne.ts';
 import { symbolesDuTexte, validerQuantiteMin, validerMaximum, validerTailleGateau } from './minimums.ts';
-import { GOUT_AU_CHOIX, validerGoutReserve, validerGouts, type ChoixGout } from './gouts.ts';
+import { GOUT_AU_CHOIX, demandeUneViande, validerGoutReserve, validerGouts, type ChoixGout } from './gouts.ts';
 import { deverrouillageValide, prixLigne } from './regimes.ts';
 import { gateauSurCommandeDe, validerComptoirSelonGout, validerPrixComptoir } from './prixComptoir.ts';
 import type { CorrespondanceComptoir } from './prixComptoir.ts';
@@ -353,9 +353,15 @@ export function controlerLigne(
   index: number,
   datePrise: DateISO,
   ctx: ContexteLigne,
+  /**
+   * Toutes les lignes de la commande, celle-ci comprise (même ordre que `index`).
+   * Sert à R73 : le minimum d'un burger se compte sur le TOTAL de ses lignes
+   * (une viande par ligne). Absent : la ligne est jugée seule.
+   */
+  fratrie?: readonly LigneSaisie[],
 ): Resultat<LigneControlee> {
   const p = `lignes[${index}].`;
-  const r = controlerLigneSansPrefixe(saisie, index, datePrise, ctx);
+  const r = controlerLigneSansPrefixe(saisie, index, datePrise, ctx, fratrie);
   if (!r.ok) return prefixerEchec(r, p);
   return succes(surLeGateau(r.donnees, saisie), ...r.signalements.map((s) => prefixerSignalement(s, p)));
 }
@@ -385,6 +391,7 @@ function controlerLigneSansPrefixe(
   index: number,
   datePrise: DateISO,
   ctx: ContexteLigne,
+  fratrie?: readonly LigneSaisie[],
 ): Resultat<LigneControlee> {
   const produitId = saisie.produitId?.trim() || null;
   const libelleLibre = saisie.libelle?.trim() || '';
@@ -434,8 +441,29 @@ function controlerLigneSansPrefixe(
   // compte (« 25 » = 2, même si « 1 » a été touché) ; sinon le nombre déclaré.
   const compte = fiche.prix.minParSymbole !== null ? symbolesDuTexte(saisie.formes, saisie.formesLibres === true) : null;
   const nbSymboles = compte ?? saisie.nbSymboles ?? undefined;
-  const min = validerQuantiteMin(fiche, saisie.quantite, { nbSymboles });
-  if (!min.ok) return min;
+  // R73 : un burger se commande une viande par ligne ; son minimum se compte sur
+  // le total de ses lignes (15 kefta + 5 tenders = 20, accepté). La sortie
+  // complète CETTE ligne : « Passer à 7 » quand une autre en porte déjà 3.
+  const autres =
+    fratrie && demandeUneViande(ctx.goutsSurCommande?.[fiche.produit.id])
+      ? fratrie.reduce(
+          (n, a, j) =>
+            j !== index && (a.produitId?.trim() || null) === fiche.produit.id && typeof a.quantite === 'number' && Number.isSafeInteger(a.quantite) && a.quantite > 0
+              ? n + a.quantite
+              : n,
+          0,
+        )
+      : 0;
+  const quantitePourMinimum =
+    autres > 0 && typeof saisie.quantite === 'number' && Number.isSafeInteger(saisie.quantite) && saisie.quantite > 0
+      ? saisie.quantite + autres
+      : saisie.quantite;
+  const min = validerQuantiteMin(fiche, quantitePourMinimum, { nbSymboles });
+  if (!min.ok) {
+    return autres > 0 && typeof min.valeurProposee === 'number'
+      ? { ...min, valeurProposee: Math.max(1, min.valeurProposee - autres) }
+      : min;
+  }
 
   // Tailles standard (LOI 11) : après le minimum, gâteaux simples seulement.
   const taille = validerTailleGateau(fiche, saisie.quantite, ctx.reglement.taillesGateau, saisie.deverrouillageTaille);
@@ -659,7 +687,7 @@ export type TotalEnCours = {
 export function totalEnCours(lignes: readonly LigneSaisie[], datePrise: DateISO, ctx: ContexteLigne): TotalEnCours {
   let complet = true;
   const montants = lignes.map((l, i) => {
-    const r = controlerLigne(l, i, datePrise, ctx);
+    const r = controlerLigne(l, i, datePrise, ctx, lignes);
     if (r.ok) return r.donnees.totalCentimes;
     complet = false;
     return montantCalculableLigne(l, datePrise, ctx);
@@ -715,7 +743,7 @@ function analyser(c: CommandeSaisie, ctx: ContexteCommande): Analyse {
     if (h !== undefined) heureRetrait = h;
   }
 
-  const resultatsLignes = c.lignes.map((l, i) => controlerLigne(l, i, c.datePrise, ctx));
+  const resultatsLignes = c.lignes.map((l, i) => controlerLigne(l, i, c.datePrise, ctx, c.lignes));
   // Ancien format (tablette pas à jour, file hors ligne) : l'écriture et la photo
   // de la COMMANDE deviennent celles de son premier gâteau (lot 2, 28/10/2026).
   if (!saisieParGateau(c) && (c.texteGateau || c.sansEcriture || c.photoImprimee)) {
@@ -784,7 +812,17 @@ function analyser(c: CommandeSaisie, ctx: ContexteCommande): Analyse {
     );
   }
   // Deux lignes du même gâteau = deux gâteaux (28/10/2026) : jamais « à fusionner ».
-  signalements.push(...reperesDoublons(lignes.map((l) => ({ produitId: l.produitId, libelle: l.libelle, nbGateaux: l.nbGateaux }))));
+  // Ni deux lignes d'un même burger à deux viandes différentes (R73, 19/11/2026).
+  signalements.push(
+    ...reperesDoublons(
+      lignes.map((l, i) => ({
+        produitId: l.produitId,
+        libelle: l.libelle,
+        nbGateaux: l.nbGateaux,
+        variante: l.produitId && demandeUneViande(ctx.goutsSurCommande?.[l.produitId]) ? (c.lignes[i]?.gouts?.[0] ?? null) : null,
+      })),
+    ),
+  );
 
   // Délai (n°17) puis jour même / lendemain (R53b, R53). Délai 0 par défaut
   // (jour même autorisé, décision du propriétaire du 18/10/2026) ; seul un

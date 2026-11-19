@@ -83,6 +83,8 @@ export type ParametresMessages = {
   /** `produit` absent quand le refus vient de la base. */
   ERR_NB_SYMBOLES_MANQUANT: { produit?: string };
   ERR_GOUT_MANQUANT: { produit: string; objet: string; etage: number | null };
+  /** R73 — burger sans viande, ou viande hors de la liste. `viandes` : la liste, dans l'ordre de la donnée. */
+  ERR_VIANDE_MANQUANTE: { produit: string; viandes: readonly string[] };
   /** R70 — goût autre que le goût par défaut (Crème fraîche → Vanille) sans le code du manager. */
   ERR_GOUT_RESERVE: { produit: string; gout: string; goutParDefaut: string };
   ERR_CONFLIT_COMPTAGE: { produit: string };
@@ -516,6 +518,16 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
       `Choisissez ${p.objet} ${p.etage !== null ? `de l’étage ${p.etage} ` : ''}pour « ${p.produit} ». ` +
       `Si le client hésite : « au choix du pâtissier ».`,
     correction: () => 'Au choix du pâtissier',
+  },
+  ERR_VIANDE_MANQUANTE: {
+    niveau: 'bloquant',
+    cas: 'Burger sans viande, ou viande hors de la liste (R73, 19/11/2026).',
+    message: (p) => {
+      const v = p.viandes;
+      const liste = v.length > 1 ? `${v.slice(0, -1).join(', ')} ou ${v[v.length - 1]}` : (v[0] ?? '');
+      return `Choisissez la viande pour « ${p.produit} »${liste ? ` : ${liste}` : ''}.`;
+    },
+    correction: (p) => p.viandes[0] ?? 'Choisir la viande',
   },
   ERR_GOUT_RESERVE: {
     niveau: 'bloquant',

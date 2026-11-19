@@ -87,6 +87,7 @@ const EXEMPLES: Partial<Record<CodeCatalogue, unknown>> = {
   ERR_QUANTITE_NEGATIVE: { produit: 'P' },
   ERR_NB_SYMBOLES_MANQUANT: { produit: 'Number Cake' },
   ERR_GOUT_MANQUANT: { produit: 'Pièce montée 3 étages', objet: 'le goût', etage: 3 },
+  ERR_VIANDE_MANQUANTE: { produit: 'Mini burger', viandes: ['Poulet tenders', 'Kefta', 'Viande hachée de poulet'] },
   ERR_GOUT_RESERVE: { produit: 'Crème fraîche', gout: 'Fraise', goutParDefaut: 'Vanille' },
   ERR_CONFLIT_COMPTAGE: { produit: 'P' },
   ERR_SUPPLEMENT_TROP_NOMBREUX: { max: 3, produit: 'P' },

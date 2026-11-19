@@ -106,7 +106,8 @@ test('1. 1 mini-burger (sous le minimum) + Layer sans taille : prix connu × qua
 });
 
 test('1. toutes les lignes admises : total complet, sans « à compléter »', () => {
-  const burgers = { ...toucherProduit([], ficheCatalogue(BURGER)).lignes[0], quantite: 10 };
+  // Viande choisie (R73, 19/11/2026) : sans elle la ligne n'est pas admise.
+  const burgers = { ...toucherProduit([], ficheCatalogue(BURGER)).lignes[0], quantite: 10, gouts: ['Kefta'] };
   const t = totalEnCours(saisies([burgers]), DATE, ctx);
   assert.equal(t.complet, true);
   assert.equal(t.totalCentimes, multiplier(10, prix(BURGER)));

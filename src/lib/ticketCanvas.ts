@@ -22,6 +22,8 @@ import { formaterHeure, lireHeure, nomJour } from '../domaine/reglement.ts';
 import { LIBELLES_FORME } from '../domaine/messages.ts';
 import { baseDuSupplement, familleDuProduit } from '../catalogue/familles.ts';
 import { LIBELLES_SELON_GOUT } from '../catalogue/libellesSelonGout.ts';
+import { GOUTS_SUR_COMMANDE } from '../catalogue/goutsSurCommande.ts';
+import { demandeUneViande } from '../domaine/gouts.ts';
 import { libelleSelonGout } from '../domaine/libelles.ts';
 
 export const DESTINATIONS = ['CLIENT', 'BUREAU', 'MAGASIN', 'ATELIER'] as const;
@@ -161,10 +163,14 @@ export function goutsAImprimer(gouts: readonly string[] | null | undefined): str
  * « ÉTAGE 1 : CHOCOLAT » puis « ÉTAGE 2 : VANILLE », étiquette collée au goût
  * par des insécables — jamais « ÉTAGE / 1 : ». null sans goût.
  */
-export function goutsLignesAImprimer(gouts: readonly string[] | null | undefined): string[] | null {
+export function goutsLignesAImprimer(
+  gouts: readonly string[] | null | undefined,
+  /** R73 : la valeur est la viande d'un burger → « VIANDE : KEFTA ». */
+  viande = false,
+): string[] | null {
   const g = (gouts ?? []).map((x) => x.trim()).filter(Boolean);
   if (g.length === 0) return null;
-  if (g.length === 1) return [collerEtiquette('GOÛT :', g[0].toUpperCase())];
+  if (g.length === 1) return [collerEtiquette(viande ? 'VIANDE :' : 'GOÛT :', g[0].toUpperCase())];
   return g.map((x, i) => collerEtiquette(`ÉTAGE ${i + 1} :`, x.toUpperCase()));
 }
 
@@ -323,7 +329,9 @@ export function formaterLigneTicket(ligne: LigneCommande, destination: Destinati
     formes: chiffresOuLettresAImprimer(ligne.formes),
     forme: collerApresDeuxPoints(formeDeLigne(ligne)),
     photoModele: collerApresDeuxPoints(photoModeleDeLigne(ligne)),
-    gouts: nomSelonGout ? null : goutsLignesAImprimer(ligne.gouts),
+    gouts: nomSelonGout
+      ? null
+      : goutsLignesAImprimer(ligne.gouts, demandeUneViande(GOUTS_SUR_COMMANDE[ligne.produitCatalogue?.cleCatalogue ?? ''])),
     decorations: ligne.decorations?.length ? collerEtiquette('Déco :', ligne.decorations.join(', ')) : null,
     ecriture: ecritureAImprimer(ligne),
     photoImprimee: ligne.photoImprimee === true ? MENTION_PHOTO_A_IMPRIMER : null,
