@@ -5,7 +5,7 @@
 // un Bavarois sur commande au goût Fraisier s'appelle « Fraisier », sans la
 // ligne « GOÛT : FRAISIER » (le nom dit déjà le goût). En 4/6/8 parts la ligne
 // est déjà « Fraisier NP » du comptoir (correspondancesComptoir.ts) ; cette
-// table sert au-delà (15, 20… parts, prix par personne).
+// table sert au-delà (10, 15, 20… parts, prix par personne).
 //
 // DONNÉE EXPLICITE (LOI 6), jamais déduite du nom. Le libellé remplacé est
 // celui du catalogue à la lettre (« Fraisier », rayon Gâteaux et tartes) ;
@@ -16,9 +16,10 @@ import type { LibelleSelonGout } from "../domaine/libelles.ts";
 
 export const LIBELLES_SELON_GOUT: readonly LibelleSelonGout[] = [
   { produit: "gateaux-sur-commande/bavarois", gout: "Fraisier", libelle: "Fraisier" },
-  // 10 parts : le comptoir ne fait pas de Fraisier 10P, la ligne est le
-  // « Bavarois 10P » (R60, entrée sans goût) ; au goût Fraisier elle se dit
-  // « Fraisier 10P ». HYPOTHÈSE À VALIDER (QUESTIONS-GERANT) : un Fraisier en
-  // 10 parts se fait-il, au prix du Bavarois 10P ?
-  { produit: "gateaux-et-tartes/bavarois/10p", gout: "Fraisier", libelle: "Fraisier 10P" },
+  // Même règle pour les autres gâteaux du comptoir qui portent leur propre nom
+  // (propriétaire, 19/11/2026) : au-dessus de 8 parts la ligne est le Bavarois
+  // sur commande au prix par personne, et elle garde le nom du gâteau.
+  { produit: "gateaux-sur-commande/bavarois", gout: "Matadi chocolat", libelle: "Matadi chocolat" },
+  { produit: "gateaux-sur-commande/bavarois", gout: "Mousse chocolat", libelle: "Mousse chocolat" },
+  { produit: "gateaux-sur-commande/bavarois", gout: "Forêt noire", libelle: "Forêt noire" },
 ];

@@ -196,9 +196,10 @@ test('R63 : gâteau devenu gâteau du comptoir (R60) — forme du gâteau comman
   const sans = refus({ produitId: ID.bavarois6p, quantite: 1, ...origine });
   assert.equal(sans.code, 'ERR_FORME_MANQUANTE');
   assert.equal(accepte({ produitId: ID.bavarois6p, quantite: 1, ...origine, forme: 'rond' }).forme, 'rond');
-  // Bavarois 10P : 10 parts (correspondance), pas 1 → carré d'office, rond refusé.
-  assert.equal(accepte({ produitId: ID.bavarois10p, quantite: 1, ...origine }).forme, 'carre');
-  assert.equal(refus({ produitId: ID.bavarois10p, quantite: 1, ...origine, forme: 'rond' }).code, 'ERR_FORME_ROND_IMPOSSIBLE');
+  // 10 parts : au prix par personne depuis le 19/11/2026 (plus de « Bavarois 10P »
+  // du comptoir pour un gâteau commandé) → carré d'office, rond refusé.
+  assert.equal(accepte(ligne(ID.bavarois, 10, { gouts: G })).forme, 'carre');
+  assert.equal(refus(ligne(ID.bavarois, 10, { gouts: G, forme: 'rond' })).code, 'ERR_FORME_ROND_IMPOSSIBLE');
 });
 
 test('R63 n’interdit pas : vitrine sans origine, Layer Cake, Number Cake, pièce montée, minis', () => {

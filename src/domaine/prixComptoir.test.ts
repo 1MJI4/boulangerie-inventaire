@@ -174,7 +174,7 @@ test('produitComptoirPourTaille au goût : entrée au goût d’abord, sinon ent
   assert.equal(produitComptoirPourTaille(ID.bavarois, 6, t, 'matadi chocolat'), 'gateaux-et-tartes/matadi-chocolat/6p');
   assert.equal(produitComptoirPourTaille(ID.bavarois, 6, t, 'Vanille'), ID.bavarois6p);
   assert.equal(produitComptoirPourTaille(ID.bavarois, 6, t, null), ID.bavarois6p);
-  assert.equal(produitComptoirPourTaille(ID.bavarois, 10, t, 'Framboise'), ID.bavarois10p, 'pas de framboise 10P au comptoir');
+  assert.equal(produitComptoirPourTaille(ID.bavarois, 10, t, 'Framboise'), null, '10 parts : prix par personne (19/11/2026)');
   assert.equal(produitComptoirPourTaille(ID.bavarois, 15, t, 'Framboise'), null);
   assert.equal(produitComptoirPourTaille(ID.creme, 6, t, 'Framboise'), 'gateaux-et-tartes/creme-fraiche/6p');
   // Seule une entrée au goût, pas d'entrée sans goût : autre goût → aucun équivalent.
@@ -189,7 +189,7 @@ test('produitComptoirPourTaille au goût : entrée au goût d’abord, sinon ent
 test('produitComptoirPourTaille : bavarois 6 → comptoir 6P ; crème fraîche 4 → aucun ; crème fraîche 8 → 8P', () => {
   const t = CORRESPONDANCES_COMPTOIR;
   assert.equal(produitComptoirPourTaille(ID.bavarois, 6, t), ID.bavarois6p);
-  assert.equal(produitComptoirPourTaille(ID.bavarois, 10, t), ID.bavarois10p);
+  assert.equal(produitComptoirPourTaille(ID.bavarois, 10, t), null, 'au-dessus de 8 parts : prix par personne (19/11/2026)');
   assert.equal(produitComptoirPourTaille(ID.bavarois, 15, t), null, 'pas de 15P au comptoir');
   assert.equal(produitComptoirPourTaille(ID.creme, 4, t), null, 'pas de crème fraîche 4P au comptoir');
   assert.equal(produitComptoirPourTaille(ID.creme, 8, t), ID.creme8p);

@@ -25,8 +25,8 @@ const BUCHES_ET_COEURS: Record<string, string> = {
   'Cœurs 9P': 'special-fin-dannee/coeurs-9p',
 };
 
-test('Bavarois sur commande : les goûts du comptoir en premier (propriétaire, 28/10/2026)', () => {
-  assert.deepEqual(BAVAROIS.goutsEnTete, ['Mangue', 'Fruits de la passion', 'Framboise', 'Fraisier', 'Matadi chocolat', 'Mousse chocolat']);
+test('Bavarois sur commande : les goûts du comptoir en premier (propriétaire, 28/10/2026 ; Forêt noire, 19/11/2026)', () => {
+  assert.deepEqual(BAVAROIS.goutsEnTete, ['Mangue', 'Fruits de la passion', 'Framboise', 'Fraisier', 'Matadi chocolat', 'Mousse chocolat', 'Forêt noire']);
 });
 
 test('chaque goût en tête du Bavarois est un gâteau du comptoir, libellé à la lettre (LOI 5)', () => {
@@ -39,7 +39,7 @@ test('chaque goût en tête du Bavarois est un gâteau du comptoir, libellé à 
 test('la liste du manager suit, sans doublon ni casse en double', () => {
   const liste = ['Chocolat', 'Vanille', 'Framboise', 'mousse chocolat', 'Pistache'];
   assert.deepEqual(ordonnerGouts(BAVAROIS.goutsEnTete, liste), [
-    'Mangue', 'Fruits de la passion', 'Framboise', 'Fraisier', 'Matadi chocolat', 'Mousse chocolat', 'Chocolat', 'Vanille', 'Pistache',
+    'Mangue', 'Fruits de la passion', 'Framboise', 'Fraisier', 'Matadi chocolat', 'Mousse chocolat', 'Forêt noire', 'Chocolat', 'Vanille', 'Pistache',
   ]);
   // Sans goûts en tête : la liste du manager telle quelle.
   assert.deepEqual(ordonnerGouts(undefined, ['Vanille', 'Vanille ', 'Fraise']), ['Vanille', 'Fraise']);

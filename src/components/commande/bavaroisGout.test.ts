@@ -97,8 +97,9 @@ const ATTENDU: { parts: number; gout: string | null; produit: string }[] = [
   { parts: 6, gout: 'Mousse chocolat', produit: 'gateaux-et-tartes/mousse-chocolat/6p' },
   { parts: 6, gout: 'Vanille', produit: 'gateaux-et-tartes/bavarois/6p' },
   { parts: 6, gout: null, produit: 'gateaux-et-tartes/bavarois/6p' },
-  { parts: 10, gout: 'Framboise', produit: 'gateaux-et-tartes/bavarois/10p' },
-  { parts: 10, gout: 'Fraisier', produit: 'gateaux-et-tartes/bavarois/10p' },
+  // 10 parts : plus de prix du comptoir (propriétaire, 19/11/2026) — prix par personne.
+  { parts: 10, gout: 'Framboise', produit: BAVAROIS },
+  { parts: 10, gout: 'Fraisier', produit: BAVAROIS },
   { parts: 15, gout: 'Framboise', produit: BAVAROIS },
   { parts: 20, gout: 'Matadi chocolat', produit: BAVAROIS },
 ];
@@ -239,9 +240,11 @@ test('Fraisier : « Bavarois goût Fraisier » s’écrit « Fraisier », à l�
   const quinze = choisirTaille(bavarois('Fraisier'), 15, catalogue, T);
   assert.equal(quinze.produitId, BAVAROIS);
   assert.equal(libelleLigneEcran(quinze, ficheDe(catalogue, BAVAROIS)!, LIBELLES_SELON_GOUT), 'Fraisier');
-  // 10 parts : Bavarois 10P du comptoir, dit « Fraisier 10P ».
+  // 10 parts : au prix par personne depuis le 19/11/2026, dit « Fraisier ».
   const dix = choisirTaille(bavarois('Fraisier'), 10, catalogue, T);
-  assert.equal(libelleLigneEcran(dix, ficheDe(catalogue, dix.produitId)!, LIBELLES_SELON_GOUT), 'Fraisier 10P');
+  assert.equal(dix.produitId, BAVAROIS);
+  assert.equal(dix.quantite, 10);
+  assert.equal(libelleLigneEcran(dix, ficheDe(catalogue, dix.produitId)!, LIBELLES_SELON_GOUT), 'Fraisier');
   // Autre goût : libellé du catalogue, inchangé.
   const vanille = choisirTaille(bavarois('Vanille'), 15, catalogue, T);
   assert.equal(libelleLigneEcran(vanille, ficheDe(catalogue, BAVAROIS)!, LIBELLES_SELON_GOUT), nom(BAVAROIS));

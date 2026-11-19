@@ -1,6 +1,9 @@
 // src/catalogue/correspondancesComptoir.ts
 // R60 — Gâteaux sur commande vendus au prix du COMPTOIR dans les tailles qui
-// existent au comptoir (décision du propriétaire du 18/10/2026).
+// existent au comptoir (décision du propriétaire du 18/10/2026), JUSQU'À 8
+// PARTS (propriétaire, 19/11/2026) : au-dessus, prix par personne. Aucune
+// entrée ne dépasse 8 parts — le « Bavarois 10P » reste un produit de la
+// vitrine, il ne remplace plus un gâteau commandé.
 // Propriétaire de la donnée : `catalogue-prix` ; règle appliquée par
 // `regles-metier` (src/domaine/prixComptoir.ts).
 //
@@ -26,11 +29,10 @@ export const CORRESPONDANCES_COMPTOIR: readonly CorrespondanceComptoir[] = [
   { surCommande: "gateaux-sur-commande/bavarois", parts: 4, comptoir: "gateaux-et-tartes/bavarois/4p" },
   { surCommande: "gateaux-sur-commande/bavarois", parts: 6, comptoir: "gateaux-et-tartes/bavarois/6p" },
   { surCommande: "gateaux-sur-commande/bavarois", parts: 8, comptoir: "gateaux-et-tartes/bavarois/8p" },
-  { surCommande: "gateaux-sur-commande/bavarois", parts: 10, comptoir: "gateaux-et-tartes/bavarois/10p" },
   // Le goût choisit le Bavarois du comptoir (propriétaire, 28/10/2026 :
   // « Matadi chocolat sur commande = Matadi du comptoir, même prix »). Goûts =
   // ceux de `goutsEnTete` (goutsSurCommande.ts), à la lettre. Le comptoir ne
-  // les fait qu'en 4P/6P/8P : en 10 parts, Bavarois 10P (entrée sans goût).
+  // les fait qu'en 4P/6P/8P : au-dessus, prix par personne (19/11/2026).
   // Matadi chocolat 4P : refusé à la commande par R65 (TAILLES_INTERDITES),
   // avec « Passer en Matadi chocolat 6P » — jamais vendu en Bavarois 4P.
   { surCommande: "gateaux-sur-commande/bavarois", parts: 4, gout: "Framboise", comptoir: "gateaux-et-tartes/bavarois-framboise/4p" },
@@ -51,6 +53,11 @@ export const CORRESPONDANCES_COMPTOIR: readonly CorrespondanceComptoir[] = [
   { surCommande: "gateaux-sur-commande/bavarois", parts: 4, gout: "Mousse chocolat", comptoir: "gateaux-et-tartes/mousse-chocolat/4p" },
   { surCommande: "gateaux-sur-commande/bavarois", parts: 6, gout: "Mousse chocolat", comptoir: "gateaux-et-tartes/mousse-chocolat/6p" },
   { surCommande: "gateaux-sur-commande/bavarois", parts: 8, gout: "Mousse chocolat", comptoir: "gateaux-et-tartes/mousse-chocolat/8p" },
+  // Forêt noire : prix du Bavarois (propriétaire, 19/11/2026) — son gâteau du
+  // comptoir en 4P/6P/8P, prix par personne du Bavarois au-dessus.
+  { surCommande: "gateaux-sur-commande/bavarois", parts: 4, gout: "Forêt noire", comptoir: "gateaux-et-tartes/foret-noire/4p" },
+  { surCommande: "gateaux-sur-commande/bavarois", parts: 6, gout: "Forêt noire", comptoir: "gateaux-et-tartes/foret-noire/6p" },
+  { surCommande: "gateaux-sur-commande/bavarois", parts: 8, gout: "Forêt noire", comptoir: "gateaux-et-tartes/foret-noire/8p" },
   // Crème fraîche : pas de 4P au comptoir → 4 parts reste au prix par personne.
   { surCommande: "gateaux-sur-commande/creme-fraiche", parts: 6, comptoir: "gateaux-et-tartes/creme-fraiche/6p" },
   { surCommande: "gateaux-sur-commande/creme-fraiche", parts: 8, comptoir: "gateaux-et-tartes/creme-fraiche/8p" },

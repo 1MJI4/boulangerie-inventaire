@@ -52,11 +52,11 @@ export const GOUTS_SUR_COMMANDE: Readonly<Record<string, ChoixGout>> = {
   },
   // Bavarois : d'abord les goûts que le magasin fait déjà au comptoir (rayon
   // Gâteaux et tartes, libellés du catalogue à la lettre), puis la liste du
-  // manager (propriétaire, 28/10/2026).
+  // manager (propriétaire, 28/10/2026). Forêt noire : 19/11/2026.
   'gateaux-sur-commande/bavarois': {
     liste: 'parfum',
     parEtage: false,
-    goutsEnTete: ['Mangue', 'Fruits de la passion', 'Framboise', 'Fraisier', 'Matadi chocolat', 'Mousse chocolat'],
+    goutsEnTete: ['Mangue', 'Fruits de la passion', 'Framboise', 'Fraisier', 'Matadi chocolat', 'Mousse chocolat', 'Forêt noire'],
   },
   'gateaux-sur-commande/layer-cake': { liste: 'parfum', parEtage: false },
   'gateaux-sur-commande/number-cake': { liste: 'parfum', parEtage: false },
