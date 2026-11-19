@@ -11,7 +11,7 @@
 
 import type { ReactNode } from 'react';
 import { IconeNiveau } from '@/components/signalement';
-import { attendUnVirement, LIBELLE_TYPE, resteAFaire, type Commande, type TypeCommande } from '@/lib/commandes';
+import { LIBELLE_TYPE, resteAFaire, type Commande, type TypeCommande } from '@/lib/commandes';
 import { niveauRetard } from '@/domaine/retard';
 import { formatDateRelative } from '@/lib/dateProduction';
 import { formaterEuros, resteDu } from '@/domaine/argent';
@@ -120,7 +120,6 @@ export function CelluleCommande({
       ? null
       : niveauRetard(commande.retraitLe, commande.retraitHeure, { date: aujourdhui, minutes });
   const date = formatDateRelative(commande.retraitLe, aujourdhui);
-  const virement = attendUnVirement(commande);
   return (
     <li>
       <button
@@ -149,7 +148,6 @@ export function CelluleCommande({
           <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
             {retard ? <Pastille ton={retard === 'retard-rouge' ? 'alerte' : 'avertissement'}>En retard</Pastille> : null}
             {avecStatut || commande.statut === 'a_imprimer' ? <PastilleStatut commande={commande} /> : null}
-            {virement ? <Pastille ton="avertissement">Virement à vérifier</Pastille> : null}
             {(types ?? []).map((t) => (
               <EtiquetteType key={t} type={t} />
             ))}

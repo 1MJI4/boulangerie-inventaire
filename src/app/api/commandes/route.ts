@@ -686,8 +686,9 @@ export async function POST(request: Request) {
           priseLe,
           idClient,
           modePaiement,
-          // Au comptoir l'argent est là (reçu à la prise) ; au téléphone il arrive par virement.
-          acompteRecuLe: modePaiement === 'especes' && resultat.donnees.acompteCentimes > 0 ? priseLe : null,
+          // Un acompte saisi est un acompte reçu, espèces ou virement (propriétaire,
+          // 19/11/2026 : il est vérifié tout de suite, sinon la commande est annulée).
+          acompteRecuLe: resultat.donnees.acompteCentimes > 0 ? priseLe : null,
           ...surLeGateauCommande(resultat),
           photoWhatsapp: corps.photoWhatsapp === true,
           demandeInhabituelle: prep.saisie.demandeInhabituelle === true,
@@ -1028,6 +1029,8 @@ export async function PATCH(request: Request) {
             client: prep.saisie.client,
             telephone: prep.saisie.telephone,
             ...surLeGateauCommande(resultat),
+            // Un acompte saisi est un acompte reçu (propriétaire, 19/11/2026).
+            ...(resultat.donnees.acompteCentimes > 0 && !existante.acompteRecuLe ? { acompteRecuLe: maintenant } : {}),
             demandeInhabituelle: prep.saisie.demandeInhabituelle === true,
             photoWhatsapp: corps.photoWhatsapp === true,
             zoneDessin: corps.zoneDessin === true,

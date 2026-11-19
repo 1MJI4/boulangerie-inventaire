@@ -14,6 +14,7 @@ import {
   ecritureDeCommande,
   infosParGateau,
   filtrerParType,
+  GROUPES,
   grouperCommandes,
   heureLisible,
   LIBELLE_STATUT_ECRAN,
@@ -185,7 +186,7 @@ test('tri par heure : sans heure en dernier, puis par numéro ; liste reçue inc
   assert.equal(liste[0].numero, 'c');
 });
 
-test('groupes de la liste : à imprimer, virements, retard, aujourd’hui, à venir', () => {
+test('groupes de la liste : à imprimer, retard, aujourd’hui, à venir — plus de « virements à vérifier » (propriétaire, 19/11/2026)', () => {
   const j = '2026-10-28';
   const liste = [
     commande({ id: 1, statut: 'a_imprimer', retraitLe: j }),
@@ -198,7 +199,9 @@ test('groupes de la liste : à imprimer, virements, retard, aujourd’hui, à ve
   assert.deepEqual(g.enRetard.map((c) => c.id), [2]);
   assert.deepEqual(g.duJour.map((c) => c.id), [3]);
   assert.deepEqual(g.aVenir.map((c) => c.id), [4]);
-  assert.deepEqual(g.virements.map((c) => c.id), [4]);
+  // Un acompte saisi est un acompte reçu : plus aucun groupe « à vérifier ».
+  assert.deepEqual(Object.keys(g).sort(), ['aImprimer', 'aVenir', 'duJour', 'enRetard']);
+  assert.deepEqual(GROUPES.map((x) => x.cle), ['aImprimer', 'enRetard', 'duJour', 'aVenir']);
 });
 
 test('retraits en retard : dès l’heure de retrait passée, le jour même (29/10/2026)', () => {

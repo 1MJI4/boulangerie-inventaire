@@ -645,7 +645,3 @@ l'avez pas confirmé ici.
      attendant : oui — dès qu'on change les produits, la date ou les montants d'une
      commande restée sans acompte, il faut saisir un acompte ou le code du gérant ; changer
      seulement le nom, le téléphone, l'heure ou une remarque reste possible sans rien.)*
-118. **Commande par téléphone ou WhatsApp payée par virement : l'acompte n'est pas encore
-     reçu au moment de la commande. Que saisit le vendeur ?** *(en attendant : il saisit le
-     montant annoncé au client ; la commande garde « virement à vérifier » jusqu'à
-     réception.)*

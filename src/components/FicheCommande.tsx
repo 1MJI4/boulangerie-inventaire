@@ -29,7 +29,7 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import { IconeNiveau, ListeSignalements, type SignalementAffichable } from '@/components/signalement';
+import { ListeSignalements, type SignalementAffichable } from '@/components/signalement';
 import { echecReseau, lireReponse } from '@/components/commande/modele';
 import { sortieDe } from '@/components/commande/sorties';
 import { EtiquetteType, Pastille, PastilleStatut } from '@/components/fiche/ElementsCommande';
@@ -52,7 +52,7 @@ import {
   majusculeInitiale,
 } from '@/components/fiche/presentationCommande';
 import { useEquipe } from '@/lib/vendeurs';
-import { attendUnVirement, depuisApi, HISTORIQUE_FICHE, HISTORIQUE_LISTE, typesDeCommande, type Commande, type CommandeApi } from '@/lib/commandes';
+import { depuisApi, HISTORIQUE_FICHE, HISTORIQUE_LISTE, typesDeCommande, type Commande, type CommandeApi } from '@/lib/commandes';
 import { formatDateLong } from '@/lib/dateProduction';
 import { formaterEuros, resteDu } from '@/domaine/argent';
 import { totalLigne } from '@/domaine/unites';
@@ -150,7 +150,6 @@ function Contenu({
   const [refusHistorique, setRefusHistorique] = useState<Echec | null>(null);
 
   const reste = resteDu(commande.totalCentimes, commande.acompteCentimes);
-  const virement = attendUnVirement(commande);
   const heure = heureLisible(commande.retraitHeure);
   const tel = commande.anonymiseeLe ? null : lienTelephone(commande.telephone);
   const ecriture = ecritureDeCommande(commande);
@@ -427,23 +426,6 @@ function Contenu({
           <Cellule libelle="Reste à payer">
             <span className="chiffres text-xl font-bold">{formaterEuros(reste)}</span>
           </Cellule>
-          {virement ? (
-            <li className="flex flex-wrap items-center gap-3 bg-avertissement-doux px-4 py-3">
-              <IconeNiveau niveau="avertissement" className="h-6 w-6 text-avertissement" />
-              <span className="min-w-0 flex-1 text-base">
-                <span className="block font-semibold text-avertissement">Virement à vérifier</span>
-                <span className="block text-sm text-ink">Communication «&nbsp;{commande.numero}&nbsp;»</span>
-              </span>
-              <button
-                type="button"
-                disabled={occupe}
-                onClick={() => void agir('acompte')}
-                className="min-h-11 rounded-full bg-surface px-4 text-base font-semibold text-ink shadow-sm disabled:opacity-60"
-              >
-                Virement reçu
-              </button>
-            </li>
-          ) : null}
         </Groupe>
 
         {historique.derniere ? (

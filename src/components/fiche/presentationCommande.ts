@@ -16,7 +16,7 @@ import { niveauRetard } from '../../domaine/retard.ts';
 import { LIBELLES_FORME } from '../../domaine/messages.ts';
 import { formaterHeure, lireHeure } from '../../domaine/reglement.ts';
 import { formaterQuantite } from '../../domaine/unites.ts';
-import { attendUnVirement, typesDeCommande, type Commande, type LigneCommande, type StatutCommande, type TypeCommande } from '../../lib/commandes.ts';
+import { typesDeCommande, type Commande, type LigneCommande, type StatutCommande, type TypeCommande } from '../../lib/commandes.ts';
 import { lectureQuantite } from '../../lib/ticketCanvas.ts';
 
 /* ---------------------------------------------------------------- Statut */
@@ -197,12 +197,11 @@ export function filtrerParType<T extends Pick<Commande, 'lignes'>>(commandes: re
 
 /* ------------------------------------------------- Groupes de la liste */
 
-export type CleGroupe = 'aImprimer' | 'virements' | 'enRetard' | 'duJour' | 'aVenir';
+export type CleGroupe = 'aImprimer' | 'enRetard' | 'duJour' | 'aVenir';
 
 /** Ordre d'affichage des groupes, et des filtres sous la recherche. */
 export const GROUPES: readonly { cle: CleGroupe; titre: string; ton?: 'accent' | 'attention' | 'alerte' }[] = [
   { cle: 'aImprimer', titre: 'À imprimer', ton: 'accent' },
-  { cle: 'virements', titre: 'Virements à vérifier', ton: 'attention' },
   { cle: 'enRetard', titre: 'Retraits en retard', ton: 'alerte' },
   { cle: 'duJour', titre: 'Aujourd’hui' },
   { cle: 'aVenir', titre: 'À venir' },
@@ -229,8 +228,9 @@ export function chercherCommandes<T extends CommandeListe>(commandes: readonly T
 
 /**
  * Groupes de la liste des commandes (mêmes groupes qu'avant la refonte) ;
- * chaque groupe trié par date puis heure de retrait. Une commande peut
- * figurer dans « À imprimer » ET « Virements à vérifier ».
+ * chaque groupe trié par date puis heure de retrait. Plus de groupe
+ * « Virements à vérifier » (propriétaire, 19/11/2026 : un acompte saisi est
+ * un acompte reçu, sinon la commande est annulée).
  */
 export function grouperCommandes<T extends CommandeListe>(
   commandes: readonly T[],
@@ -247,7 +247,6 @@ export function grouperCommandes<T extends CommandeListe>(
       : niveauRetard(c.retraitLe, c.retraitHeure, { date: aujourdhui, minutes }) !== null;
   return {
     aImprimer: parDate(commandes.filter((c) => c.statut === 'a_imprimer')),
-    virements: parDate(commandes.filter(attendUnVirement)),
     enRetard: parDate(imprimees.filter(enRetard)),
     duJour: parDate(imprimees.filter((c) => c.retraitLe.slice(0, 10) === aujourdhui && !enRetard(c))),
     aVenir: parDate(imprimees.filter((c) => c.retraitLe.slice(0, 10) > aujourdhui)),

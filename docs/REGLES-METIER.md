@@ -248,6 +248,8 @@ visibles du client.
   du total). N'importe quel montant suffit ; sous 50 % il reste un simple avertissement (R52). Le bouton « Pas d'acompte »
   devient « Sans acompte : code du gérant » : l'accord est noté sur la commande (nom + heure) et revérifié par le serveur.
   Si le réglage « acompte minimum » est mis à 0 %, plus aucun acompte n'est exigé.
+- **Plus de « Virement à vérifier »** : un acompte saisi est un acompte reçu, espèces ou virement (il est vérifié tout de
+  suite, sinon la commande est annulée). La mention, le groupe de la liste et le bouton « Virement reçu » sont retirés.
 - **Commande WhatsApp** : à l'étape Client, « WhatsApp » met le nom « WhatsApp » (modifiable) et n'exige plus le numéro.
   La fiche dit « prise par WhatsApp ».
 

@@ -45,7 +45,7 @@ export function CarteCommandes() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {resume === null ? null : resume.total === 0 && resume.virements === 0 ? (
+            {resume === null ? null : resume.total === 0 ? (
               <span className="text-sm text-ink-3">Rien en attente</span>
             ) : (
               <>
@@ -56,11 +56,6 @@ export function CarteCommandes() {
                 ) : null}
                 {resume.retraitsDuJour > 0 ? (
                   <Puce>{resume.retraitsDuJour} retrait{resume.retraitsDuJour > 1 ? 's' : ''} aujourd’hui</Puce>
-                ) : null}
-                {resume.virements > 0 ? (
-                  <Puce ton="attention">
-                    {resume.virements} virement{resume.virements > 1 ? 's' : ''} à vérifier
-                  </Puce>
                 ) : null}
               </>
             )}

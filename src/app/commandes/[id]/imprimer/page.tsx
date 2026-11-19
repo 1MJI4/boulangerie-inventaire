@@ -287,9 +287,6 @@ export default function ImprimerCommande() {
           <Puce ton={commande.statut === 'a_imprimer' ? 'accent' : 'ok'}>
             {commande.statut === 'a_imprimer' ? 'Bon à imprimer' : 'Bon imprimé'}
           </Puce>
-          {commande.modePaiement === 'virement' && !commande.acompteRecuLe ? (
-            <Puce ton="attention">Virement à vérifier</Puce>
-          ) : null}
           <Bouton onClick={() => void copierConfirmation()}>
             {copie ? 'Copié — collez dans WhatsApp' : 'Copier la confirmation'}
           </Bouton>

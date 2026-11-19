@@ -342,10 +342,6 @@ function formaterDateMessage(date: DateISO): string {
 
 /* ------------------------------------------------------------- Prédicats */
 
-export function attendUnVirement(commande: Pick<Commande, 'modePaiement' | 'acompteRecuLe' | 'statut'>): boolean {
-  return commande.modePaiement === 'virement' && !commande.acompteRecuLe && commande.statut !== 'annulee';
-}
-
 export function resteAFaire(commande: Pick<Commande, 'statut'>): boolean {
   return commande.statut === 'a_imprimer' || commande.statut === 'imprimee';
 }
@@ -354,11 +350,10 @@ export function resteAFaire(commande: Pick<Commande, 'statut'>): boolean {
 export function compterCeQuiReste(
   commandes: Pick<Commande, 'statut' | 'retraitLe' | 'modePaiement' | 'acompteRecuLe'>[],
   aujourdhui: DateISO = dateDuJour(),
-): { aImprimer: number; retraitsDuJour: number; virements: number; total: number } {
+): { aImprimer: number; retraitsDuJour: number; total: number } {
   const aImprimer = commandes.filter((c) => c.statut === 'a_imprimer').length;
   const retraitsDuJour = commandes.filter((c) => c.retraitLe === aujourdhui && resteAFaire(c)).length;
-  const virements = commandes.filter(attendUnVirement).length;
-  return { aImprimer, retraitsDuJour, virements, total: aImprimer + retraitsDuJour };
+  return { aImprimer, retraitsDuJour, total: aImprimer + retraitsDuJour };
 }
 
 /* ----------------------------------------------- Type de commande (accueil) */
