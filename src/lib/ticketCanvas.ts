@@ -22,12 +22,95 @@ import { formaterHeure, lireHeure, nomJour } from '../domaine/reglement.ts';
 import { LIBELLES_FORME } from '../domaine/messages.ts';
 import { baseDuSupplement, familleDuProduit } from '../catalogue/familles.ts';
 import { LIBELLES_SELON_GOUT } from '../catalogue/libellesSelonGout.ts';
+import { POSTES_PRODUCTION } from '../catalogue/postesProduction.ts';
+import { echeancePoste, repartirParPoste, type BonDePoste, type Poste } from '../domaine/postes.ts';
 import { GOUTS_SUR_COMMANDE } from '../catalogue/goutsSurCommande.ts';
 import { demandeUneViande } from '../domaine/gouts.ts';
 import { libelleSelonGout } from '../domaine/libelles.ts';
 
-export const DESTINATIONS = ['CLIENT', 'BUREAU', 'MAGASIN', 'ATELIER'] as const;
+/**
+ * Tous les papiers possibles. CLIENT, BUREAU, MAGASIN : le bon complet.
+ * PATISSIER, ATELIER, BOULANGER : bons de PRODUCTION (R74, propriétaire
+ * 19/11/2026) — un par poste concerné, ses seules lignes, sans prix. Les
+ * papiers d'UNE commande : `destinationsDeCommande`.
+ */
+export const DESTINATIONS = ['CLIENT', 'BUREAU', 'MAGASIN', 'PATISSIER', 'ATELIER', 'BOULANGER'] as const;
 export type Destination = (typeof DESTINATIONS)[number];
+
+/** Titre imprimé de chaque papier (l'identifiant reste sans accent : il voyage jusqu'à l'imprimante). */
+export const LIBELLE_DESTINATION: Readonly<Record<Destination, string>> = {
+  CLIENT: 'CLIENT',
+  BUREAU: 'BUREAU',
+  MAGASIN: 'MAGASIN',
+  PATISSIER: 'PÂTISSIER',
+  ATELIER: 'ATELIER',
+  BOULANGER: 'BOULANGER',
+};
+
+const POSTE_DU_BON: Readonly<Partial<Record<Destination, Poste>>> = { PATISSIER: 'patissier', ATELIER: 'atelier', BOULANGER: 'boulanger' };
+const BON_DU_POSTE: Readonly<Record<Poste, Destination>> = { patissier: 'PATISSIER', atelier: 'ATELIER', boulanger: 'BOULANGER' };
+const NOM_DU_POSTE: Readonly<Record<Poste, string>> = { patissier: 'pâtissier', atelier: 'atelier', boulanger: 'boulanger' };
+
+/** Bon de production (un poste), par opposition aux bons complets. */
+export function estBonDeProduction(destination: Destination): boolean {
+  return POSTE_DU_BON[destination] !== undefined;
+}
+
+type CommandePourPostes = Pick<Commande, 'lignes'>;
+
+/** Répartition des lignes de la commande entre les postes (règle du domaine, donnée du catalogue). */
+function postesDeCommande(commande: CommandePourPostes): BonDePoste[] {
+  return repartirParPoste(
+    commande.lignes.map((l) => ({
+      cle: l.produitCatalogue?.cleCatalogue ?? null,
+      rayon: l.produitCatalogue?.categorie ?? null,
+      quantite: l.quantite,
+      // Ligne libre : au pâtissier si elle est décrite comme un gâteau (poste, goût ou écriture).
+      gateauLibre: l.poste === 'patissier' || (l.gouts?.length ?? 0) > 0 || Boolean(l.texteGateau),
+    })),
+    POSTES_PRODUCTION,
+  );
+}
+
+/**
+ * Les papiers à sortir pour CETTE commande, dans l'ordre : CLIENT, BUREAU,
+ * MAGASIN, puis un bon de production par poste concerné (R74). Une commande de
+ * pâtisserie seule n'a pas de bon ATELIER ; des boissons seules, aucun bon de
+ * production.
+ */
+export function destinationsDeCommande(commande: CommandePourPostes): Destination[] {
+  return ['CLIENT', 'BUREAU', 'MAGASIN', ...postesDeCommande(commande).map((b) => BON_DU_POSTE[b.poste])];
+}
+
+/** « 8h00 » : heure d'échéance, comme l'heure de retrait sur le bon. */
+function heureEcheance(heure: string): string {
+  const minutes = lireHeure(heure);
+  return minutes === null ? heure : formaterHeure(minutes);
+}
+
+/**
+ * Échéance imprimée en gros sur le bon d'un poste : « PRÊT POUR 8h00 »
+ * (boulanger : 2 heures avant le retrait, `echeancePoste`). Avant minuit :
+ * « PRÊT POUR 23h00 LA VEILLE (20/11) ». null : pas d'échéance propre.
+ */
+export function echeanceDuBon(commande: Pick<Commande, 'retraitLe' | 'retraitHeure'>, destination: Destination): string | null {
+  const poste = POSTE_DU_BON[destination];
+  if (!poste) return null;
+  const e = echeancePoste(poste, commande.retraitLe, commande.retraitHeure);
+  if (!e) return null;
+  const base = `PRÊT POUR ${heureEcheance(e.heure)}`;
+  if (e.date === commande.retraitLe) return base;
+  const [, mois, jour] = e.date.split('-');
+  return `${base} LA VEILLE (${jour}/${mois})`;
+}
+
+/** « Aussi : pâtissier, atelier » — les autres postes qui travaillent sur la commande ; null s'il est seul. */
+export function autresPostesDuBon(commande: CommandePourPostes, destination: Destination): string | null {
+  const poste = POSTE_DU_BON[destination];
+  if (!poste) return null;
+  const autres = postesDeCommande(commande).map((b) => b.poste).filter((x) => x !== poste);
+  return autres.length > 0 ? `Aussi : ${autres.map((x) => NOM_DU_POSTE[x]).join(', ')}` : null;
+}
 
 /** 72 mm imprimables à 203 dpi. Ne pas changer sans changer de matériel. */
 export const LARGEUR = 576;
@@ -90,6 +173,10 @@ export type LigneTicket = {
   /** Ligne libre (hors catalogue) : son prix doit être validé par le pâtissier.
       Mention interne : toujours false sur l'exemplaire CLIENT. */
   aConfirmer: boolean;
+  /** R74, bon de production : ce que CE poste fait pour la ligne — « À FAIRE : LE PAIN ». null : il fait le produit. */
+  aFaire: string | null;
+  /** R74, bon de production : ce qu'un autre poste apporte — « Pain : boulanger, prêt à 8h00 ». */
+  autrePoste: string | null;
 };
 
 /**
@@ -339,6 +426,8 @@ export function formaterLigneTicket(ligne: LigneCommande, destination: Destinati
     // un trou visible à un chiffre faux sur un bon remis au client.
     prix: total.ok ? formaterEuros(total.donnees) : 'à confirmer',
     aConfirmer: Boolean(ligne.ligneLibreAutoriseePar) && estExemplaireInterne(destination),
+    aFaire: null,
+    autrePoste: null,
   };
 }
 
@@ -362,10 +451,39 @@ export function ecritureAImprimer(ligne: Pick<LigneCommande, 'texteGateau' | 'sa
  * les trois rendus (Star, ticket navigateur, A6).
  */
 export function lignesDuBon(
-  commande: Pick<Commande, 'lignes' | 'texteGateau' | 'sansEcriture' | 'photoImprimee'>,
+  commande: Pick<Commande, 'lignes' | 'texteGateau' | 'sansEcriture' | 'photoImprimee'> &
+    Partial<Pick<Commande, 'retraitLe' | 'retraitHeure'>>,
   destination: Destination,
 ): LigneTicket[] {
-  return lignesSurLeGateau(commande).map((l) => formaterLigneTicket(l, destination));
+  const toutes = lignesSurLeGateau(commande).map((l) => formaterLigneTicket(l, destination));
+  const poste = POSTE_DU_BON[destination];
+  if (!poste) return toutes;
+  // Bon de production (R74) : les seules lignes du poste, sans prix, avec ce
+  // qu'il doit faire et ce qu'un autre poste lui apporte.
+  const postes = postesDeCommande(commande);
+  const lesMiennes = postes.find((b) => b.poste === poste)?.lignes ?? [];
+  return lesMiennes.flatMap(({ index, role }) => {
+    const l = toutes[index];
+    if (!l) return [];
+    const apports = postes
+      .filter((b) => b.poste !== poste)
+      .flatMap((b) => {
+        const autre = b.lignes.find((x) => x.index === index);
+        if (!autre || !autre.role) return [];
+        const e = commande.retraitLe ? echeancePoste(b.poste, commande.retraitLe, commande.retraitHeure) : null;
+        const quoi = autre.role.replace(/^(le|la|les) /, '');
+        return [`${quoi.charAt(0).toLocaleUpperCase('fr')}${quoi.slice(1)}${INSECABLE}: ${NOM_DU_POSTE[b.poste]}${e ? `, prêt à ${heureEcheance(e.heure)}` : ''}`];
+      });
+    return [
+      {
+        ...l,
+        prix: '',
+        prixUnitaire: null,
+        aFaire: role ? collerEtiquette('À FAIRE :', role.toLocaleUpperCase('fr')) : null,
+        autrePoste: apports.length > 0 ? apports.join(' · ') : null,
+      },
+    ];
+  });
 }
 
 /**
@@ -377,6 +495,9 @@ export function lignesDuBon(
  */
 export function consignesDeLigne(ligne: LigneTicket): Consigne[] {
   const c: Consigne[] = [];
+  // R74 : ce que le poste doit faire, en premier ; ce qu'un autre apporte, juste après.
+  if (ligne.aFaire) c.push({ texte: ligne.aFaire, grand: true });
+  if (ligne.autrePoste) c.push({ texte: ligne.autrePoste });
   if (ligne.formes) c.push({ texte: ligne.formes, grand: true });
   for (const g of ligne.gouts ?? []) c.push({ texte: g });
   if (ligne.forme) c.push({ texte: ligne.forme });
@@ -672,7 +793,7 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
   plume.trait(3);
   plume.espace(10);
 
-  plume.bandeau(destination);
+  plume.bandeau(LIBELLE_DESTINATION[destination]);
   plume.espace(14);
 
   // Nouvelle version d'une commande déjà imprimée : l'atelier doit jeter l'ancien bon.
@@ -729,6 +850,22 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
   plume.cadre(hautRetrait, plume.y, 4);
   plume.espace(16);
 
+  // R74 : échéance du poste (boulanger : 2 heures avant le retrait), en gros, encadrée.
+  const echeance = echeanceDuBon(commande, destination);
+  if (echeance) {
+    const hautEcheance = plume.y;
+    plume.espace(10);
+    plume.texte(echeance, { taille: 34, gras: true, align: 'centre', interligne: 40, largeurMax: UTILE - 20 });
+    plume.espace(10);
+    plume.cadre(hautEcheance, plume.y, 5);
+    plume.espace(16);
+  }
+  const autresPostes = autresPostesDuBon(commande, destination);
+  if (autresPostes) {
+    plume.texte(autresPostes, { taille: 20, gras: true, interligne: 26 });
+    plume.espace(10);
+  }
+
   plume.etiquette('Produits commandés');
   plume.espace(2);
   plume.trait(3);
@@ -762,10 +899,13 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
     mention(plume, 'Remarques', commande.remarques, true);
   }
 
-  plume.espace(10);
-  montant(plume, 'Total', formaterEuros(commande.totalCentimes), true);
-  montant(plume, 'Acompte', formaterEuros(commande.acompteCentimes));
-  montant(plume, 'Restant dû', formaterEuros(reste));
+  // Bon de production (R74) : pas d'argent — le poste lit quoi faire, pas combien ça coûte.
+  if (!estBonDeProduction(destination)) {
+    plume.espace(10);
+    montant(plume, 'Total', formaterEuros(commande.totalCentimes), true);
+    montant(plume, 'Acompte', formaterEuros(commande.acompteCentimes));
+    montant(plume, 'Restant dû', formaterEuros(reste));
+  }
   plume.espace(16);
 
   if (pourLeClient) {

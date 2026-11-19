@@ -257,7 +257,7 @@ test('bon : deux Bavarois 6P = deux gâteaux distincts, chacun avec son écritur
     photoImprimee: false,
     lignes: [bav({ texteGateau: 'LINA', sansEcriture: false }), bav({ texteGateau: 'MARC', sansEcriture: false, photoModele: 'G043' })],
   };
-  for (const d of ['CLIENT', 'ATELIER'] as const) {
+  for (const d of ['CLIENT', 'MAGASIN'] as const) {
     const bon = lignesDuBon(c, d);
     assert.equal(bon.length, 2, d);
     const ecritures = bon.map((l) => consignesDeLigne(l).filter((x) => x.texte.startsWith('ÉCRITURE')).map((x) => x.texte.replace(/ /g, ' ')));

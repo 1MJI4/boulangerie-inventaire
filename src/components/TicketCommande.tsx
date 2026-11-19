@@ -19,18 +19,20 @@
 
 import { formaterEuros, type Commande } from '@/lib/commandes';
 import {
+  LIBELLE_DESTINATION,
   MENTION_LIGNE_LIBRE,
+  autresPostesDuBon,
   bandeauModification,
   consignesDeLigne,
   dateRetraitTicket,
   demandeAConfirmer,
+  echeanceDuBon,
+  estBonDeProduction,
   lignesDuBon,
   mentionHeureRetrait,
   zoneDessinImprimee,
+  type Destination,
 } from '@/lib/ticketCanvas';
-
-export const DESTINATIONS = ['CLIENT', 'BUREAU', 'MAGASIN', 'ATELIER'] as const;
-export type Destination = (typeof DESTINATIONS)[number];
 
 export function Ticket({
   destination,
@@ -49,6 +51,10 @@ export function Ticket({
   const avecKg = commande.lignes.some((l) => l.unite === 'kg');
   // Même règle que le ticket Star : une version modifiée le dit, pour qu'on jette l'ancien bon.
   const modification = bandeauModification(commande, destination);
+  // R74 : bon de production — échéance du poste, autres postes, pas de montants.
+  const production = estBonDeProduction(destination);
+  const echeance = echeanceDuBon(commande, destination);
+  const autresPostes = autresPostesDuBon(commande, destination);
 
   return (
     <div className={`ticket tk-p${rang}${avecKg ? ' tk-avec-kg' : ''}`}>
@@ -61,7 +67,7 @@ export function Ticket({
         </div>
       </div>
 
-      <div className="tk-dest">{destination}</div>
+      <div className="tk-dest">{LIBELLE_DESTINATION[destination]}</div>
 
       {modification ? (
         <div className={modification.consigne ? 'tk-modifiee' : 'tk-version'}>
@@ -99,6 +105,12 @@ export function Ticket({
         <b>{dateRetraitTicket(commande.retraitLe).longue}</b>
         {heure ? <i>{heure}</i> : null}
       </div>
+      {echeance ? (
+        <div className="tk-retrait">
+          <b>{echeance}</b>
+        </div>
+      ) : null}
+      {autresPostes ? <div className="tk-meta">{autresPostes}</div> : null}
 
       <div className="tk-titre">Produits commandés</div>
       {/* Écriture et photo à imprimer SOUS leur gâteau (lot 2, 28/10/2026). */}
@@ -147,20 +159,22 @@ export function Ticket({
         </div>
       ) : null}
 
-      <div className="tk-montants">
-        <div className="total">
-          <span>Total</span>
-          <b>{formaterEuros(commande.totalCentimes)}</b>
+      {production ? null : (
+        <div className="tk-montants">
+          <div className="total">
+            <span>Total</span>
+            <b>{formaterEuros(commande.totalCentimes)}</b>
+          </div>
+          <div>
+            <span>Acompte</span>
+            <b>{formaterEuros(commande.acompteCentimes)}</b>
+          </div>
+          <div>
+            <span>Restant dû</span>
+            <b>{formaterEuros(Math.max(0, reste))}</b>
+          </div>
         </div>
-        <div>
-          <span>Acompte</span>
-          <b>{formaterEuros(commande.acompteCentimes)}</b>
-        </div>
-        <div>
-          <span>Restant dû</span>
-          <b>{formaterEuros(Math.max(0, reste))}</b>
-        </div>
-      </div>
+      )}
 
       {/* La zone libre : seulement si le vendeur l'a demandée sur la commande
           (21/10/2026), jamais sur l'exemplaire du client. Sans elle, le

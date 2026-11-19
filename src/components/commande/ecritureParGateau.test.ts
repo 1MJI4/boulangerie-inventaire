@@ -297,7 +297,7 @@ test('bon : chaque écriture SOUS son gâteau, en grand ; photo à imprimer sous
       layerEnregistre({ texteGateau: null, sansEcriture: true, photoImprimee: false }),
     ],
   };
-  for (const d of ['CLIENT', 'BUREAU', 'MAGASIN', 'ATELIER'] as const) {
+  for (const d of ['CLIENT', 'BUREAU', 'MAGASIN'] as const) {
     const consignes = lignesDuBon(c, d).map((l) => consignesDeLigne(l));
     const ecriture = (k: number) => consignes[k].find((x) => x.texte.startsWith('ÉCRITURE'));
     assert.equal(ecriture(0)?.texte.replace(/\u00a0/g, ' '), 'ÉCRITURE : JOYEUX ANNIVERSAIRE LINA', d);
@@ -312,7 +312,7 @@ test('bon : chaque écriture SOUS son gâteau, en grand ; photo à imprimer sous
 
 test('bon d’une commande ancienne : son écriture s’imprime sous le premier gâteau', () => {
   const c = { texteGateau: 'BRAVO', sansEcriture: false, photoImprimee: false, lignes: [burgerEnregistre(), layerEnregistre()] };
-  const consignes = lignesDuBon(c, 'ATELIER').map((l) => consignesDeLigne(l).map((x) => x.texte.replace(/\u00a0/g, ' ')));
+  const consignes = lignesDuBon(c, 'MAGASIN').map((l) => consignesDeLigne(l).map((x) => x.texte.replace(/\u00a0/g, ' ')));
   assert.deepEqual(consignes[0].filter((t) => t.startsWith('ÉCRITURE')), []);
   assert.ok(consignes[1].includes('ÉCRITURE : BRAVO'));
 });

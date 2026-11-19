@@ -201,6 +201,15 @@ viande par ligne** : 15 kefta et 15 tenders font deux lignes, jamais signalées 
 Le minimum de 10 se compte alors sur le **total des lignes** du même burger (15 + 5 = accepté).
 Liste et produits = donnée (`src/catalogue/goutsSurCommande.ts`).
 
+Postes de production (R74, décision du propriétaire 19/11/2026) : en plus des bons CLIENT,
+BUREAU et MAGASIN, il sort **un papier par poste concerné** — PÂTISSIER, ATELIER, BOULANGER —
+avec ses seules lignes, **sans prix**. Pain des burgers et du batbout farci, pâte du msemen et
+du meloui (cuits), batbout : boulanger ; crêpes farcies : boulanger prévenu **au-delà de 5 sur
+la commande** ; viennoiseries et minis sucrés : pâtissier. Le papier du boulanger porte son
+échéance, **2 heures avant le retrait** (réglage `AVANCE_POSTE_MINUTES`). Chaque papier se
+réimprime seul, en 1 ou 2 exemplaires. Qui fait quoi = donnée
+(`src/catalogue/postesProduction.ts`), jamais déduite du nom ; règle : `src/domaine/postes.ts`.
+
 Saisie (R61, décision du propriétaire 22/10/2026) : un gâteau par personne à minimum
 (Layer Cake, Number Cake, pièces montées) se choisit aux **boutons de taille**, comme le
 Bavarois, en partant de **son minimum, de 5 en 5** (Layer 20, 25, 30…). Raccourcis, pas une

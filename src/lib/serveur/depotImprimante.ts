@@ -13,7 +13,7 @@ import type { Sql } from 'postgres';
 import type { DepotImprimante, TravailEnFile, TravailRemis } from './cloudprnt.ts';
 
 const CLE_ETAT = 'imprimante:etat';
-const DETAIL_IMPRESSION = 'quatre exemplaires sortis sur le rouleau';
+const DETAIL_IMPRESSION = 'bons sortis sur le rouleau';
 
 export function depotPrisma(prisma: PrismaClient): DepotImprimante {
   return {

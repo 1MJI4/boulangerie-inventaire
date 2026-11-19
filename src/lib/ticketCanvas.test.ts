@@ -221,6 +221,9 @@ function commande(partiel: Partial<Commande> = {}): Commande {
   } as Commande;
 }
 
+/** Les papiers d'une commande de test (lignes hors catalogue : atelier). Bons par poste : bonsParPoste.test.ts. */
+const PAPIERS = ['CLIENT', 'BUREAU', 'MAGASIN', 'ATELIER'] as const satisfies readonly (typeof DESTINATIONS)[number][];
+
 function textes(destination: (typeof DESTINATIONS)[number], c: Commande) {
   const { ctx, traces } = contexteFactice();
   dessinerSurContexte(ctx, destination, c);
@@ -228,7 +231,7 @@ function textes(destination: (typeof DESTINATIONS)[number], c: Commande) {
 }
 
 test('ticket : date de retrait en capitales avec le jour du domaine, et l’heure « à 14h30 »', () => {
-  for (const d of DESTINATIONS) {
+  for (const d of PAPIERS) {
     const t = textes(d, commande()).map((x) => x.texte);
     assert.ok(t.includes(d24()), d);
     assert.ok(t.includes('à 14h30'), d);
@@ -243,7 +246,7 @@ test('ticket : sans heure de retrait, aucune mention d’heure (ni « à null »
 });
 
 test('ticket : numéro de commande présent sur les 4 exemplaires, en petit', () => {
-  for (const d of DESTINATIONS) {
+  for (const d of PAPIERS) {
     const n = textes(d, commande()).find((x) => x.texte.includes('C-2026-0042') && x.texte.startsWith('Commande'));
     assert.ok(n, d);
     assert.ok(n.taille <= 20, `${d} : ${n.taille}`);
@@ -252,7 +255,7 @@ test('ticket : numéro de commande présent sur les 4 exemplaires, en petit', ()
 
 test('ticket : aucun texte ne sort des 576 points, libellés coupés entre deux mots', () => {
   const c = commande();
-  for (const d of DESTINATIONS) {
+  for (const d of PAPIERS) {
     for (const x of textes(d, c)) assert.ok(x.x >= 0 && x.x + x.largeur <= LARGEUR, `${d} : « ${x.texte} »`);
   }
   // Les morceaux du libellé long, remis bout à bout, redonnent le libellé à la lettre (LOI 5).
@@ -373,7 +376,7 @@ test('R63 : la forme passe par la ligne du ticket ; rien sans forme ; distincte 
 
 test('ticket : « FORME : CARRÉ » en gras sur les 4 exemplaires, dans la colonne ; rien si forme null', () => {
   const avec = commande({ lignes: [ligneAvecForme('carre')] });
-  for (const d of DESTINATIONS) {
+  for (const d of PAPIERS) {
     const { ctx, traces } = contexteFactice();
     const polices: string[] = [];
     const tracer = ctx.fillText.bind(ctx);
@@ -388,7 +391,7 @@ test('ticket : « FORME : CARRÉ » en gras sur les 4 exemplaires, dans la colon
     assert.ok(t.x + t.largeur <= LARGEUR, d);
   }
   const sans = commande({ lignes: [ligneAvecForme(null)] });
-  for (const d of DESTINATIONS) assert.ok(!textes(d, sans).some((x) => lu(x.texte).startsWith('FORME ')), d);
+  for (const d of PAPIERS) assert.ok(!textes(d, sans).some((x) => lu(x.texte).startsWith('FORME ')), d);
 });
 
 test('Pâte à sucre : supplément par personne — « Pâte à sucre — 24 parts », sans « × », ni forme ni goût', () => {
@@ -408,7 +411,7 @@ test('Pâte à sucre : supplément par personne — « Pâte à sucre — 24 par
   assert.equal(l.forme, null);
   assert.equal(l.formes, null);
   assert.equal(l.gouts, null);
-  const t = textes('ATELIER', commande({ lignes: [ligneAvecForme('carre', { libelle: 'Bavarois' }), pate] })).map((x) => lu(x.texte));
+  const t = textes('MAGASIN', commande({ lignes: [ligneAvecForme('carre', { libelle: 'Bavarois' }), pate] })).map((x) => lu(x.texte));
   assert.ok(t.includes('Pâte à sucre — 24 parts'), t.join(' | '));
   assert.ok(!t.includes('24 ×'));
   assert.ok(t.includes('240,00 €'));
@@ -436,7 +439,7 @@ test('photo modèle : « Photo sélectionnée : G043 », rien si null / vide / a
 test('ticket : « Photo sélectionnée : G043 » en gras sur les 4 exemplaires (CLIENT compris), après la forme, dans 576 points', () => {
   const attendu = 'Photo sélectionnée : G043';
   const avec = commande({ lignes: [{ ...ligneAvecForme('carre'), photoModele: 'G043' } as LigneCommande] });
-  for (const d of DESTINATIONS) {
+  for (const d of PAPIERS) {
     const { ctx, traces } = contexteFactice();
     const polices: string[] = [];
     const tracer = ctx.fillText.bind(ctx);
@@ -460,13 +463,13 @@ test('ticket : « Photo sélectionnée : G043 » en gras sur les 4 exemplaires (
     assert.ok(iForme >= 0 && iForme < i, `${d} : juste après la forme`);
   }
   const sans = commande({ lignes: [ligneAvecPhoto(null)] });
-  for (const d of DESTINATIONS) assert.ok(!textes(d, sans).some((x) => x.texte.startsWith('Photo sélectionnée')), d);
+  for (const d of PAPIERS) assert.ok(!textes(d, sans).some((x) => x.texte.startsWith('Photo sélectionnée')), d);
 });
 
 /* ------------------- Champs vides : rien d'imprimé (propriétaire, 26/10/2026) */
 
 test('ticket : champ vide jamais imprimé — ni « NOM » / « TÉLÉPHONE » seuls, ni tiret « — »', () => {
-  for (const d of DESTINATIONS) {
+  for (const d of PAPIERS) {
     const plein = textes(d, commande()).map((x) => x.texte);
     assert.ok(plein.includes('NOM') && plein.includes('TÉLÉPHONE'), d);
     const vide = textes(d, commande({ client: '', telephone: '  ' })).map((x) => x.texte);
@@ -476,7 +479,7 @@ test('ticket : champ vide jamais imprimé — ni « NOM » / « TÉLÉPHONE » s
 
 test('ticket : sans photo, sans modèle WhatsApp, sans remarque, sans demande inhabituelle → aucune de ces lignes', () => {
   const nue = commande({ photoImprimee: false, photoWhatsapp: false, remarques: null, demandeInhabituelle: false, texteGateau: null, sansEcriture: false });
-  for (const d of DESTINATIONS) {
+  for (const d of PAPIERS) {
     const t = textes(d, nue).map((x) => x.texte.toUpperCase()).join(' | ');
     for (const m of ['PHOTO', 'MODÈLE', 'REMARQUES', 'DEMANDE INHABITUELLE', 'ÉCRITURE', 'SUR LE GÂTEAU']) assert.ok(!t.includes(m), `${d} : ${m}`);
   }
@@ -484,7 +487,7 @@ test('ticket : sans photo, sans modèle WhatsApp, sans remarque, sans demande in
 
 test('ticket : « sans écriture » jamais imprimé, sur aucun exemplaire (propriétaire, 26/10/2026)', () => {
   const c = commande({ texteGateau: null, sansEcriture: true });
-  for (const d of DESTINATIONS) {
+  for (const d of PAPIERS) {
     const t = textes(d, c).map((x) => x.texte.toUpperCase()).join(' | ');
     assert.ok(!t.includes('ÉCRITURE') && !t.includes('DEMANDÉ AU CLIENT'), d);
   }
@@ -527,14 +530,15 @@ test('gâteau par personne : « 1 gâteau — 20 PARTS » en gras, plus jamais �
   // Le calcul reste lisible, sans « × » : total par le domaine, prix par personne de la ligne.
   assert.equal(l.prix, '200,00 €');
   assert.equal(l.prixUnitaire, '10,00 € par personne');
-  for (const d of DESTINATIONS) {
+  for (const d of PAPIERS) {
     const t = tracesAvecPolices(d, commande({ lignes: [gateauParPersonne()] }));
     const parts = t.find((x) => x.texte === '1 gâteau — 20 PARTS');
     assert.ok(parts, d);
     assert.ok(parts.gras && parts.taille >= TAILLE_PRODUIT, `${d} : gras, gros`);
     assert.ok(!t.some((x) => x.texte.includes('20 ×')), `${d} : aucun « 20 × »`);
     assert.ok(t.some((x) => x.texte === 'Layer Cake'), d);
-    assert.ok(t.some((x) => x.texte === '200,00 €'), `${d} : prix gardé (ATELIER compris)`);
+    // R74 : un bon de production ne porte aucun prix.
+    assert.equal(t.some((x) => x.texte === '200,00 €'), d !== 'ATELIER', `${d} : prix sur les bons complets seulement`);
   }
 });
 
@@ -573,7 +577,7 @@ test('pièce montée : une ligne par étage, « ÉTAGE 1 : CHOCOLAT » puis « �
   assert.deepEqual(goutsLignesAImprimer(['Framboise'])?.map(lu), ['GOÛT : FRAMBOISE']);
   assert.equal(goutsLignesAImprimer([' ', '']), null);
   const pm = gateauParPersonne({ libelle: 'Pièce montée 2 étages', quantite: 40, gouts: ['Chocolat', 'Vanille'] });
-  for (const d of DESTINATIONS) {
+  for (const d of PAPIERS) {
     const t = tracesAvecPolices(d, commande({ lignes: [pm] }));
     const i1 = t.findIndex((x) => x.texte === 'ÉTAGE 1 : CHOCOLAT');
     const i2 = t.findIndex((x) => x.texte === 'ÉTAGE 2 : VANILLE');
@@ -597,7 +601,7 @@ test('consigne longue sur toute la largeur : « GOÛT : MOUSSE CHOCOLAT », « P
     ...gateauParPersonne({ libelle: 'Pièce montée 2 étages', quantite: 40, gouts: ['Mousse chocolat'] }),
     photoModele: 'G006',
   } as LigneCommande;
-  for (const d of DESTINATIONS) {
+  for (const d of PAPIERS) {
     const t = tracesAvecPolices(d, commande({ lignes: [pm] }));
     for (const attendu of ['GOÛT : MOUSSE CHOCOLAT', 'Photo sélectionnée : G006', 'Pièce montée 2 étages', '1 gâteau — 40 PARTS']) {
       const x = t.find((y) => y.texte === attendu);
@@ -626,7 +630,7 @@ test('Number Cake : « CHIFFRES OU LETTRES : 2  5 », double espace conservé ju
   // La découpe ne réduit plus les espaces entre deux mots.
   assert.deepEqual(couperTexte('2  5', 1000, (s) => s.length), ['2  5']);
   const nc = gateauParPersonne({ libelle: 'Number Cake', quantite: 30, formes: '25', nbSymboles: 2 });
-  for (const d of DESTINATIONS) {
+  for (const d of PAPIERS) {
     const t = tracesAvecPolices(d, commande({ lignes: [nc] }));
     const x = t.find((y) => y.texte.startsWith('CHIFFRES OU LETTRES'));
     assert.ok(x, d);
@@ -650,7 +654,7 @@ test('bandeau « MODIFIÉE » : même règle pour les trois formats ; CLIENT : �
 });
 
 test('écriture : rien d’imprimé sans écriture, l’écriture SOUS son gâteau si elle existe (lot 2, 28/10/2026)', () => {
-  for (const d of DESTINATIONS) {
+  for (const d of PAPIERS) {
     const sans = textes(d, commande({ texteGateau: null })).map((x) => x.texte.toUpperCase()).join(' | ');
     assert.ok(!sans.includes('SUR LE GÂTEAU') && !sans.includes('ÉCRITURE'), d);
     // Commande ancienne : l'écriture de la commande s'imprime sous la première ligne.

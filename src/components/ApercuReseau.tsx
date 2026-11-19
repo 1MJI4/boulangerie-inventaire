@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alerte, Bouton, Puce } from '@/components/ui';
-import { DESTINATIONS, dessinerTicket, type Destination } from '@/lib/ticketCanvas';
+import { destinationsDeCommande, dessinerTicket, type Destination } from '@/lib/ticketCanvas';
 import { enBase64, pngMonochrome, zlibNavigateur } from '@/lib/pngMonochrome';
 import type { Commande } from '@/lib/commandes';
 import { suivreImpression } from '@/lib/suiviImpression';
@@ -37,7 +37,14 @@ const LIBELLE_STATUT: Record<string, string> = {
 };
 
 /** Nom d'un bon à l'écran, sans capitales criées (les capitales restent sur le papier). */
-const NOM_BON: Record<string, string> = { CLIENT: 'Client', BUREAU: 'Bureau', MAGASIN: 'Magasin', ATELIER: 'Atelier' };
+const NOM_BON: Record<string, string> = {
+  CLIENT: 'Client',
+  BUREAU: 'Bureau',
+  MAGASIN: 'Magasin',
+  PATISSIER: 'Pâtissier',
+  ATELIER: 'Atelier',
+  BOULANGER: 'Boulanger',
+};
 const nomBon = (destination: string) => NOM_BON[destination] ?? destination;
 
 /** Sans nouvelle de l'imprimante depuis ce délai, on la dit injoignable. */
@@ -69,6 +76,9 @@ export function ApercuReseau({
   pendantImpression?: ReactNode;
 }) {
   const conteneur = useRef<HTMLDivElement>(null);
+  // R74 : les papiers de CETTE commande — client, bureau, magasin, puis un bon
+  // par poste concerné (pâtissier, atelier, boulanger).
+  const papiersCommande = useMemo(() => destinationsDeCommande(commande), [commande]);
   const ticketsPrets = useRef<Promise<TicketEncode[]> | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -96,7 +106,7 @@ export function ApercuReseau({
     const hote = conteneur.current;
     if (!hote) return;
     hote.replaceChildren();
-    for (const destination of DESTINATIONS) {
+    for (const destination of papiersCommande) {
       const canvas = dessinerTicket(destination, commande);
       canvas.className = 'ticket-apercu';
       // 80 mm à l'écran, quelle que soit la densité de l'écran.
@@ -107,7 +117,7 @@ export function ApercuReseau({
     // Les images partent prêtes : on les encode dès l'affichage, pendant que le
     // vendeur relit l'aperçu, pour que le toucher « Envoyer » parte aussitôt.
     const canvases = Array.from(hote.querySelectorAll('canvas'));
-    const preparation = encoderTickets(canvases);
+    const preparation = encoderTickets(canvases, papiersCommande);
     preparation
       .then((tickets) => {
         const tous = Object.fromEntries(
@@ -118,7 +128,7 @@ export function ApercuReseau({
       })
       .catch(() => undefined);
     ticketsPrets.current = preparation;
-  }, [commande]);
+  }, [commande, papiersCommande]);
 
   const rafraichir = useCallback(async () => {
     try {
@@ -203,24 +213,31 @@ export function ApercuReseau({
   // Un double toucher rapide arrive avant que le bouton soit désactivé à l'écran.
   const envoiEnVol = useRef(false);
 
-  const envoyer = async () => {
+  /**
+   * Sans argument : tous les papiers de la commande. Avec `choix` : seulement
+   * ceux-là, un papier pouvant y figurer deux fois (deux exemplaires).
+   */
+  const envoyer = async (choix?: Destination[]) => {
     const hote = conteneur.current;
     if (!hote || envoiEnVol.current) return;
+    const aSortir = choix ?? papiersCommande;
     envoiEnVol.current = true;
     setEnvoi(true);
     setErreur(null);
-    // Le retour est immédiat : les 4 tickets apparaissent « en file » dès le
+    // Le retour est immédiat : les tickets apparaissent « en file » dès le
     // toucher, pendant que les images se préparent et partent.
-    setTravaux(enFile());
+    setTravaux(enFile(aSortir));
     setVuEnDirect(true);
     lotRef.current = null;
     vusRef.current = new Set();
     setLot(null);
     try {
       // Déjà prêtes le plus souvent ; sinon (préparation échouée) on refait.
-      const tickets = await (ticketsPrets.current ?? Promise.reject(new Error())).catch(() =>
-        encoderTickets(Array.from(hote.querySelectorAll('canvas'))),
+      const prets = await (ticketsPrets.current ?? Promise.reject(new Error())).catch(() =>
+        encoderTickets(Array.from(hote.querySelectorAll('canvas')), papiersCommande),
       );
+      const tickets = aSortir.flatMap((d) => prets.filter((t) => t.destination === d));
+      if (tickets.length !== aSortir.length) throw new Error(messagePour('ERR_BON_ILLISIBLE', {}));
       let reponse: Response;
       try {
         reponse = await fetch('/api/impression', {
@@ -239,7 +256,7 @@ export function ApercuReseau({
       }
       // Déposés : le vendeur peut partir, le voyant en bas d'écran prend le relais.
       suivreImpression(commande.id, commande.numero);
-      setTravaux(enFile());
+      setTravaux(enFile(aSortir));
       setDernierProgres(Date.now());
       setVuEnDirect(true);
       setSuivi(true);
@@ -310,6 +327,35 @@ export function ApercuReseau({
         </Puce>
       </div>
 
+      {/* Un papier perdu, taché, ou à donner à deux personnes : on le ressort seul,
+          en un ou deux exemplaires (propriétaire, 19/11/2026). */}
+      <div className="mb-4 w-full max-w-md rounded-xl border border-line bg-surface p-3">
+        <p className="mb-2 text-sm font-medium text-ink">Un seul papier, en 1 ou 2 exemplaires</p>
+        <ul className="space-y-1.5">
+          {papiersCommande.map((destination) => (
+            <li key={destination} className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 text-sm text-ink">{nomBon(destination)}</span>
+              <Bouton
+                className="min-h-11 px-3"
+                disabled={verrouille}
+                aria-label={`Imprimer 1 exemplaire du bon ${nomBon(destination)}`}
+                onClick={() => void envoyer([destination])}
+              >
+                1 exemplaire
+              </Bouton>
+              <Bouton
+                className="min-h-11 px-3"
+                disabled={verrouille}
+                aria-label={`Imprimer 2 exemplaires du bon ${nomBon(destination)}`}
+                onClick={() => void envoyer([destination, destination])}
+              >
+                2 exemplaires
+              </Bouton>
+            </li>
+          ))}
+        </ul>
+      </div>
+
       {erreur ? <div className="mb-4"><Alerte>{erreur}</Alerte></div> : null}
 
       {travaux.length > 0 && vuEnDirect ? (
@@ -349,7 +395,9 @@ export function ApercuReseau({
             <div>
               <p className="text-base font-semibold text-ink">
                 {tousSortis
-                  ? `✓ Les ${travaux.length} bons sont sortis`
+                  ? travaux.length === 1
+                    ? '✓ Le bon est sorti'
+                    : `✓ Les ${travaux.length} bons sont sortis`
                   : bloque
                     ? 'L’impression n’avance plus'
                     : envoi || sortis === 0
@@ -453,14 +501,14 @@ const LIGNES_PAR_DEFAUT = 1000;
  * ticket en couleur dépasse la mémoire de l'imprimante (« 511 Media Decoding
  * Error », voir src/lib/pngMonochrome.ts).
  */
-function encoderTickets(canvases: HTMLCanvasElement[]): Promise<TicketEncode[]> {
+function encoderTickets(canvases: HTMLCanvasElement[], papiers: readonly Destination[]): Promise<TicketEncode[]> {
   return Promise.all(
     canvases.map(async (canvas, index) => {
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error(messagePour('ERR_BON_ILLISIBLE', {}));
       const points = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
       const png = await pngMonochrome(points, canvas.width, canvas.height, zlibNavigateur);
-      return { destination: DESTINATIONS[index] as Destination, png: enBase64(png), hauteur: canvas.height };
+      return { destination: papiers[index], png: enBase64(png), hauteur: canvas.height };
     }),
   );
 }
@@ -481,9 +529,9 @@ function progression(travaux: Travail[], dernierProgres: number, maintenant: num
   return Math.max(0.04, (faites + glisse) / etapes);
 }
 
-/** Les 4 exemplaires « en file », affichés sans attendre le premier tour de suivi. */
-function enFile(): Travail[] {
-  return DESTINATIONS.map((destination, index) => ({
+/** Les papiers envoyés, « en file », affichés sans attendre le premier tour de suivi. */
+function enFile(papiers: readonly Destination[]): Travail[] {
+  return papiers.map((destination, index) => ({
     id: -1 - index,
     destination,
     statut: 'en_attente',

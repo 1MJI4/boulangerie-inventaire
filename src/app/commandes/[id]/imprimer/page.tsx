@@ -17,14 +17,20 @@ import { useMemoireLocale } from '@/lib/memoireLocale';
 import { CSS_TICKET, Ticket, reglesPagesTicket } from '@/components/TicketCommande';
 import { ApercuReseau } from '@/components/ApercuReseau';
 import {
+  LIBELLE_DESTINATION,
   MENTION_LIGNE_LIBRE,
+  autresPostesDuBon,
   bandeauModification,
   consignesDeLigne,
   dateRetraitTicket,
   demandeAConfirmer,
+  destinationsDeCommande,
+  echeanceDuBon,
+  estBonDeProduction,
   lignesDuBon,
   mentionHeureRetrait,
   zoneDessinImprimee,
+  type Destination,
 } from '@/lib/ticketCanvas';
 import { depuisApi, messageConfirmation, type Commande, type CommandeApi, type ModePaiement } from '@/lib/commandes';
 import { formaterEuros, resteDu } from '@/domaine/argent';
@@ -33,9 +39,13 @@ import { ListeSignalements } from '@/components/signalement';
 import { echecReseau, lireReponse } from '@/components/commande/modele';
 import type { Echec } from '@/domaine/resultat';
 
-/** Les quatre destinations, dans l'ordre où elles sortent de l'imprimante. */
-const DESTINATIONS = ['CLIENT', 'BUREAU', 'MAGASIN', 'ATELIER'] as const;
-type Destination = (typeof DESTINATIONS)[number];
+/** Un A4 porte quatre bons A6 ; au-delà (R74 : jusqu'à six papiers), une deuxième feuille. */
+const BONS_PAR_FEUILLE = 4;
+function parFeuilles(papiers: Destination[]): Destination[][] {
+  const feuilles: Destination[][] = [];
+  for (let i = 0; i < papiers.length; i += BONS_PAR_FEUILLE) feuilles.push(papiers.slice(i, i + BONS_PAR_FEUILLE));
+  return feuilles;
+}
 
 /** L'imprimante Star d'abord ; les deux autres servent de secours (panne, autre poste). */
 const OPTIONS_FORMAT = [
@@ -199,10 +209,10 @@ export default function ImprimerCommande() {
           titre={`Bon n°\u00A0${commande.numero}`}
           sousTitre={
             format === 'reseau'
-              ? 'Touchez Envoyer\u00A0: les 4 bons sortent à l’imprimante.'
+              ? `Touchez Envoyer\u00A0: les ${destinationsDeCommande(commande).length} bons sortent à l’imprimante.`
               : format === 'ticket'
-                ? 'Quatre bons de 80\u00A0mm à la suite. L’imprimante coupe entre chaque.'
-                : 'Quatre bons A6 sur une feuille A4. Deux coups de massicot.'
+                ? `${destinationsDeCommande(commande).length} bons de 80\u00A0mm à la suite. L’imprimante coupe entre chaque.`
+                : 'Quatre bons A6 par feuille A4. Deux coups de massicot.'
           }
           actions={
             <>
@@ -348,7 +358,7 @@ export default function ImprimerCommande() {
         />
       ) : format === 'ticket' ? (
         <div className="rouleau">
-          {DESTINATIONS.map((destination, rang) => (
+          {destinationsDeCommande(commande).map((destination, rang) => (
             <Ticket
               key={destination}
               rang={rang}
@@ -359,11 +369,14 @@ export default function ImprimerCommande() {
         </div>
       ) : (
         <div className="apercu">
-          <div className="feuille">
-            {DESTINATIONS.map((destination) => (
-              <Bon key={destination} destination={destination} commande={commande} />
-            ))}
-          </div>
+          {/* R74 : les seuls papiers de cette commande, quatre par feuille. */}
+          {parFeuilles(destinationsDeCommande(commande)).map((feuille, n) => (
+            <div className="feuille" key={n}>
+              {feuille.map((destination) => (
+                <Bon key={destination} destination={destination} commande={commande} />
+              ))}
+            </div>
+          ))}
         </div>
       )}
     </>
@@ -381,6 +394,10 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
   const reste = resteDu(commande.totalCentimes, commande.acompteCentimes);
   // Même règle que le ticket Star : une version modifiée le dit (audit 28/10/2026).
   const modification = bandeauModification(commande, destination);
+  // R74 : bon de production — échéance du poste, autres postes, pas de montants.
+  const production = estBonDeProduction(destination);
+  const echeance = echeanceDuBon(commande, destination);
+  const autresPostes = autresPostesDuBon(commande, destination);
 
   return (
     <div className={`bon${densite}${avecKg}`}>
@@ -393,7 +410,7 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
           PAINPATISSERIE
         </div>
       </div>
-      <div className="bon-dest">{destination}</div>
+      <div className="bon-dest">{LIBELLE_DESTINATION[destination]}</div>
       <div className="bon-adresse">Chaussée de Louvain 906 — 1140 Evere</div>
 
       {modification ? (
@@ -445,6 +462,14 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
           <b className="chiffres">{mentionHeureRetrait(commande.retraitHeure)}</b>
         ) : null}
       </div>
+      {echeance ? (
+        <div className="bon-retrait">
+          <b>{echeance}</b>
+          {autresPostes ? <span>{autresPostes}</span> : null}
+        </div>
+      ) : autresPostes ? (
+        <div className="bon-prise">{autresPostes}</div>
+      ) : null}
 
       <div className="bon-produits">
         <div className="bon-soustitre">Produits commandés</div>
@@ -512,20 +537,22 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
         ) : (
           <div className="bon-remarques" />
         )}
-        <div className="bon-montants">
-          <div className="total">
-            <span>Total</span>
-            <b>{formaterEuros(commande.totalCentimes)}</b>
+        {production ? null : (
+          <div className="bon-montants">
+            <div className="total">
+              <span>Total</span>
+              <b>{formaterEuros(commande.totalCentimes)}</b>
+            </div>
+            <div>
+              <span>Acompte</span>
+              <b>{formaterEuros(commande.acompteCentimes)}</b>
+            </div>
+            <div>
+              <span>Restant</span>
+              <b>{formaterEuros(reste)}</b>
+            </div>
           </div>
-          <div>
-            <span>Acompte</span>
-            <b>{formaterEuros(commande.acompteCentimes)}</b>
-          </div>
-          <div>
-            <span>Restant</span>
-            <b>{formaterEuros(reste)}</b>
-          </div>
-        </div>
+        )}
       </div>
 
       {pourLeClient ? (

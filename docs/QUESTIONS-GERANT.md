@@ -604,9 +604,25 @@ l'avez pas confirmé ici.
 
 ### Viande des burgers (19/11/2026)
 
-105. **Viande obligatoire : est-ce bien ces trois produits, et ce minimum ?** Vous avez donné
+110. **Viande obligatoire : est-ce bien ces trois produits, et ce minimum ?** Vous avez donné
      les viandes (poulet tenders, kefta, viande hachée de poulet) et « une viande par ligne ».
      *(en attendant, l'application fait : la viande est demandée pour Burger, Mini-Burger du
      comptoir et Mini burger sur commande — pas pour le batbout farci, le wrap ni la crêpe ; et
      le minimum de 10 mini burgers se compte sur le total des lignes du même burger, donc
      15 kefta + 5 tenders est accepté.)*
+
+### Un papier par poste (19/11/2026)
+
+111. **Qui fait les pains, et le reste du rayon Oriental ?** Vous avez dit : pain des burgers,
+     msemen, meloui, batbout → boulanger ; viennoiseries et minis sucrés → pâtissier.
+     *(en attendant, l'application fait : tous les pains du rayon Boulangerie sortent sur le
+     papier du boulanger ; harcha, baghrir, makla et pâtisseries orientales au kilo sur celui
+     du pâtissier.)*
+112. **Grand pain surprise et mini-sandwichs garnis : le boulanger doit-il être prévenu pour
+     le pain ?** *(en attendant : atelier seul, le boulanger n'a pas de papier pour eux.)*
+113. **Les papiers pâtissier / atelier / boulanger sortent sans aucun prix. C'est bien ce que
+     vous voulez ?** Avant, le bon ATELIER portait les prix et le total. *(en attendant : pas
+     de prix sur les papiers de production ; CLIENT, BUREAU et MAGASIN gardent tout.)*
+114. **L'échéance du boulanger (2 heures avant) : faut-il aussi une heure pour l'atelier et le
+     pâtissier ?** *(en attendant : seul le boulanger a son heure, les autres lisent l'heure
+     de retrait.)*
