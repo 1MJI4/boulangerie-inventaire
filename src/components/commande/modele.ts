@@ -24,7 +24,7 @@ import { heureChamp, lireHeure } from '../../domaine/reglement.ts';
 import type { DelaisCommande, PlageOuverture, RegleSupplementParPersonne, ReglementCommande } from '../../domaine/constantes.ts';
 import { FAMILLE_SUPPLEMENT, FAMILLES_GATEAU, SUPPLEMENT_ECRITURE, SUPPLEMENT_PHOTO } from '../../domaine/constantes.ts';
 import type { ChoixGout } from '../../domaine/gouts.ts';
-import { goutsInitiaux } from '../../domaine/gouts.ts';
+import { demandeUneViande, goutsInitiaux } from '../../domaine/gouts.ts';
 import { GOUTS_SUR_COMMANDE } from '../../catalogue/goutsSurCommande.ts';
 import { RACCOURCIS_GATEAUX, type RaccourciGateau } from '../../catalogue/raccourcisGateaux.ts';
 
@@ -1407,4 +1407,27 @@ export function ligneOuverteDuBon(lignes: readonly LigneEcran[], actif: string |
   if (existe(auPave)) return auPave;
   if (existe(choisie)) return choisie;
   return lignes[lignes.length - 1].cle;
+}
+
+// ---------------------------------------------------------------------------
+// Viande d'un burger (R73, propriétaire 19/11/2026)
+// ---------------------------------------------------------------------------
+// Une viande par ligne : « 15 kefta et 15 tenders » = deux lignes du même
+// burger. La règle (viande obligatoire, minimum sur le total) est au domaine.
+
+/** Le produit de la ligne demande une viande (donnée GOUTS_SUR_COMMANDE). */
+export function ligneAViande(l: LigneEcran): boolean {
+  return l.produitId !== null && demandeUneViande(GOUTS_SUR_COMMANDE[l.produitId]);
+}
+
+/**
+ * « ＋ Autre viande » : une 2e ligne du même burger, juste sous celle-ci, sans
+ * quantité ni viande (à saisir). null si la ligne est inconnue ou si son
+ * produit ne demande pas de viande.
+ */
+export function ajouterAutreViande(lignes: readonly LigneEcran[], cle: string): { lignes: LigneEcran[]; cle: string } | null {
+  const i = lignes.findIndex((l) => l.cle === cle);
+  if (i < 0 || !ligneAViande(lignes[i])) return null;
+  const neuve: LigneEcran = { ...ligneVide(lignes[i].produitId), quantite: null, gouts: [] };
+  return { lignes: [...lignes.slice(0, i + 1), neuve, ...lignes.slice(i + 1)], cle: neuve.cle };
 }

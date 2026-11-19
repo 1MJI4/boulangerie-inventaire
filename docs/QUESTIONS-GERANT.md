@@ -601,3 +601,12 @@ l'avez pas confirmé ici.
 109. **Tableau de bord : la part des commandes doit-elle y apparaître aussi ?** L'historique
      des prévisions la montre (« prévu 48 + 16 pour les commandes »). *(en attendant : le
      tableau de bord compare encore la production à la seule demande du manager.)*
+
+### Viande des burgers (19/11/2026)
+
+105. **Viande obligatoire : est-ce bien ces trois produits, et ce minimum ?** Vous avez donné
+     les viandes (poulet tenders, kefta, viande hachée de poulet) et « une viande par ligne ».
+     *(en attendant, l'application fait : la viande est demandée pour Burger, Mini-Burger du
+     comptoir et Mini burger sur commande — pas pour le batbout farci, le wrap ni la crêpe ; et
+     le minimum de 10 mini burgers se compte sur le total des lignes du même burger, donc
+     15 kefta + 5 tenders est accepté.)*

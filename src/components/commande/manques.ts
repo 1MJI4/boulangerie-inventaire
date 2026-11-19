@@ -53,10 +53,14 @@ export const MANQUE_SIMPLE: ReadonlySet<string> = new Set([
   'ERR_CHAMP_OBLIGATOIRE',
   'ERR_QUANTITE_INVALIDE',
   'ERR_GOUT_MANQUANT',
+  'ERR_VIANDE_MANQUANTE',
   'ERR_FORME_MANQUANTE',
   'ERR_NB_SYMBOLES_MANQUANT',
   'ERR_COMMANDE_VIDE',
 ]);
+
+/** R73 : mot-clé d'une viande de burger manquante (le champ technique est « gouts »). */
+export const MOT_VIANDE = 'Viande';
 
 /**
  * true : signalement d'un champ simplement vide (mot-clé, sans bouton). Une
@@ -78,7 +82,11 @@ export function libelleManque(
 ): { titre: string; detail: string | null } {
   if (MANQUES_PAR_CONSIGNE.has(champLocal(m.champ))) return { titre: m.message, detail: null };
   const i = indexLigne(m.champ);
-  const mot = estSeparationProposee(m.valeurProposee) ? MOT_UN_GATEAU_PAR_LIGNE : (MOTS_MANQUANTS[champLocal(m.champ)] ?? null);
+  const mot = estSeparationProposee(m.valeurProposee)
+    ? MOT_UN_GATEAU_PAR_LIGNE
+    : m.code === 'ERR_VIANDE_MANQUANTE'
+      ? MOT_VIANDE
+      : (MOTS_MANQUANTS[champLocal(m.champ)] ?? null);
   const ligne = i !== null ? lignes[i] : undefined;
   const fiche = ligne ? ficheDe(catalogue, gateauDeLaLigne(ligne)) : null;
   const produit = ligne ? (fiche ? libelleProduit(fiche) : ligne.libelleLibre || 'Autre demande') : null;
@@ -98,9 +106,10 @@ export const CHAMPS_A_PHRASE: ReadonlySet<string> = new Set(['client', 'telephon
  * 28/10/2026 : comme une app Apple — phrase courte, ni triangle ni capitales).
  * Champ du haut : la phrase du domaine ; champ d'une ligne : « À remplir : goût ».
  */
-export function texteChampVide(s: { message: string; champ?: string }): string {
+export function texteChampVide(s: { message: string; champ?: string; code?: string }): string {
   const champ = champLocal(s.champ);
   if (CHAMPS_A_PHRASE.has(champ)) return s.message;
-  const mot = MOTS_MANQUANTS[champ];
+  // R73 : la viande d'un burger est rangée dans le champ « gouts » ; on dit « viande ».
+  const mot = s.code === 'ERR_VIANDE_MANQUANTE' ? MOT_VIANDE : MOTS_MANQUANTS[champ];
   return mot ? `À remplir\u00a0: ${mot.toLocaleLowerCase('fr')}` : 'À remplir';
 }

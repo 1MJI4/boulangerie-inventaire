@@ -87,7 +87,7 @@ import {
 import { CORRESPONDANCES_COMPTOIR } from '@/catalogue/correspondancesComptoir';
 import { LIBELLES_SELON_GOUT } from '@/catalogue/libellesSelonGout';
 import { GOUTS_SUR_COMMANDE } from '@/catalogue/goutsSurCommande';
-import { GOUT_AU_CHOIX, goutsAttendus, goutsProposes, type ChoixGout } from '@/domaine/gouts';
+import { GOUT_AU_CHOIX, demandeUneViande, goutsAttendus, goutsProposes, type ChoixGout } from '@/domaine/gouts';
 import { gateauSurCommandeDe } from '@/domaine/prixComptoir';
 import type { Echec, Resultat } from '@/domaine/resultat';
 import type { Deverrouillage, FicheTarifee, Forme, SortieRemplacement } from '@/domaine/types';
@@ -135,8 +135,10 @@ import {
   separerLigneGateau,
   SUPPLEMENT_ECRITURE,
   SUPPLEMENT_PHOTO,
+  ajouterAutreViande,
   etapeDuChamp,
   goutDitParLaTuile,
+  ligneAViande,
   groupesDuCarnet,
   ligneOuverteDuBon,
   toucherProduit,
@@ -538,7 +540,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
           // Pendant la saisie, une ligne sans quantité (taille pas encore choisie) n'est pas
           // jugée : pas de rouge prématuré. Dès « Valider », elle l'est, et son message
           // s'affiche sur la ligne (sinon la validation bloquait sans rien dire, 22/10/2026).
-          l.quantite === null && l.produitId !== null && !tentative ? null : controlerLigne(saisie.lignes[i], i, prise.datePrise, ctx),
+          l.quantite === null && l.produitId !== null && !tentative ? null : controlerLigne(saisie.lignes[i], i, prise.datePrise, ctx, saisie.lignes),
         )
       : lignes.map(() => null);
   // Commande prise avec l'ancien tarif (lignes hors catalogue, sans accord) et
@@ -848,6 +850,11 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
       // R70 : « Remettre Vanille » (goût par défaut, donnée).
       return majLigne(i, { gouts: [s.valeurProposee] });
     }
+    if (i !== null && ligne && s.code === 'ERR_VIANDE_MANQUANTE') {
+      // R73 : une viande touchée la pose ; sinon on amène à la ligne (jamais la retirer).
+      if (typeof v === 'string' && v.trim() !== '') return majLigne(i, { gouts: [v] });
+      return montrerLigne(i);
+    }
     if (i !== null && ligne && s.code === 'ERR_GOUT_MANQUANT') {
       // R62 : « Au choix du pâtissier » sur chaque goût encore vide (jamais retirer la ligne).
       const n = goutsDeLaLigne(ligne);
@@ -985,6 +992,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
           if (
             s.code === 'ERR_TAILLE_NON_STANDARD' ||
             s.code === 'ERR_GOUT_MANQUANT' ||
+            s.code === 'ERR_VIANDE_MANQUANTE' ||
             s.code === 'ERR_FORME_ROND_IMPOSSIBLE' ||
             s.code === 'ERR_TAILLE_INTERDITE'
           ) {
@@ -1016,6 +1024,17 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                 {libelleCorrection('ERR_DROIT_INSUFFISANT', { action: '', role: 'manager' })}
               </BoutonSortie>,
             );
+            return <>{boutons}</>;
+          }
+          // R73 : viande manquante → un bouton par viande (liste du domaine).
+          if (s.code === 'ERR_VIANDE_MANQUANTE' && iLigne !== null && Array.isArray(s.valeurProposee)) {
+            for (const viande of s.valeurProposee as readonly string[]) {
+              boutons.push(
+                <BoutonSortie key={`viande-${viande}`} onClick={() => majLigne(iLigne, { gouts: [viande] })}>
+                  {viande}
+                </BoutonSortie>,
+              );
+            }
             return <>{boutons}</>;
           }
           // R62 : goût manquant → « Au choix du pâtissier » sur chaque goût encore vide.
@@ -1576,6 +1595,22 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                     onRetirerPhoto={() => setLignes((ls) => retirerPhoto(ls, ligne.cle))}
                   />
                   {rendre(signaux, unite, `ligne-${ligne.cle}`)}
+                  {/* R73 : une viande par ligne — une 2e viande pour le même burger = une 2e ligne. */}
+                  {ligneAViande(ligne) ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const r = ajouterAutreViande(lignes, ligne.cle);
+                        if (!r) return;
+                        setLignes(r.lignes);
+                        setLigneChoisie(r.cle);
+                        setActif(`${r.cle}.quantite`);
+                      }}
+                      className="mt-2 min-h-11 rounded-lg border-2 border-line-fort bg-surface px-3 text-sm font-medium text-ink"
+                    >
+                      ＋ Autre viande
+                    </button>
+                  ) : null}
                   {gateau ? blocGateauDe(ligne, i, signauxSurGateau) : null}
                   </div>
                 );
@@ -2802,6 +2837,8 @@ function BlocGouts({
   // R67 : Bûches et Cœurs ont LEURS goûts (ceux du tarif), liste fermée — ni la
   // liste du manager, ni « Autre… », ni décoration. Quelle liste : le domaine.
   const ferme = choix.liste === 'propre';
+  // R73 : viande d'un burger — liste réellement fermée, pas d'« Au choix du pâtissier ».
+  const viande = demandeUneViande(choix);
   const actifs = (l: OptionsGateau['parfums'] | undefined) => (l ?? []).filter((o) => o.actif !== false).map((o) => o.nom);
   // Bavarois : les goûts que le magasin fait déjà d'abord, puis la liste du manager.
   const noms = goutsProposes(choix, { parfums: actifs(options?.parfums), entremets: actifs(options?.entremets) });
@@ -2823,7 +2860,7 @@ function BlocGouts({
     if (suivants[etage] && suivants.every(Boolean)) onGoutChoisi?.();
   };
   const titre = (etage: number) =>
-    attendus > 1 ? `Goût de l’étage ${etage + 1}` : choix.liste === 'entremet' ? 'Quel entremet\u00a0?' : 'Goût\u00a0?';
+    attendus > 1 ? `Goût de l’étage ${etage + 1}` : viande ? 'Quelle viande\u00a0?' : choix.liste === 'entremet' ? 'Quel entremet\u00a0?' : 'Goût\u00a0?';
   const pastille = (actif: boolean) =>
     `min-h-11 rounded-lg border-2 px-2.5 text-sm font-medium leading-tight ${
       actif ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
@@ -2872,14 +2909,16 @@ function BlocGouts({
                   Autre…
                 </button>
               )}
-              <button
-                type="button"
-                aria-pressed={choisi === GOUT_AU_CHOIX}
-                onClick={() => choisir(etage, GOUT_AU_CHOIX)}
-                className={pastille(choisi === GOUT_AU_CHOIX)}
-              >
-                {GOUT_AU_CHOIX}
-              </button>
+              {viande ? null : (
+                <button
+                  type="button"
+                  aria-pressed={choisi === GOUT_AU_CHOIX}
+                  onClick={() => choisir(etage, GOUT_AU_CHOIX)}
+                  className={pastille(choisi === GOUT_AU_CHOIX)}
+                >
+                  {GOUT_AU_CHOIX}
+                </button>
+              )}
             </div>
             {libre === etage ? (
               <input
@@ -3832,8 +3871,12 @@ function LigneCarnet({
           ? `${l.quantite} parts`
           : `${l.quantite} ×`;
   const gouts = (l.gouts ?? []).map((x) => x.trim()).filter(Boolean);
+  // R73 : la viande fait partie du nom — « 15 × Mini burger · Kefta », pour
+  // distinguer deux lignes du même burger d'un coup d'œil.
+  const viande = ligneAViande(l) ? (gouts[0] ?? null) : null;
+  const nomComplet = viande ? `${nom} · ${viande}` : nom;
   const details = [
-    gouts.length > 0 && !goutDitParLaTuile(l) ? `goût : ${gouts.join(' · ')}` : null,
+    gouts.length > 0 && !viande && !goutDitParLaTuile(l) ? `goût : ${gouts.join(' · ')}` : null,
     l.forme === 'carre' ? 'carré' : l.forme === 'rond' ? 'rond' : null,
     (l.decorations ?? []).length > 0 ? `décoration : ${(l.decorations ?? []).join(', ')}` : null,
     l.texteGateau ? `écriture : « ${l.texteGateau} »` : null,
@@ -3847,11 +3890,11 @@ function LigneCarnet({
       <button
         type="button"
         onClick={onClick}
-        aria-label={`${quantite} ${nom}${manque ? ', à compléter' : ''}, afficher`}
+        aria-label={`${quantite} ${nomComplet}${manque ? ', à compléter' : ''}, afficher`}
         className="flex min-h-11 max-w-full flex-col justify-center px-2.5 py-1 text-left"
       >
         <span className="break-words text-sm font-semibold leading-tight text-ink">
-          <span className="chiffres font-bold">{quantite}</span> {nom}
+          <span className="chiffres font-bold">{quantite}</span> {nomComplet}
         </span>
         <span className={`chiffres text-xs font-medium leading-tight ${manque ? 'text-alerte' : 'text-ink-2'}`}>
           {aCorriger === true ? 'à corriger' : montant === null ? 'à compléter' : formaterEuros(montant)}
@@ -3863,12 +3906,12 @@ function LigneCarnet({
     <button
       type="button"
       onClick={onClick}
-      aria-label={`${quantite} ${nom}${manque ? ', à compléter' : ''}, modifier`}
+      aria-label={`${quantite} ${nomComplet}${manque ? ', à compléter' : ''}, modifier`}
       className={`flex w-full items-baseline text-left hover:bg-surface-2 ${dense ? 'min-h-11 gap-2 py-1' : 'min-h-12 gap-3 py-2'}`}
     >
       <span className={`chiffres shrink-0 text-right font-bold text-ink ${taille} ${dense ? 'w-14' : 'w-20'}`}>{quantite}</span>
       <span className="min-w-0 flex-1">
-        <span className={`block break-words font-semibold leading-snug text-ink ${taille}`}>{nom}</span>
+        <span className={`block break-words font-semibold leading-snug text-ink ${taille}`}>{nomComplet}</span>
         {details.length > 0 ? <span className="block break-words text-sm leading-snug text-ink-2">{details.join(' · ')}</span> : null}
       </span>
       <span className={`chiffres shrink-0 font-semibold ${taille} ${manque ? 'text-alerte' : 'text-ink'}`}>

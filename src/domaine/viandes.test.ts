@@ -15,6 +15,7 @@ import { blocagesCommande, controlerCommande, controlerLigne, type CommandeSaisi
 import { DELAIS_PAR_DEFAUT, REGLEMENT_COMMANDE } from './constantes.ts';
 import { GOUT_AU_CHOIX, validerGouts } from './gouts.ts';
 import {
+  ajouterAutreViande,
   ficheDe,
   ligneVide,
   resoudreLocal,
@@ -26,6 +27,7 @@ import {
   type LigneEcran,
 } from '../components/commande/modele.ts';
 import { consignesDeLigne, lignesDuBon } from '../lib/ticketCanvas.ts';
+import { estManqueSimple, libelleManque, texteChampVide } from '../components/commande/manques.ts';
 import type { LigneCommande } from '../lib/commandes.ts';
 
 const DATE = '2026-11-20'; // vendredi
@@ -179,4 +181,33 @@ test('bon : « VIANDE : KEFTA » sous la ligne, jamais « GOÛT »', () => {
     assert.ok(textes.includes('VIANDE : KEFTA'), `${d} : ${JSON.stringify(textes)}`);
     assert.ok(!textes.some((t) => t.startsWith('GOÛT')), d);
   }
+});
+
+/* ---------------------------------------------------------------- Écran */
+
+test('écran : « ＋ Autre viande » ajoute une 2e ligne du même burger, juste après, à remplir', () => {
+  const kefta = l(MINI, 15, 'Kefta');
+  const wrap = l('sur-commande/mini-wrap', 10);
+  const r = ajouterAutreViande([kefta, wrap], kefta.cle);
+  assert.ok(r);
+  assert.deepEqual(r.lignes.map((x) => x.produitId), [MINI, MINI, 'sur-commande/mini-wrap'], 'placée sous la première');
+  assert.equal(r.lignes[0], kefta, 'la première ne bouge pas');
+  const neuve = r.lignes[1];
+  assert.equal(neuve.cle, r.cle);
+  assert.notEqual(neuve.cle, kefta.cle);
+  assert.equal(neuve.quantite, null, 'quantité à saisir');
+  assert.deepEqual(neuve.gouts, [], 'viande à choisir');
+  // Produit sans viande, ou ligne inconnue : rien.
+  assert.equal(ajouterAutreViande([kefta, wrap], wrap.cle), null);
+  assert.equal(ajouterAutreViande([kefta], 'inconnue'), null);
+});
+
+test('écran : « Il manque » dit « Viande — Mini burger », et sous le champ « À remplir : viande »', () => {
+  const sans = [l(MINI, 10)];
+  const r = controler(sans);
+  assert.equal(r.ok, false);
+  if (r.ok) return;
+  assert.equal(estManqueSimple(r), true);
+  assert.equal(libelleManque(r, sans, catalogue).titre, `Viande — ${fiche(MINI).produit.produit}`);
+  assert.equal(texteChampVide(r).replace(/\u00a0/g, ' '), 'À remplir : viande');
 });

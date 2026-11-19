@@ -194,6 +194,13 @@ Les seuils restent distincts selon le produit — **ne pas les unifier « pour s
 | 60 parts | Pièce montée 3 étages |
 | max 20 sandwichs | Grand pain surprise → au-delà, **proposer un 2e pain** |
 
+Viande des burgers (R73, décision du propriétaire 19/11/2026) : Burger, Mini-Burger et mini
+burger sur commande portent **une viande** (Poulet tenders · Kefta · Viande hachée de poulet),
+sinon `ERR_VIANDE_MANQUANTE` avec les viandes en boutons — pas de sortie « au choix ». **Une
+viande par ligne** : 15 kefta et 15 tenders font deux lignes, jamais signalées comme doublon.
+Le minimum de 10 se compte alors sur le **total des lignes** du même burger (15 + 5 = accepté).
+Liste et produits = donnée (`src/catalogue/goutsSurCommande.ts`).
+
 Saisie (R61, décision du propriétaire 22/10/2026) : un gâteau par personne à minimum
 (Layer Cake, Number Cake, pièces montées) se choisit aux **boutons de taille**, comme le
 Bavarois, en partant de **son minimum, de 5 en 5** (Layer 20, 25, 30…). Raccourcis, pas une
