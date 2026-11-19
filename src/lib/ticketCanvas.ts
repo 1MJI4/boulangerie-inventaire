@@ -143,9 +143,9 @@ export type LigneTicket = {
   quantite: string;
   /** Libellé du catalogue, à la lettre (LOI 5). */
   libelle: string;
-  /** Supplément par personne : « — 20 parts », imprimé à la suite du libellé. */
+  /** Supplément par personne : « — 20 personnes », imprimé à la suite du libellé. */
   complementLibelle: string | null;
-  /** Gâteau vendu par personne : « 1 gâteau — 20 PARTS » (propriétaire, 28/10/2026). */
+  /** Gâteau vendu par personne : « 1 gâteau — 20 PERSONNES » (propriétaire, 28/10 puis 19/11/2026 : « personnes », pas « parts »). */
   parts: string | null;
   /** Prix par personne appliqué (« … € par personne »), lu sur la ligne, jamais recalculé. */
   prixUnitaire: string | null;
@@ -365,8 +365,8 @@ function estLigneSupplement(ligne: LigneCommande): boolean {
 /**
  * Comment s'imprime la quantité (propriétaire, 28/10/2026) :
  *   « 10 × » à la pièce · « 0,750 kg » au kilo, sans « × » orphelin ·
- *   « 1 gâteau — 20 PARTS » pour un gâteau vendu par personne ·
- *   « Pâte à sucre — 20 parts » pour un supplément par personne.
+ *   « 1 gâteau — 20 PERSONNES » pour un gâteau vendu par personne ·
+ *   « Pâte à sucre — 20 personnes » pour un supplément par personne.
  * Base inconnue (l'API ne la transmet pas) : « N × », l'impression d'avant —
  * on ne devine jamais le régime d'après le nom.
  */
@@ -409,8 +409,8 @@ export function formaterLigneTicket(ligne: LigneCommande, destination: Destinati
           ? `${formaterQuantite('piece', ligne.quantite)} ×`
           : '',
     libelle: nomSelonGout ?? ligne.libelle,
-    complementLibelle: lecture === 'supplement-par-personne' ? `—${INSECABLE}${parts}${INSECABLE}parts` : null,
-    parts: lecture === 'gateau-par-personne' ? ['1', 'gâteau', '—', parts, 'PARTS'].join(INSECABLE) : null,
+    complementLibelle: lecture === 'supplement-par-personne' ? `—${INSECABLE}${parts}${INSECABLE}personnes` : null,
+    parts: lecture === 'gateau-par-personne' ? ['1', 'gâteau', '—', parts, 'PERSONNES'].join(INSECABLE) : null,
     // Prix unitaire FIGÉ sur la ligne (prixCentimes), seulement formaté : le
     // bon montre « 20 PARTS · … € par personne », jamais un total nu.
     prixUnitaire: lecture === 'piece' || lecture === 'kg' ? null : `${formaterEuros(ligne.prixCentimes)} par personne`,

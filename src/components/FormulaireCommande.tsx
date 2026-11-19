@@ -3311,7 +3311,7 @@ function LigneDuBon({
           </div>
         ) : parPersonne ? (
           <p className="chiffres text-base text-ink">
-            {ligne.quantite === null ? 'Parts du gâteau à choisir' : `${ligne.quantite} parts`}
+            {ligne.quantite === null ? 'Parts du gâteau à choisir' : `${ligne.quantite} personnes`}
             <span className="ml-1 text-sm text-ink-2">— autant que le gâteau</span>
           </p>
         ) : unGateau && !ligne.origineSurCommande ? (

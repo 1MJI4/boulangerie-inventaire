@@ -106,9 +106,9 @@ test('heure : « 14:30 » se lit « 14h30 », vide → null', () => {
   assert.equal(heureLisible(null), null);
 });
 
-test('gâteau par personne : « 1 gâteau · 20 parts » — jamais « 20 parts » seul, qui se lit comme 20 individuels (propriétaire, 19/11/2026)', () => {
+test('gâteau par personne : « 1 gâteau · 20 personnes » — jamais « 20 parts », qui se lit comme 20 individuels (propriétaire, 19/11/2026)', () => {
   const a = ligneAffichee(layer);
-  assert.equal(a.quantite, '1 gâteau · 20 parts');
+  assert.equal(a.quantite, '1 gâteau · 20 personnes');
   assert.equal(a.libelle, 'Layer Cake');
   assert.deepEqual(a.details, ['Framboise', 'Rond', 'Photo G043', 'Bougies à part']);
   assert.equal(a.supplement, false);

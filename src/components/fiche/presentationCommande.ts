@@ -50,7 +50,7 @@ export function heureLisible(heure: string | null | undefined): string | null {
 
 /** Ligne prête à afficher : quantité, libellé (catalogue, à la lettre), détails. */
 export type LigneAffichee = {
-  /** « 2 × », « 0,750 kg », « 20 parts ». */
+  /** « 2 × », « 0,750 kg », « 1 gâteau · 20 personnes ». */
   quantite: string;
   libelle: string;
   /** Goût(s), chiffres ou lettres, forme, photo, déco, écriture, précision — dans l'ordre du pâtissier. */
@@ -88,8 +88,8 @@ export function ligneAffichee(ligne: LigneCommande): LigneAffichee {
         ? `${formaterQuantite('piece', ligne.quantite)} ×`
         : lecture === 'gateau-par-personne'
           ? // UN gâteau de N parts : « N parts » seul se lit comme N individuels (propriétaire, 19/11/2026).
-            `1 gâteau · ${formaterQuantite('piece', ligne.quantite)} parts`
-          : `${formaterQuantite('piece', ligne.quantite)} parts`;
+            `1 gâteau · ${formaterQuantite('piece', ligne.quantite)} personnes`
+          : `${formaterQuantite('piece', ligne.quantite)} personnes`;
   // Bavarois goût Fraisier → « Fraisier » : le nom dit le goût (donnée explicite).
   const nomSelonGout = libelleSelonGout(ligne.produitCatalogue?.cleCatalogue, ligne.gouts, LIBELLES_SELON_GOUT);
   const gouts = (ligne.gouts ?? []).map((g) => g.trim()).filter(Boolean);

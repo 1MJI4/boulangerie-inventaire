@@ -274,15 +274,15 @@ export function formaterNumero(annee: number, sequence: number): string {
 /**
  * Une ligne en mots, pour le client : « 10 × Mini burger » à la pièce,
  * « 0,750 kg Corne de gazelle » au kilo, et pour un gâteau vendu par personne
- * « Layer Cake — 1 gâteau, 20 parts » — jamais « 20 × », qui se lit comme
+ * « Layer Cake — 1 gâteau, 20 personnes » — jamais « 20 × », qui se lit comme
  * 20 individuels (propriétaire, 19/11/2026). Même lecture que le bon.
  */
 function ligneEnClair(ligne: LigneCommande): string {
   const lecture = lectureQuantite(ligne);
   if (lecture === 'kg') return `${formaterQuantite('kg', ligne.quantite)} ${ligne.libelle}`;
   const n = formaterQuantite('piece', ligne.quantite);
-  if (lecture === 'gateau-par-personne') return `${ligne.libelle} — 1 gâteau, ${n} parts`;
-  if (lecture === 'supplement-par-personne') return `${ligne.libelle} — ${n} parts`;
+  if (lecture === 'gateau-par-personne') return `${ligne.libelle} — 1 gâteau, ${n} personnes`;
+  if (lecture === 'supplement-par-personne') return `${ligne.libelle} — ${n} personnes`;
   return `${n} × ${ligne.libelle}`;
 }
 

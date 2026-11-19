@@ -230,7 +230,7 @@ visibles du client.
 - **Réimpression** d'un papier seul, en 1 ou 2 exemplaires (R74).
 - **Bon BUREAU supprimé** : une commande sort CLIENT, MAGASIN et les postes concernés — 3 papiers pour un
   gâteau seul, 5 au maximum (R74).
-- **Gâteau par personne** : à l'écran, sur la fiche et dans le message WhatsApp, il s'écrit « 1 gâteau · 10 parts »,
+- **Gâteau par personne** : à l'écran, sur la fiche et dans le message WhatsApp, il s’écrit « 1 gâteau · 10 personnes » (« personnes », pas « parts »),
   jamais « 10 parts » ou « 10 × » seul, qui se confond avec 10 individuels.
 
 ## Comportements par défaut appliqués en l'absence de réponse

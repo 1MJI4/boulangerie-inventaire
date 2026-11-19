@@ -303,15 +303,15 @@ export function resoudreLocal(catalogue: CatalogueCommande): ResoudreProduit {
 
 /**
  * Quantité d'une ligne sur le bon à l'écran. Un gâteau vendu par personne est
- * UN gâteau : « 1 gâteau · 10 parts », jamais « 10 parts » seul, qui se
+ * UN gâteau : « 1 gâteau · 10 personnes », jamais « 10 parts », qui se
  * confond avec 10 individuels (propriétaire, 19/11/2026). Un supplément par
- * personne suit les parts de son gâteau : « 24 parts ».
+ * personne suit son gâteau : « 24 personnes ».
  */
 export function quantiteDuCarnet(l: { quantite: number | null; unite: 'piece' | 'kg'; parPersonne: boolean; supplement: boolean }): string {
   if (l.quantite === null) return '—';
   if (l.unite === 'kg') return formaterQuantite('kg', l.quantite);
   if (!l.parPersonne) return `${l.quantite} ×`;
-  return l.supplement ? `${l.quantite} parts` : `1 gâteau · ${l.quantite} parts`;
+  return l.supplement ? `${l.quantite} personnes` : `1 gâteau · ${l.quantite} personnes`;
 }
 
 export function ficheDe(catalogue: CatalogueCommande | null, produitId: string | null): FicheTarifee | null {

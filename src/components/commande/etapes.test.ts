@@ -95,11 +95,11 @@ test('bon en accordéon : une seule ligne ouverte — celle du pavé, sinon la d
   assert.equal(ligneOuverteDuBon([], null, a.cle), null);
 });
 
-test('carnet : un gâteau par personne se lit « 1 gâteau · 10 parts », un individuel « 10 × » (propriétaire, 19/11/2026)', () => {
-  assert.equal(quantiteDuCarnet({ quantite: 10, unite: 'piece', parPersonne: true, supplement: false }), '1 gâteau · 10 parts');
+test('carnet : un gâteau par personne se lit « 1 gâteau · 10 personnes », un individuel « 10 × » (propriétaire, 19/11/2026)', () => {
+  assert.equal(quantiteDuCarnet({ quantite: 10, unite: 'piece', parPersonne: true, supplement: false }), '1 gâteau · 10 personnes');
   assert.equal(quantiteDuCarnet({ quantite: 10, unite: 'piece', parPersonne: false, supplement: false }), '10 ×');
   // Supplément par personne (Pâte à sucre) : il suit les parts du gâteau, ce n'est pas un gâteau.
-  assert.equal(quantiteDuCarnet({ quantite: 24, unite: 'piece', parPersonne: true, supplement: true }), '24 parts');
+  assert.equal(quantiteDuCarnet({ quantite: 24, unite: 'piece', parPersonne: true, supplement: true }), '24 personnes');
   assert.equal(quantiteDuCarnet({ quantite: 750, unite: 'kg', parPersonne: false, supplement: false }), '0,750 kg');
   assert.equal(quantiteDuCarnet({ quantite: null, unite: 'piece', parPersonne: true, supplement: false }), '—');
 });

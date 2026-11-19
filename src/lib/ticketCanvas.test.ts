@@ -394,7 +394,7 @@ test('ticket : « FORME : CARRÉ » en gras sur les 4 exemplaires, dans la colon
   for (const d of PAPIERS) assert.ok(!textes(d, sans).some((x) => lu(x.texte).startsWith('FORME ')), d);
 });
 
-test('Pâte à sucre : supplément par personne — « Pâte à sucre — 24 parts », sans « × », ni forme ni goût', () => {
+test('Pâte à sucre : supplément par personne — « Pâte à sucre — 24 personnes », sans « × », ni forme ni goût', () => {
   // Prix FICTIF (LOI 1) : seul compte le calcul parts × prix par personne, par le domaine.
   const pate = ligne({
     libelle: 'Pâte à sucre',
@@ -405,14 +405,15 @@ test('Pâte à sucre : supplément par personne — « Pâte à sucre — 24 par
   const l = formaterLigneTicket(pate, 'CLIENT');
   assert.equal(l.libelle, 'Pâte à sucre');
   assert.equal(l.quantite, '');
-  assert.equal(lu(l.complementLibelle), '— 24 parts');
+  assert.equal(lu(l.complementLibelle), '— 24 personnes');
   assert.equal(l.parts, null, 'un supplément n’est pas « 1 gâteau »');
   assert.equal(l.prix, '240,00 €');
   assert.equal(l.forme, null);
   assert.equal(l.formes, null);
   assert.equal(l.gouts, null);
   const t = textes('MAGASIN', commande({ lignes: [ligneAvecForme('carre', { libelle: 'Bavarois' }), pate] })).map((x) => lu(x.texte));
-  assert.ok(t.includes('Pâte à sucre — 24 parts'), t.join(' | '));
+  // Plus long que « parts » : le libellé peut passer à la ligne, on relit d'un trait.
+  assert.ok(t.join(' ').includes('Pâte à sucre — 24 personnes'), t.join(' | '));
   assert.ok(!t.includes('24 ×'));
   assert.ok(t.includes('240,00 €'));
   assert.equal(t.filter((x) => x.startsWith('FORME ')).length, 1, 'la forme reste sur le gâteau, pas sur le supplément');
@@ -522,17 +523,17 @@ function tracesAvecPolices(destination: (typeof DESTINATIONS)[number], c: Comman
   return traces.map((t, i) => ({ ...t, texte: lu(t.texte), gras: polices[i].startsWith('700 ') }));
 }
 
-test('gâteau par personne : « 1 gâteau — 20 PARTS » en gras, plus jamais « 20 × Layer Cake »', () => {
+test('gâteau par personne : « 1 gâteau — 20 PERSONNES » en gras, plus jamais « 20 × Layer Cake »', () => {
   const l = formaterLigneTicket(gateauParPersonne(), 'ATELIER');
   assert.equal(lectureQuantite(gateauParPersonne()), 'gateau-par-personne');
   assert.equal(l.quantite, '');
-  assert.equal(lu(l.parts), '1 gâteau — 20 PARTS');
+  assert.equal(lu(l.parts), '1 gâteau — 20 PERSONNES');
   // Le calcul reste lisible, sans « × » : total par le domaine, prix par personne de la ligne.
   assert.equal(l.prix, '200,00 €');
   assert.equal(l.prixUnitaire, '10,00 € par personne');
   for (const d of PAPIERS) {
     const t = tracesAvecPolices(d, commande({ lignes: [gateauParPersonne()] }));
-    const parts = t.find((x) => x.texte === '1 gâteau — 20 PARTS');
+    const parts = t.find((x) => x.texte === '1 gâteau — 20 PERSONNES');
     assert.ok(parts, d);
     assert.ok(parts.gras && parts.taille >= TAILLE_PRODUIT, `${d} : gras, gros`);
     assert.ok(!t.some((x) => x.texte.includes('20 ×')), `${d} : aucun « 20 × »`);
@@ -548,7 +549,7 @@ test('à la pièce : « 10 × » conservé (base pièce transmise, ou ligne sans
   assert.equal(formaterLigneTicket(mini, 'ATELIER').quantite, '10 ×');
   const t = textes('ATELIER', commande({ lignes: [mini] })).map((x) => x.texte);
   assert.ok(t.includes('10 ×'));
-  assert.ok(!t.some((x) => /PARTS|gâteau/.test(lu(x))));
+  assert.ok(!t.some((x) => /PARTS|PERSONNES|gâteau/.test(lu(x))));
 });
 
 test('LOI 6 : la base ne se déduit jamais du nom — régime C sans base transmise reste « N × »', () => {
@@ -603,7 +604,7 @@ test('consigne longue sur toute la largeur : « GOÛT : MOUSSE CHOCOLAT », « P
   } as LigneCommande;
   for (const d of PAPIERS) {
     const t = tracesAvecPolices(d, commande({ lignes: [pm] }));
-    for (const attendu of ['GOÛT : MOUSSE CHOCOLAT', 'Photo sélectionnée : G006', 'Pièce montée 2 étages', '1 gâteau — 40 PARTS']) {
+    for (const attendu of ['GOÛT : MOUSSE CHOCOLAT', 'Photo sélectionnée : G006', 'Pièce montée 2 étages', '1 gâteau — 40 PERSONNES']) {
       const x = t.find((y) => y.texte === attendu);
       assert.ok(x, `${d} : « ${attendu} » sur une seule ligne (${t.map((y) => y.texte).join(' | ')})`);
       assert.ok(x.x >= 0 && x.x + x.largeur <= LARGEUR, `${d} : tient dans ${LARGEUR} points`);
