@@ -1865,12 +1865,12 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
           aria-current={etape === e.n ? 'step' : undefined}
           onClick={() => { setActif(null); setEtape(e.n); }}
           className={`flex min-h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg px-2 text-left ${
-            etape === e.n ? 'bg-accent text-white shadow' : 'text-ink hover:bg-surface-2'
+            etape === e.n ? 'bg-[var(--segment-actif)] text-ink' : 'text-ink-2 hover:bg-surface-2'
           }`}
         >
           <span
             className={`chiffres flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-              etape === e.n ? 'bg-white text-accent' : e.fait ? 'bg-accent-doux text-accent' : 'border-2 border-line-fort text-ink-2'
+              etape === e.n ? 'bg-accent text-white' : e.fait ? 'bg-accent-doux text-accent' : 'border-2 border-line-fort text-ink-2'
             }`}
             aria-hidden
           >
@@ -1879,7 +1879,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
           <span className="min-w-0">
             <span className="block truncate text-base font-bold leading-tight">{e.libelle}</span>
             {e.resume ? (
-              <span className={`chiffres block truncate text-xs leading-tight ${etape === e.n ? 'text-white/90' : 'text-ink-2'}`}>{e.resume}</span>
+              <span className={`chiffres block truncate text-xs leading-tight text-ink-2`}>{e.resume}</span>
             ) : null}
           </span>
         </button>
@@ -2052,54 +2052,63 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
             <div className={`flex min-h-0 flex-1 gap-3 ${gauche ? 'flex-row-reverse' : 'flex-row'}`}>
               {etape === 1 ? (
                 /* ============================== Étape 1 : le client et le retrait */
-                <section aria-label="Client et retrait" className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain rounded-2xl border border-line bg-surface p-4">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="flex min-w-0 flex-col">
-                      <label htmlFor="commande-client" className="mb-1 text-sm font-semibold text-ink">Nom du client</label>
-                      <input
-                        id="commande-client"
-                        ref={champClient}
-                        className={`min-h-14 w-full rounded-xl border-2 bg-surface px-3 text-lg text-ink placeholder:text-ink-3 ${
-                          videNom ? 'border-alerte' : 'border-line-fort'
-                        }`}
-                        value={client}
-                        onChange={(e) => setClient(e.target.value)}
-                        placeholder="Nom du client"
-                        aria-invalid={videNom ? true : undefined}
-                        autoComplete="off"
-                      />
-                      {sousLeChamp(videNom)}
+                // Une seule colonne, centrée : rien à comparer côte à côte ici. Le pavé du
+                // téléphone s'ouvre au centre, sous les champs, pas dans une colonne à part.
+                <section aria-label="Client et retrait" className="relative min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain rounded-2xl border border-line bg-surface">
+                  <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-center gap-5 p-5">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="flex min-w-0 flex-col">
+                        <label htmlFor="commande-client" className="mb-1.5 text-sm font-semibold text-ink">Nom du client</label>
+                        <input
+                          id="commande-client"
+                          ref={champClient}
+                          className={`min-h-14 w-full rounded-xl border-2 bg-surface px-3 text-lg text-ink placeholder:text-ink-3 ${
+                            videNom ? 'border-alerte' : 'border-line-fort'
+                          }`}
+                          value={client}
+                          onChange={(e) => setClient(e.target.value)}
+                          aria-invalid={videNom ? true : undefined}
+                          autoComplete="off"
+                        />
+                        {sousLeChamp(videNom)}
+                      </div>
+                      <div className="flex min-w-0 flex-col">
+                        <span className="mb-1.5 text-sm font-semibold text-ink">Téléphone</span>
+                        <BoutonBande
+                          libelle="Tél."
+                          valeur={telephone || null}
+                          vide="Toucher pour saisir"
+                          actif={actif === 'telephone'}
+                          enErreur={videTelephone !== null || refusClient.some((s) => s.niveau === 'bloquant' && champLocal(s.champ) === 'telephone')}
+                          onClick={() => setActif(actif === 'telephone' ? null : 'telephone')}
+                          className="min-h-14 w-full"
+                          ariaLabel={`Téléphone du client${telephone ? ` : ${telephone}` : ''}`}
+                        />
+                        {sousLeChamp(videTelephone)}
+                      </div>
                     </div>
-                    <div className="flex min-w-0 flex-col">
-                      <span className="mb-1 text-sm font-semibold text-ink">Téléphone</span>
-                      <BoutonBande
-                        libelle="Tél."
-                        valeur={telephone || null}
-                        vide="Toucher pour saisir"
-                        actif={actif === 'telephone'}
-                        enErreur={videTelephone !== null || refusClient.some((s) => s.niveau === 'bloquant' && champLocal(s.champ) === 'telephone')}
-                        onClick={() => setActif(actif === 'telephone' ? null : 'telephone')}
-                        className="min-h-14 w-full"
-                        ariaLabel={`Téléphone du client${telephone ? ` : ${telephone}` : ''}`}
-                      />
-                      {sousLeChamp(videTelephone)}
+                    {blocPave ? (
+                      <div className="mx-auto w-full max-w-sm rounded-2xl border-2 border-line-fort bg-surface p-3">{blocPave}</div>
+                    ) : null}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="text-sm font-semibold text-ink">Commande prise</span>
+                      <div role="group" aria-label="Commande prise" className="flex shrink-0 gap-0.5 rounded-xl border-2 border-line-fort bg-surface p-0.5">
+                        <Segment actif={origine === 'comptoir'} onClick={() => { setOrigine('comptoir'); setModePaiement('especes'); }}>
+                          Comptoir
+                        </Segment>
+                        <Segment actif={origine === 'telephone'} onClick={() => { setOrigine('telephone'); setModePaiement('virement'); }}>
+                          Téléphone
+                        </Segment>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="text-sm font-semibold text-ink">Commande prise</span>
-                    <div role="group" aria-label="Commande prise" className="flex shrink-0 gap-0.5 rounded-xl border-2 border-line-fort bg-surface p-0.5">
-                      <Segment actif={origine === 'comptoir'} onClick={() => { setOrigine('comptoir'); setModePaiement('especes'); }}>
-                        Comptoir
-                      </Segment>
-                      <Segment actif={origine === 'telephone'} onClick={() => { setOrigine('telephone'); setModePaiement('virement'); }}>
-                        Téléphone
-                      </Segment>
+                    {refusClient.length > 0 ? <div>{rendre(refusClient)}</div> : null}
+                    <div>
+                      <p className="mb-1.5 text-sm font-semibold text-ink">Retrait</p>
+                      {bande}
                     </div>
-                  </div>
-                  {refusClient.length > 0 ? <div>{rendre(refusClient)}</div> : null}
-                  <div>
-                    <p className="mb-1 text-sm font-semibold text-ink">Retrait</p>
-                    {bande}
+                    <Bouton variante="principal" className="mt-1 min-h-14 w-full flex-none text-lg" onClick={() => { setActif(null); setEtape(2); }}>
+                      Continuer&nbsp;: les produits
+                    </Bouton>
                   </div>
                   {voileGerant}
                 </section>
@@ -2122,18 +2131,25 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                 <section aria-label="Le bon à relire" className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain rounded-2xl border border-line bg-surface p-4">
                   {bonCarnet}
                   {remarquesDuBon}
+                  {/* Pavé de l'acompte ou du prix convenu : au centre du panneau, toujours entier à
+                      l'écran ; le total et « Valider » restent visibles à droite. */}
+                  {blocPave ? (
+                    <div className="absolute inset-0 z-10 flex items-center justify-center overflow-y-auto overscroll-contain rounded-2xl bg-surface/90 p-4">
+                      <div className="w-full max-w-sm rounded-2xl border-2 border-line-fort bg-surface p-3 pb-1">{blocPave}</div>
+                    </div>
+                  ) : null}
                   {voileGerant}
                 </section>
               )}
 
-              {/* Colonne du pavé : pavé, puis ce que l'étape demande ; le pied reste visible */}
+              {/* Colonne de droite : une seule largeur aux étapes Produits et Paiement (l'écran ne
+                  saute pas d'une étape à l'autre) ; absente à l'étape Client, qui est centrée. */}
+              {etape === 1 ? null : (
               <aside
-                aria-label={etape === 3 ? 'Remarques et paiement' : etape === 2 ? 'Le bon et le pavé de saisie' : 'Pavé de saisie'}
-                className={`flex min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl border-2 border-line-fort bg-surface ${
-                  etape === 2 ? 'w-[22rem] lg:w-[27rem]' : 'w-72 lg:w-80'
-                }`}
+                aria-label={etape === 3 ? 'Paiement' : 'Le bon et le pavé de saisie'}
+                className="flex min-h-0 w-[22rem] shrink-0 flex-col overflow-hidden rounded-2xl border-2 border-line-fort bg-surface lg:w-[27rem]"
               >
-                {blocPave ? (
+                {blocPave && etape === 2 ? (
                   <div className="flex-none border-b border-line p-3 pb-1">
                     <ContexteTaillePave.Provider value="compact">{blocPave}</ContexteTaillePave.Provider>
                   </div>
@@ -2152,13 +2168,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                   </div>
                 ) : (
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
-                  {etape === 1 ? (
-                    blocPave ? null : (
-                      <p className="text-sm text-ink-2">
-                        Touchez «&nbsp;Téléphone&nbsp;» pour saisir le numéro au pavé, puis choisissez le jour et l’heure du retrait.
-                      </p>
-                    )
-                  ) : (
+                  {(
                     <>
                       <section>
                         <h2 className={TITRE}>Paiement</h2>
@@ -2207,12 +2217,13 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                       </Bouton>
                     </>
                   ) : (
-                    <Bouton variante="principal" className="mt-2 min-h-14 w-full text-lg" onClick={() => { setActif(null); setEtape(etape === 1 ? 2 : 3); }}>
-                      {etape === 1 ? <>Continuer&nbsp;: les produits</> : <>Continuer&nbsp;: le paiement</>}
+                    <Bouton variante="principal" className="mt-2 min-h-14 w-full text-lg" onClick={() => { setActif(null); setEtape(3); }}>
+                      Continuer&nbsp;: le paiement
                     </Bouton>
                   )}
                 </div>
               </aside>
+              )}
             </div>
           </div>
         ) : null}
