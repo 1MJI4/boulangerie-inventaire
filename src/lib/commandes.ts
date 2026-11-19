@@ -9,6 +9,8 @@
 import { familleDuProduit } from '../catalogue/familles.ts';
 import { TYPE_ACCUEIL_PAR_PRODUIT, TYPE_ACCUEIL_PAR_RAYON } from '../catalogue/typesAccueil.ts';
 import { formaterEuros, resteDu } from '../domaine/argent.ts';
+import { formaterQuantite } from '../domaine/unites.ts';
+import { lectureQuantite } from './ticketCanvas.ts';
 import { dateDuJour, type DateISO } from './dateProduction.ts';
 
 // Ré-export pour le gabarit du bon (src/components/TicketCommande.tsx, agent
@@ -270,13 +272,28 @@ export function formaterNumero(annee: number, sequence: number): string {
 /* ------------------------------------------- Message de confirmation client */
 
 /**
+ * Une ligne en mots, pour le client : « 10 × Mini burger » à la pièce,
+ * « 0,750 kg Corne de gazelle » au kilo, et pour un gâteau vendu par personne
+ * « Layer Cake — 1 gâteau, 20 parts » — jamais « 20 × », qui se lit comme
+ * 20 individuels (propriétaire, 19/11/2026). Même lecture que le bon.
+ */
+function ligneEnClair(ligne: LigneCommande): string {
+  const lecture = lectureQuantite(ligne);
+  if (lecture === 'kg') return `${formaterQuantite('kg', ligne.quantite)} ${ligne.libelle}`;
+  const n = formaterQuantite('piece', ligne.quantite);
+  if (lecture === 'gateau-par-personne') return `${ligne.libelle} — 1 gâteau, ${n} parts`;
+  if (lecture === 'supplement-par-personne') return `${ligne.libelle} — ${n} parts`;
+  return `${n} × ${ligne.libelle}`;
+}
+
+/**
  * Préparé par l'application, envoyé par le manager depuis son WhatsApp.
  * Volontairement sans coordonnées bancaires. Le numéro en communication permet
  * de rapprocher un virement de la bonne commande.
  */
 export function messageConfirmation(commande: {
   numero: string;
-  lignes: Pick<LigneCommande, 'libelle' | 'quantite' | 'texteGateau' | 'sansEcriture' | 'photoImprimee' | 'produitCatalogue' | 'prixProduit'>[];
+  lignes: Pick<LigneCommande, 'libelle' | 'quantite' | 'unite' | 'texteGateau' | 'sansEcriture' | 'photoImprimee' | 'produitCatalogue' | 'prixProduit'>[];
   retraitLe: DateISO;
   retraitHeure: string | null;
   totalCentimes: number;
@@ -293,7 +310,7 @@ export function messageConfirmation(commande: {
     '',
     ...commande.lignes.flatMap((l, i) => {
       const t = sur[i]?.texteGateau;
-      return [`• ${l.quantite} × ${l.libelle}`, ...(t ? [`   À écrire : « ${t} »`] : [])];
+      return [`• ${ligneEnClair(l as LigneCommande)}`, ...(t ? [`   À écrire : « ${t} »`] : [])];
     }),
   ];
 

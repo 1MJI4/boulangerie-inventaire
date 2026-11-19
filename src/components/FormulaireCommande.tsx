@@ -114,6 +114,7 @@ import {
   quantiteAuBon,
   boutonsFamilles,
   estSupplement,
+  quantiteDuCarnet,
   gateauxAuBon,
   aSupplement,
   appliquerRemplacement,
@@ -3862,14 +3863,12 @@ function LigneCarnet({
   const fiche = ficheDe(catalogue, l.produitId);
   const nom = fiche ? libelleLigneEcran(l, fiche, LIBELLES_SELON_GOUT) : l.libelleLibre || 'Autre demande';
   const parPersonne = fiche?.prix.basePrix === 'personne';
-  const quantite =
-    l.quantite === null
-      ? '—'
-      : fiche?.produit.unite === 'kg'
-        ? formaterQuantite('kg', l.quantite)
-        : parPersonne
-          ? `${l.quantite} parts`
-          : `${l.quantite} ×`;
+  const quantite = quantiteDuCarnet({
+    quantite: l.quantite,
+    unite: fiche?.produit.unite === 'kg' ? 'kg' : 'piece',
+    parPersonne,
+    supplement: fiche ? estSupplement(fiche) : false,
+  });
   const gouts = (l.gouts ?? []).map((x) => x.trim()).filter(Boolean);
   // R73 : la viande fait partie du nom — « 15 × Mini burger · Kefta », pour
   // distinguer deux lignes du même burger d'un coup d'œil.

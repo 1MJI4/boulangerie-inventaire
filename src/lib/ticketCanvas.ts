@@ -29,7 +29,8 @@ import { demandeUneViande } from '../domaine/gouts.ts';
 import { libelleSelonGout } from '../domaine/libelles.ts';
 
 /**
- * Tous les papiers possibles. CLIENT, BUREAU, MAGASIN : le bon complet.
+ * Tous les papiers possibles. CLIENT, MAGASIN : le bon complet (BUREAU : ancien
+ * bon complet, plus imprimé depuis le 19/11/2026, gardé pour les travaux déjà en file).
  * PATISSIER, ATELIER, BOULANGER : bons de PRODUCTION (R74, propriétaire
  * 19/11/2026) — un par poste concerné, ses seules lignes, sans prix. Les
  * papiers d'UNE commande : `destinationsDeCommande`.
@@ -73,13 +74,14 @@ function postesDeCommande(commande: CommandePourPostes): BonDePoste[] {
 }
 
 /**
- * Les papiers à sortir pour CETTE commande, dans l'ordre : CLIENT, BUREAU,
- * MAGASIN, puis un bon de production par poste concerné (R74). Une commande de
+ * Les papiers à sortir pour CETTE commande, dans l'ordre : CLIENT, MAGASIN,
+ * puis un bon de production par poste concerné (R74). Plus de bon BUREAU
+ * (propriétaire, 19/11/2026 : « bureau plus besoin »). Une commande de
  * pâtisserie seule n'a pas de bon ATELIER ; des boissons seules, aucun bon de
  * production.
  */
 export function destinationsDeCommande(commande: CommandePourPostes): Destination[] {
-  return ['CLIENT', 'BUREAU', 'MAGASIN', ...postesDeCommande(commande).map((b) => BON_DU_POSTE[b.poste])];
+  return ['CLIENT', 'MAGASIN', ...postesDeCommande(commande).map((b) => BON_DU_POSTE[b.poste])];
 }
 
 /** « 8h00 » : heure d'échéance, comme l'heure de retrait sur le bon. */

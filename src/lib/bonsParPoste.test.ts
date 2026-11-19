@@ -106,14 +106,14 @@ function tracer(destination: Destination, c: Commande): string[] {
   return traces;
 }
 
-test('papiers d’une commande : CLIENT, BUREAU, MAGASIN, puis un bon par poste concerné, seulement ceux-là', () => {
+test('papiers d’une commande : CLIENT, MAGASIN, puis un bon par poste concerné — plus de bon BUREAU (propriétaire, 19/11/2026)', () => {
   assert.deepEqual([...DESTINATIONS], ['CLIENT', 'BUREAU', 'MAGASIN', 'PATISSIER', 'ATELIER', 'BOULANGER']);
-  assert.deepEqual(destinationsDeCommande(MIXTE), ['CLIENT', 'BUREAU', 'MAGASIN', 'PATISSIER', 'ATELIER', 'BOULANGER']);
+  assert.deepEqual(destinationsDeCommande(MIXTE), ['CLIENT', 'MAGASIN', 'PATISSIER', 'ATELIER', 'BOULANGER']);
   // Pâtisserie seule : plus de bon ATELIER (demande du propriétaire).
-  assert.deepEqual(destinationsDeCommande(commande([FRAISIER])), ['CLIENT', 'BUREAU', 'MAGASIN', 'PATISSIER']);
-  assert.deepEqual(destinationsDeCommande(commande([WRAP])), ['CLIENT', 'BUREAU', 'MAGASIN', 'ATELIER']);
-  // Rien à produire (boissons) : les trois bons complets, aucun bon de production.
-  assert.deepEqual(destinationsDeCommande(commande([BOISSON])), ['CLIENT', 'BUREAU', 'MAGASIN']);
+  assert.deepEqual(destinationsDeCommande(commande([FRAISIER])), ['CLIENT', 'MAGASIN', 'PATISSIER']);
+  assert.deepEqual(destinationsDeCommande(commande([WRAP])), ['CLIENT', 'MAGASIN', 'ATELIER']);
+  // Rien à produire (boissons) : les deux bons complets, aucun bon de production.
+  assert.deepEqual(destinationsDeCommande(commande([BOISSON])), ['CLIENT', 'MAGASIN']);
   assert.deepEqual(DESTINATIONS.filter(estBonDeProduction), ['PATISSIER', 'ATELIER', 'BOULANGER']);
   assert.equal(LIBELLE_DESTINATION.PATISSIER, 'PÂTISSIER');
 });

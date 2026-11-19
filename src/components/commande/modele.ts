@@ -21,6 +21,7 @@ import { libelleProduitFiche, libelleSelonGout, type LibelleSelonGout } from '..
 import type { JourFerme } from '../../domaine/calendrier.ts';
 import { decalerJours, estDateISO } from '../../domaine/calendrier.ts';
 import { heureChamp, lireHeure } from '../../domaine/reglement.ts';
+import { formaterQuantite } from '../../domaine/unites.ts';
 import type { DelaisCommande, PlageOuverture, RegleSupplementParPersonne, ReglementCommande } from '../../domaine/constantes.ts';
 import { FAMILLE_SUPPLEMENT, FAMILLES_GATEAU, SUPPLEMENT_ECRITURE, SUPPLEMENT_PHOTO } from '../../domaine/constantes.ts';
 import type { ChoixGout } from '../../domaine/gouts.ts';
@@ -298,6 +299,19 @@ export function resoudreLocal(catalogue: CatalogueCommande): ResoudreProduit {
       return f && date === catalogue.date ? { ok: true, valeur: f.prix } : { ok: false, code: 'ERR_TARIF_ABSENT' };
     },
   });
+}
+
+/**
+ * Quantité d'une ligne sur le bon à l'écran. Un gâteau vendu par personne est
+ * UN gâteau : « 1 gâteau · 10 parts », jamais « 10 parts » seul, qui se
+ * confond avec 10 individuels (propriétaire, 19/11/2026). Un supplément par
+ * personne suit les parts de son gâteau : « 24 parts ».
+ */
+export function quantiteDuCarnet(l: { quantite: number | null; unite: 'piece' | 'kg'; parPersonne: boolean; supplement: boolean }): string {
+  if (l.quantite === null) return '—';
+  if (l.unite === 'kg') return formaterQuantite('kg', l.quantite);
+  if (!l.parPersonne) return `${l.quantite} ×`;
+  return l.supplement ? `${l.quantite} parts` : `1 gâteau · ${l.quantite} parts`;
 }
 
 export function ficheDe(catalogue: CatalogueCommande | null, produitId: string | null): FicheTarifee | null {

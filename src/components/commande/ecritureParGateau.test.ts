@@ -324,10 +324,22 @@ test('message de confirmation : l’écriture sous la ligne de son gâteau', () 
     lignes: [layerEnregistre({ texteGateau: 'A', sansEcriture: false }), layerEnregistre({ texteGateau: 'B', sansEcriture: false })],
   });
   const l = m.split('\n');
-  assert.ok(l.indexOf('   À écrire : « A »') === l.indexOf('• 20 × Layer Cake') + 1, m);
+  // Un gâteau par personne ne s'écrit jamais « 20 × » : c'est UN gâteau de 20 parts.
+  assert.ok(l.indexOf('   À écrire : « A »') === l.indexOf('• Layer Cake — 1 gâteau, 20 parts') + 1, m);
+  assert.ok(!m.includes('20 ×'), m);
   assert.ok(m.includes('À écrire : « B »'));
   const ancien = messageConfirmation({ ...base, texteGateau: 'BRAVO', lignes: [burgerEnregistre(), layerEnregistre()] });
-  assert.ok(ancien.includes('• 20 × Layer Cake\n   À écrire : « BRAVO »'), ancien);
+  assert.ok(ancien.includes('• Layer Cake — 1 gâteau, 20 parts\n   À écrire : « BRAVO »'), ancien);
+  // À la pièce : « 10 × » ; au kilo : le poids, jamais des grammes pris pour des pièces.
+  const divers = messageConfirmation({
+    ...base,
+    lignes: [
+      burgerEnregistre(),
+      { libelle: 'Corne de gazelle', quantite: 750, unite: 'kg', produitCatalogue: null, prixProduit: { basePrix: 'kg' } } as unknown as LigneCommande,
+    ],
+  });
+  assert.ok(/• \d+ × /.test(divers), divers);
+  assert.ok(divers.includes('• 0,750 kg Corne de gazelle'), divers);
 });
 
 /* -------------------------------------------------------- Réimpression */

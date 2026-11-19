@@ -622,7 +622,7 @@ l'avez pas confirmé ici.
      le pain ?** *(en attendant : atelier seul, le boulanger n'a pas de papier pour eux.)*
 113. **Les papiers pâtissier / atelier / boulanger sortent sans aucun prix. C'est bien ce que
      vous voulez ?** Avant, le bon ATELIER portait les prix et le total. *(en attendant : pas
-     de prix sur les papiers de production ; CLIENT, BUREAU et MAGASIN gardent tout.)*
+     de prix sur les papiers de production ; CLIENT et MAGASIN gardent tout.)*
 114. **L'échéance du boulanger (2 heures avant) : faut-il aussi une heure pour l'atelier et le
      pâtissier ?** *(en attendant : seul le boulanger a son heure, les autres lisent l'heure
      de retrait.)*

@@ -86,7 +86,10 @@ export function ligneAffichee(ligne: LigneCommande): LigneAffichee {
       ? formaterQuantite('kg', ligne.quantite)
       : lecture === 'piece'
         ? `${formaterQuantite('piece', ligne.quantite)} ×`
-        : `${formaterQuantite('piece', ligne.quantite)} parts`;
+        : lecture === 'gateau-par-personne'
+          ? // UN gâteau de N parts : « N parts » seul se lit comme N individuels (propriétaire, 19/11/2026).
+            `1 gâteau · ${formaterQuantite('piece', ligne.quantite)} parts`
+          : `${formaterQuantite('piece', ligne.quantite)} parts`;
   // Bavarois goût Fraisier → « Fraisier » : le nom dit le goût (donnée explicite).
   const nomSelonGout = libelleSelonGout(ligne.produitCatalogue?.cleCatalogue, ligne.gouts, LIBELLES_SELON_GOUT);
   const gouts = (ligne.gouts ?? []).map((g) => g.trim()).filter(Boolean);

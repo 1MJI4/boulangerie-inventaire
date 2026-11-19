@@ -201,8 +201,8 @@ viande par ligne** : 15 kefta et 15 tenders font deux lignes, jamais signalées 
 Le minimum de 10 se compte alors sur le **total des lignes** du même burger (15 + 5 = accepté).
 Liste et produits = donnée (`src/catalogue/goutsSurCommande.ts`).
 
-Postes de production (R74, décision du propriétaire 19/11/2026) : en plus des bons CLIENT,
-BUREAU et MAGASIN, il sort **un papier par poste concerné** — PÂTISSIER, ATELIER, BOULANGER —
+Postes de production (R74, décision du propriétaire 19/11/2026) : en plus des bons CLIENT
+et MAGASIN (**plus de bon BUREAU**), il sort **un papier par poste concerné** — PÂTISSIER, ATELIER, BOULANGER —
 avec ses seules lignes, **sans prix**. Pain des burgers et du batbout farci, pâte du msemen et
 du meloui (cuits), batbout : boulanger ; crêpes farcies : boulanger prévenu **au-delà de 5 sur
 la commande** ; viennoiseries et minis sucrés : pâtissier. Le papier du boulanger porte son
