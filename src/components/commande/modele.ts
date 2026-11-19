@@ -1322,3 +1322,72 @@ export function toucherRaccourci(
 export function goutDitParLaTuile(l: LigneEcran, raccourcis: readonly RaccourciGateau[] = RACCOURCIS_GATEAUX): boolean {
   return raccourcis.some((r) => r.type === 'surCommande' && ligneDuRaccourci(l, r.surCommande, r.gout));
 }
+
+// ---------------------------------------------------------------------------
+// Écran en trois étapes et bon « comme le carnet » (propriétaire, 19/11/2026)
+// ---------------------------------------------------------------------------
+// 1 Client · 2 Produits · 3 Paiement. Affichage seulement : aucune règle ici,
+// le domaine juge la commande de la même façon quelle que soit l'étape.
+
+/** Étape de l'écran de commande. */
+export type EtapeCommande = 1 | 2 | 3;
+
+/**
+ * Étape où se corrige un champ signalé par le domaine (`champ` du signalement,
+ * ou nom du champ ouvert au pavé) : le client et le retrait à l'étape 1, les
+ * lignes du bon à l'étape 2, l'argent, les remarques et la signature à l'étape 3.
+ * Champ sans étape (statut, inconnu) : null — l'écran ne bouge pas.
+ */
+export function etapeDuChamp(champ: string | undefined): EtapeCommande | null {
+  if (!champ) return null;
+  if (indexLigne(champ) !== null) return 2;
+  switch (champLocal(champ)) {
+    case 'client':
+    case 'telephone':
+    case 'dateRetrait':
+    case 'heureRetrait':
+      return 1;
+    case 'lignes':
+      return 2;
+    case 'acompte':
+    case 'total':
+    case 'vendeur':
+    case 'remarques':
+      return 3;
+    default:
+      return null;
+  }
+}
+
+/** Un groupe du bon relu à l'étape Paiement, dans l'ordre où on l'écrit sur le carnet. */
+export type GroupeCarnet = { titre: 'Salé' | 'Gâteaux et pâtisserie' | 'Autres'; lignes: LigneEcran[] };
+
+const FAMILLES_CARNET_SALE: readonly string[] = ['sale'];
+const FAMILLES_CARNET_GATEAU: readonly string[] = [...FAMILLES_GATEAU, 'patisserie', FAMILLE_SUPPLEMENT];
+
+/**
+ * Le bon regroupé pour la relecture : Salé, Gâteaux et pâtisserie, Autres —
+ * par la FAMILLE du produit (donnée du catalogue, jamais le nom, LOI 6).
+ * « Autre demande » : avec les gâteaux si le vendeur a dit que c'en est un.
+ * Chaque ligne apparaît une seule fois, dans l'ordre du bon ; groupe vide absent.
+ */
+export function groupesDuCarnet(lignes: readonly LigneEcran[], catalogue: CatalogueCommande | null): GroupeCarnet[] {
+  const groupes: GroupeCarnet[] = [
+    { titre: 'Salé', lignes: [] },
+    { titre: 'Gâteaux et pâtisserie', lignes: [] },
+    { titre: 'Autres', lignes: [] },
+  ];
+  for (const l of lignes) {
+    const famille = l.produitId === null ? null : (ficheDe(catalogue, l.produitId)?.produit.famille ?? null);
+    const i =
+      l.produitId === null
+        ? l.gateauLibre === true ? 1 : 2
+        : famille !== null && FAMILLES_CARNET_SALE.includes(famille)
+          ? 0
+          : famille !== null && FAMILLES_CARNET_GATEAU.includes(famille)
+            ? 1
+            : 2;
+    groupes[i].lignes.push(l);
+  }
+  return groupes.filter((g) => g.lignes.length > 0);
+}
