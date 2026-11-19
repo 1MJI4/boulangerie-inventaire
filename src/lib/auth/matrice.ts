@@ -45,6 +45,9 @@ export const MATRICE_ACCES: Record<string, Partial<Record<Methode, EntreeMatrice
     GET: { role: 'tablette', action: 'consulter un inventaire' },
     POST: { role: 'tablette', action: 'saisir un inventaire' },
   },
+  'src/app/api/inventaires/commandes/route.ts': {
+    GET: { role: 'tablette', action: 'consulter un inventaire' },
+  },
   'src/app/api/releves/route.ts': {
     GET: { role: 'tablette', action: 'consulter les relevés' },
   },

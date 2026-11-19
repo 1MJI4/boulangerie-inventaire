@@ -69,6 +69,19 @@ pâtissier). Ce n'est **pas une troisième unité** : la base garde des **pièce
 **comptage des restes reste en pièces**. Contenance = donnée du produit
 (`Produit.piecesParPlateau`), jamais déduite du nom. Règles : `src/domaine/plateaux.ts`.
 
+**Produits dérivés et commandes au fournil** (décision du propriétaire, 19/11/2026, R72) :
+« Croissant à la pâte d'amande » et « Couque au chocolat double » n'ont **pas de ligne au
+fournil** : leurs commandes **augmentent leur base** (Croissant, Couque au chocolat), 1 pour 1,
+comme les commandes de Croissant et de Pain chocolat simples. « Croissant aux amandes » et
+« Croissant au chocolat » sont des **produits à part**, à ne pas confondre. Le lien
+commande → fournil est une **donnée** (`src/catalogue/basesFournil.ts`), jamais déduite du
+nom ; c'est la seule passerelle entre les deux listes (LOI 10). Plateaux : pièces commandées
+des deux sortes additionnées, un plateau en plus par tranche de 16, et pour le reste
+**jusqu'à 4 pièces on prend sur la vente normale, à partir de 5 un plateau en plus**. La part
+est **recalculée en entier** depuis les commandes non annulées (jamais additionnée au fil de
+l'eau) et écrite dans `Inventaire.commandeAuto` / `plateauCommandes`. Règles :
+`src/domaine/commandesFournil.ts`.
+
 ## LOI N°3 — Le jour de fermeture
 
 ```

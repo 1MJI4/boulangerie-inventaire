@@ -18,6 +18,8 @@ import { useMemoireLocale } from '@/lib/memoireLocale';
 import { DEFINITIONS } from '@/lib/profils';
 import { DESCRIPTION_POSTE, LIBELLE_POSTE, POSTES, estPoste, type Poste } from '@/lib/postes';
 import { enPlateaux, formaterPlateaux, sePlanifieEnPlateaux } from '@/domaine/plateaux';
+import { formaterDerives, totalAProduire } from '@/domaine/commandesFournil';
+import type { PartCommandeeJournee, PartFournil } from '@/lib/serveur/partCommandee';
 
 /**
  * Croissant, Couque au chocolat : le pâtissier sort des PLATEAUX. Le gros
@@ -29,13 +31,17 @@ function QuantiteEnPlateaux({
   commandee,
   parPlateau,
   fait,
+  derives,
 }: {
   prevue: number;
+  /** Part commandée en pièces : le « + » du manager et les commandes de l'application. */
   commandee: number;
   parPlateau: number;
   fait: boolean;
+  /** « dont 7 Croissant à la pâte d'amande » (R72) ; vide s'il n'y a pas de dérivé. */
+  derives: string;
 }) {
-  const base = Math.max(0, prevue - commandee);
+  const base = Math.max(0, prevue);
   const { plateaux, reste } = enPlateaux(base, parPlateau);
   return (
     <span className={`shrink-0 text-right ${fait ? 'text-ink-3' : 'text-ink'}`}>
@@ -51,6 +57,9 @@ function QuantiteEnPlateaux({
           + {commandee} pièce{commandee > 1 ? 's' : ''} commandée{commandee > 1 ? 's' : ''}
         </span>
       ) : null}
+      {derives !== '' ? (
+        <span className="mt-0.5 block text-xs font-medium text-accent">{derives}</span>
+      ) : null}
     </span>
   );
 }
@@ -59,6 +68,9 @@ type LigneFournil = {
   produitId: number;
   quantitePrevue: number | null;
   quantiteCommande: number | null;
+  /** R72 — pièces commandées dans l'application (dérivés compris) et pièces à sortir en plus. */
+  commandeAuto?: number | null;
+  plateauCommandes?: number | null;
   quantiteProduite: number | null;
   faitLe: string | null;
   produit: {
@@ -96,6 +108,9 @@ export default function Fournil() {
   const [actualiseA, setActualiseA] = useState<Date | null>(null);
   const [nouveautes, setNouveautes] = useState<Set<number>>(new Set());
 
+  // R72 — détail des commandes clients par produit et phrase du plateau en plus.
+  const [part, setPart] = useState<PartCommandeeJournee | null>(null);
+
   // Ce que le fournil avait déjà sous les yeux, pour ne signaler que le neuf.
   const dejaVus = useRef<Map<number, number | null> | null>(null);
 
@@ -103,6 +118,13 @@ export default function Fournil() {
     async (silencieux = false) => {
       if (!silencieux) setChargement(true);
       try {
+        // D'abord la part des commandes (elle recalcule et enregistre), puis la
+        // feuille : les deux lectures racontent la même chose. Si elle échoue,
+        // la feuille s'affiche quand même avec la dernière part enregistrée.
+        const partLue: PartCommandeeJournee | null = await fetch(`/api/inventaires/commandes?date=${date}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null);
+        if (partLue) setPart(partLue);
         const reponse = await fetch(`/api/inventaires?date=${date}&poste=${poste}&avecPrevision=1`);
         if (!reponse.ok) throw new Error('chargement impossible');
         const donnees: LigneFournil[] = await reponse.json();
@@ -112,12 +134,12 @@ export default function Fournil() {
           const neuf = new Set<number>();
           for (const ligne of donnees) {
             const avant = precedent.get(ligne.produitId);
-            if (avant === undefined || avant !== ligne.quantitePrevue) neuf.add(ligne.produitId);
+            if (avant === undefined || avant !== totalAProduire(ligne.quantitePrevue, ligne.plateauCommandes)) neuf.add(ligne.produitId);
           }
           if (neuf.size > 0) setNouveautes((prec) => new Set([...prec, ...neuf]));
         }
 
-        dejaVus.current = new Map(donnees.map((l) => [l.produitId, l.quantitePrevue]));
+        dejaVus.current = new Map(donnees.map((l) => [l.produitId, totalAProduire(l.quantitePrevue, l.plateauCommandes)]));
         setLignes(donnees);
         setActualiseA(new Date());
         setErreur(null);
@@ -134,6 +156,7 @@ export default function Fournil() {
   useEffect(() => {
     dejaVus.current = null;
     setNouveautes(new Set());
+    setPart(null);
     void charger();
   }, [charger]);
 
@@ -198,7 +221,13 @@ export default function Fournil() {
   }, [lignes]);
 
   const faits = lignes.filter((l) => l.faitLe !== null).length;
-  const total = lignes.reduce((somme, l) => somme + (l.quantitePrevue ?? 0), 0);
+  const total = lignes.reduce((somme, l) => somme + totalAProduire(l.quantitePrevue, l.plateauCommandes), 0);
+  const partDe = new Map<number, PartFournil>(
+    (part && part.journee === date ? part.bases : []).map((b) => [b.produitId, b])
+  );
+  // Le plateau des commandes ne concerne que les produits de ce poste.
+  const resumesCommandes =
+    part && part.journee === date && lignes.some((l) => (l.commandeAuto ?? 0) > 0) ? part.resumes : [];
 
   return (
     <>
@@ -311,6 +340,17 @@ export default function Fournil() {
             </div>
           </div>
 
+          {resumesCommandes.length > 0 ? (
+            <Carte className="border-accent/40 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-accent">Commandes clients</p>
+              {resumesCommandes.map((resume) => (
+                <p key={resume} className="chiffres mt-1 text-base font-medium text-ink">
+                  {resume}
+                </p>
+              ))}
+            </Carte>
+          ) : null}
+
           {parCategorie.map(([categorie, liste]) => (
             <Carte key={categorie}>
               <h2 className="border-b border-line px-4 py-2.5 text-sm font-semibold text-ink">
@@ -321,6 +361,10 @@ export default function Fournil() {
                 {liste.map((ligne) => {
                   const fait = ligne.faitLe !== null;
                   const nouveau = nouveautes.has(ligne.produitId);
+                  // « + » du manager (déjà dans quantitePrevue) et commandes de l'application.
+                  const commandeManuelle = ligne.quantiteCommande ?? 0;
+                  const commandeTotale = commandeManuelle + (ligne.commandeAuto ?? 0);
+                  const derives = formaterDerives(partDe.get(ligne.produitId)?.detail ?? []);
 
                   return (
                     <li
@@ -373,23 +417,27 @@ export default function Fournil() {
                           mais le pâtissier voit d'où vient le surplus. */}
                       {sePlanifieEnPlateaux(ligne.produit.piecesParPlateau) ? (
                         <QuantiteEnPlateaux
-                          prevue={ligne.quantitePrevue ?? 0}
-                          commandee={ligne.quantiteCommande ?? 0}
+                          prevue={Math.max(0, (ligne.quantitePrevue ?? 0) - commandeManuelle)}
+                          commandee={commandeTotale}
                           parPlateau={ligne.produit.piecesParPlateau}
                           fait={fait}
+                          derives={derives}
                         />
                       ) : (
                       <span
                         className={`shrink-0 text-right ${fait ? 'text-ink-3' : 'text-ink'}`}
                       >
                         <span className="chiffres block text-3xl font-semibold tabular-nums leading-none">
-                          {ligne.quantitePrevue}
+                          {totalAProduire(ligne.quantitePrevue, ligne.plateauCommandes)}
                         </span>
-                        {ligne.quantiteCommande ? (
+                        {commandeTotale > 0 ? (
                           <span className="chiffres mt-0.5 block text-xs font-medium text-accent">
-                            dont {ligne.quantiteCommande} commandé
-                            {ligne.quantiteCommande > 1 ? 's' : ''}
+                            dont {commandeTotale} commandé
+                            {commandeTotale > 1 ? 's' : ''}
                           </span>
+                        ) : null}
+                        {derives !== '' ? (
+                          <span className="mt-0.5 block text-xs font-medium text-accent">{derives}</span>
                         ) : null}
                       </span>
                       )}

@@ -385,7 +385,9 @@ export async function GET(request: Request) {
       where.produit = { poste };
     }
     if (seulementPrevus) {
-      where.quantitePrevue = { gt: 0 };
+      // R72 : une base n'ayant que des commandes clients (rien de tapé par le
+      // manager) doit quand même apparaître sur la feuille du fournil.
+      where.OR = [{ quantitePrevue: { gt: 0 } }, { commandeAuto: { gt: 0 } }];
     }
 
     // Filet de sécurité : sans borne, cette route finirait par renvoyer

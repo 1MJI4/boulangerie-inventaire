@@ -201,6 +201,13 @@ model Inventaire {
   quantiteProduite Int?
   quantitePrevue   Int? // Quantite demandee par le manager pour cette journee
   quantiteCommande Int? // Part « + » due aux commandes clients (feuille 1 + 11)
+  // R72 (19/11/2026) — part des commandes prises DANS l'application, en pieces.
+  // RECALCULEES en entier par src/lib/serveur/partCommandee.ts (jamais saisies) :
+  // commandeAuto = pieces commandees pour ce produit (derives compris) ;
+  // plateauCommandes = pieces a sortir EN PLUS (plateaux entiers partages entre
+  // sortes, 0 si prises sur la vente normale). NULL = jamais calcule.
+  commandeAuto     Int?
+  plateauCommandes Int?
   faitLe           DateTime? // Horodatage du "c'est produit" coche au fournil
   rupturePremiereA DateTime? // Heure du premier zero constate dans la journee
   unite            Unite     @default(piece) // doit egaler Produit.unite (declencheur)

@@ -573,3 +573,31 @@ l'avez pas confirmé ici.
      pièce. *(en attendant, l'application fait : pas de tuile ; la pièce se commande dans le
      rayon Viennoiserie.)* La tarte citron meringuée n'est pas ajoutée (votre réponse du
      19/11/2026 : « mets pas s'il n'y a pas »).
+
+### Commandes de viennoiserie sur la feuille du fournil (19/11/2026)
+
+105. **Le plateau ajouté pour une commande : il part plein ? Complété avec quoi ?** Quand
+     les commandes dépassent de 5 pièces ou plus, un plateau est ajouté ; il reste des
+     places (11 pour 5 pièces). *(en attendant, l'application fait : le plateau part plein,
+     complété par la sorte la plus commandée ce jour-là — Croissant en cas d'égalité — et
+     ce surplus va à la vente. Quand 1 à 4 pièces sont « prises sur la vente normale »,
+     elles sont retirées de cette même sorte.)*
+
+106. **« Couque au chocolat double » : quel nom exact dans votre Excel ?** Vous avez donné
+     le prix (1,90 €) le 19/11/2026. Elle n'est pas encore au tarif : les vendeurs ne
+     peuvent pas la commander. *(en attendant : le lien vers la Couque au chocolat est prêt
+     mais éteint ; il s'allumera avec le prochain fichier de tarif qui la contient.)*
+
+107. **« Pain chocolat » (tarif) et « Couque au chocolat » (fournil) : c'est bien le même
+     produit ?** *(en attendant, l'application fait : oui — une commande de Pain chocolat
+     s'ajoute à la Couque au chocolat du fournil.)*
+
+108. **Une commande arrive, change ou est annulée alors que le pâtissier a déjà sa
+     feuille : faut-il le prévenir ?** Votre réponse du 19/11/2026 : c'est rare, pas de
+     traitement spécial. *(l'application fait : la feuille se met à jour toute seule dans
+     la minute et la ligne est marquée « nouveau » ; pas d'alerte, pas de blocage. Une
+     journée passée n'est plus modifiée.)*
+
+109. **Tableau de bord : la part des commandes doit-elle y apparaître aussi ?** L'historique
+     des prévisions la montre (« prévu 48 + 16 pour les commandes »). *(en attendant : le
+     tableau de bord compare encore la production à la seule demande du manager.)*

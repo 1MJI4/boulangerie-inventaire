@@ -34,6 +34,8 @@ import {
   sePlanifieEnPlateaux,
   suggestionEnPlateaux,
 } from '@/domaine/plateaux';
+import { formaterDerives } from '@/domaine/commandesFournil';
+import { usePartCommandee } from '@/lib/usePartCommandee';
 
 /** Le rayon que le manager planifie tous les jours. */
 const RAYON_PRINCIPAL = 'Viennoiserie';
@@ -53,6 +55,9 @@ export default function SaisiePrevisions() {
   // la semaine suivante.
   const commande = useSaisieJournee({ date, champ: 'quantiteCommande' });
   const { reperes } = useHistoriqueProduit(date);
+  // R72 — commandes prises dans l'application : comptées toutes seules pour le
+  // fournil (dérivés compris), affichées ici pour que le manager ne les retape pas.
+  const partCommandes = usePartCommandee(date);
   /** Produit au kilo en cours de saisie (pavé décimal ouvert). */
   const [pesee, setPesee] = useState<number | null>(null);
   const produitPese = pesee === null ? null : (saisie.produits.find((p) => p.id === pesee) ?? null);
@@ -268,6 +273,21 @@ export default function SaisiePrevisions() {
 
         <BandeauCommandes journee={date} />
 
+        {partCommandes.resumes.length > 0 ? (
+          <Carte className="mb-5 border-accent/40 p-4">
+            <h2 className="text-sm font-medium text-ink">Déjà compté pour le fournil</h2>
+            {partCommandes.resumes.map((resume) => (
+              <p key={resume} className="chiffres mt-1 text-sm text-ink">
+                {resume}
+              </p>
+            ))}
+            <p className="mt-2 text-xs text-ink-3">
+              Les commandes de croissants et de couques au chocolat prises dans l&apos;application
+              s&apos;ajoutent toutes seules à la feuille du fournil : ne les retapez pas dans le « + ».
+            </p>
+          </Carte>
+        ) : null}
+
         {saisie.erreurChargement ? (
           <Alerte>
             {saisie.erreurChargement}{' '}
@@ -346,6 +366,9 @@ export default function SaisiePrevisions() {
                         {produits.map((produit) => {
                           const repere = reperes.get(produit.id);
                           const auPoids = produit.unite === 'kg';
+                          const partAuto = partCommandes.parProduit.get(produit.id);
+                          const commandeAuto = partAuto?.commandeAuto ?? 0;
+                          const derives = formaterDerives(partAuto?.detail ?? []);
                           const refus = saisie.refus.get(produit.id) ?? commande.refus.get(produit.id);
                           const parPlateau = sePlanifieEnPlateaux(produit.piecesParPlateau)
                             ? produit.piecesParPlateau
@@ -407,8 +430,15 @@ export default function SaisiePrevisions() {
                                     : undefined
                               }
                               indice={
-                                parPlateau !== null || repere?.dernier?.produite != null ? (
+                                commandeAuto > 0 || parPlateau !== null || repere?.dernier?.produite != null ? (
                                   <>
+                                    {commandeAuto > 0 ? (
+                                      <span className="chiffres font-medium text-accent">
+                                        + {commandeAuto} commandé{commandeAuto > 1 ? 's' : ''} dans l&apos;application
+                                        {derives !== '' ? ` (${derives})` : ''}
+                                        {parPlateau !== null || repere?.dernier?.produite != null ? ' · ' : ''}
+                                      </span>
+                                    ) : null}
                                     {parPlateau !== null ? (
                                       <span className={resteAncien > 0 ? 'text-attention' : ''}>
                                         {resteAncien > 0

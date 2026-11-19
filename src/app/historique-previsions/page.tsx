@@ -4,6 +4,7 @@
 import { dateDuJour, decalerJours } from '@/lib/dateProduction';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { totalAProduire } from '@/domaine/commandesFournil';
 
 interface Produit {
   id: number;
@@ -16,6 +17,8 @@ interface Inventaire {
   quantiteRestante: number | null;
   quantiteProduite: number | null;
   quantitePrevue: number | null;
+  /** R72 — pièces sorties en plus pour les commandes de l'application. */
+  plateauCommandes?: number | null;
   produit: Produit;
 }
 
@@ -50,7 +53,7 @@ export default function HistoriquePrevisions() {
       const data = await response.json();
       
       // Filtrer seulement ceux qui ont des prévisions
-      const avecPrevisions = data.filter((inv: Inventaire) => inv.quantitePrevue && inv.quantitePrevue > 0);
+      const avecPrevisions = data.filter((inv: Inventaire) => totalAProduire(inv.quantitePrevue, inv.plateauCommandes) > 0);
       
       // Grouper par date
       const groupesParDate = avecPrevisions.reduce((acc: any, inv: Inventaire) => {
@@ -79,7 +82,7 @@ export default function HistoriquePrevisions() {
   };
 
   const calculerStatsPrevision = (date: string, previsions: Inventaire[]): PrevisionParDate => {
-    const totalPrevu = previsions.reduce((sum, inv) => sum + (inv.quantitePrevue ?? 0), 0);
+    const totalPrevu = previsions.reduce((sum, inv) => sum + totalAProduire(inv.quantitePrevue, inv.plateauCommandes), 0);
     const totalProduit = previsions.reduce((sum, inv) => sum + (inv.quantiteProduite ?? 0), 0);
 
     // La précision ne se calcule que sur les lignes réellement produites. Une
@@ -87,7 +90,7 @@ export default function HistoriquePrevisions() {
     // si le fournil n'avait rien fait — alors qu'il n'a simplement pas encore
     // renseigné ses quantités.
     const produites = previsions.filter((inv) => inv.quantiteProduite != null);
-    const prevuComptabilise = produites.reduce((sum, inv) => sum + (inv.quantitePrevue ?? 0), 0);
+    const prevuComptabilise = produites.reduce((sum, inv) => sum + totalAProduire(inv.quantitePrevue, inv.plateauCommandes), 0);
     const produitComptabilise = produites.reduce((sum, inv) => sum + (inv.quantiteProduite ?? 0), 0);
 
     const precision =
@@ -275,7 +278,9 @@ export default function HistoriquePrevisions() {
             <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
               <div className="space-y-4">
                 {previsionsDetail.map((inventaire) => {
-                  const prevu = inventaire.quantitePrevue ?? 0;
+                  // R72 : « prévu » = la demande du manager + ce qui est sorti pour les commandes.
+                  const pourCommandes = inventaire.plateauCommandes ?? 0;
+                  const prevu = totalAProduire(inventaire.quantitePrevue, inventaire.plateauCommandes);
                   const produitConnu = inventaire.quantiteProduite;
                   const produit = produitConnu ?? 0;
                   const precisionProduit =
@@ -303,6 +308,11 @@ export default function HistoriquePrevisions() {
                         <div className="bg-accent-doux p-3 rounded">
                           <p className="text-sm text-ink-2">Était prévu</p>
                           <p className="text-2xl font-bold text-accent">{prevu}</p>
+                          {pourCommandes > 0 ? (
+                            <p className="text-xs font-medium text-accent">
+                              {prevu - pourCommandes} + {pourCommandes} pour les commandes
+                            </p>
+                          ) : null}
                         </div>
                         <div className="bg-ok-doux p-3 rounded">
                           <p className="text-sm text-ink-2">Réellement produit</p>
