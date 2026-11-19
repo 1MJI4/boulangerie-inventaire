@@ -413,6 +413,7 @@ const CONSIGNES_CHAMP_VIDE: Readonly<Record<string, string>> = {
   'heure de retrait': 'Choisissez l’heure de retrait.',
   'Description de la demande': 'Décrivez ce que veut le client.',
   'motif de l’annulation': 'Indiquez pourquoi la commande est annulée.',
+  'nom du vendeur': 'Touchez votre prénom, ou écrivez-le, pour valider.',
 };
 
 /** Entrée du rapport d'import : « <où> — <constat> (<précision>). <quoi faire> ». */

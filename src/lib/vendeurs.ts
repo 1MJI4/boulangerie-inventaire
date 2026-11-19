@@ -3,9 +3,16 @@
 // src/lib/vendeurs.ts
 //
 // La tablette du comptoir est partagée : son profil dit « vendeur », il ne dit
-// pas lequel. On demande donc le prénom à l'entrée de l'écran Commandes, et on
-// le retient pour le service — pas à chaque commande, sinon c'est un tap de
-// plus toutes les fois, avec un client en face.
+// pas lequel. Décisions du propriétaire (14/11/2026) :
+//
+//   1. le prénom se choisit (ou s'écrit) À CHAQUE commande, juste avant
+//      « Valider ». Il n'est JAMAIS présélectionné : un prénom déjà coché ferait
+//      signer la commande par la vendeuse précédente sans que personne s'en
+//      aperçoive ;
+//   2. les prénoms de ceux qui ont pris une commande AUJOURD'HUI restent
+//      proposés toute la journée (un toucher pour la commande suivante). Le
+//      lendemain, la liste repart vide : chacun écrit son prénom à sa première
+//      commande du jour.
 //
 // La liste vit sur l'appareil, jamais en base : l'application ne conserve
 // aucun répertoire de personnel. Le prénom écrit sur une commande est effacé
@@ -13,92 +20,82 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-const CLE_LISTE = 'pa.commandes.equipe';
-const CLE_ACTIF = 'pa.commandes.vendeur';
+/** Prénoms du jour : { jour: 'AAAA-MM-JJ', noms: [...] }. */
+const CLE_JOUR = 'pa.commandes.equipe.jour';
+/** Anciennes mémoires (liste permanente, « vendeur du service ») : plus lues, effacées au passage. */
+const CLES_OBSOLETES = ['pa.commandes.equipe', 'pa.commandes.vendeur'];
 
-/** Au-delà, on redemande : un service ne dure pas douze heures. */
-const DUREE_SERVICE_MS = 10 * 60 * 60 * 1000;
+type PrenomsDuJour = { jour: string; noms: string[] };
 
-// Un seul prénom d'essai (22/10/2026) : chaque équipe ajoute ses propres prénoms
-// sur sa tablette, et peut retirer ceux qui ne servent plus.
-export const EQUIPE_PAR_DEFAUT = ['Test'];
+/** Jour de l'appareil, « AAAA-MM-JJ » (heure locale de la tablette). */
+function jourAppareil(): string {
+  const d = new Date();
+  const deux = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${deux(d.getMonth() + 1)}-${deux(d.getDate())}`;
+}
 
-type VendeurRetenu = { nom: string; depuis: number };
-
-function lire<T>(cle: string): T | null {
+function lireDuJour(): string[] {
   try {
-    const brut = window.localStorage.getItem(cle);
-    return brut === null ? null : (JSON.parse(brut) as T);
+    const brut = window.localStorage.getItem(CLE_JOUR);
+    if (brut === null) return [];
+    const lu = JSON.parse(brut) as Partial<PrenomsDuJour> | null;
+    if (!lu || lu.jour !== jourAppareil() || !Array.isArray(lu.noms)) return [];
+    return lu.noms.filter((n): n is string => typeof n === 'string' && n.trim() !== '');
   } catch {
-    return null;
+    return [];
   }
 }
 
-function ecrire(cle: string, valeur: unknown) {
+function ecrireDuJour(noms: string[]) {
   try {
-    window.localStorage.setItem(cle, JSON.stringify(valeur));
+    window.localStorage.setItem(CLE_JOUR, JSON.stringify({ jour: jourAppareil(), noms } satisfies PrenomsDuJour));
   } catch {
-    /* navigation privée : le réglage vaut au moins pour la session */
+    /* navigation privée : la liste vaut au moins pour l'écran ouvert */
   }
 }
 
 export function useEquipe() {
-  const [equipe, setEquipe] = useState<string[]>(EQUIPE_PAR_DEFAUT);
+  /** Prénoms proposés : ceux qui ont déjà signé une commande aujourd'hui sur cette tablette. */
+  const [equipe, setEquipe] = useState<string[]>([]);
   const [vendeur, setVendeurEtat] = useState<string | null>(null);
   const [prete, setPrete] = useState(false);
 
   useEffect(() => {
-    const liste = lire<string[]>(CLE_LISTE);
-    // Une liste enregistrée, même vide (tous les prénoms retirés), remplace celle par défaut.
-    if (Array.isArray(liste)) setEquipe(liste);
-
-    const retenu = lire<VendeurRetenu>(CLE_ACTIF);
-    if (retenu && Date.now() - retenu.depuis < DUREE_SERVICE_MS) {
-      setVendeurEtat(retenu.nom);
-    }
-    setPrete(true);
-  }, []);
-
-  const definirVendeur = useCallback((nom: string | null) => {
-    setVendeurEtat(nom);
-    if (nom === null) {
+    for (const cle of CLES_OBSOLETES) {
       try {
-        window.localStorage.removeItem(CLE_ACTIF);
+        window.localStorage.removeItem(cle);
       } catch {
         /* rien à faire */
       }
-      return;
     }
-    ecrire(CLE_ACTIF, { nom, depuis: Date.now() } satisfies VendeurRetenu);
+    // Lecture de l'appareil après le premier rendu (pas de stockage côté serveur).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setEquipe(lireDuJour());
+    setPrete(true);
   }, []);
 
-  const definirEquipe = useCallback((liste: string[]) => {
-    const propre = [...new Set(liste.map((n) => n.trim()).filter(Boolean))];
-    setEquipe(propre);
-    ecrire(CLE_LISTE, propre);
+  /** Le prénom choisi pour CET écran : jamais écrit comme « vendeur en cours ». */
+  const definirVendeur = useCallback((nom: string | null) => {
+    setVendeurEtat(nom);
   }, []);
 
-  const ajouter = useCallback(
-    (nom: string) => {
-      const propre = nom.trim();
-      if (!propre) return;
-      setEquipe((actuelle) => {
-        if (actuelle.some((n) => n.toLowerCase() === propre.toLowerCase())) return actuelle;
-        const suivante = [...actuelle, propre];
-        ecrire(CLE_LISTE, suivante);
-        return suivante;
-      });
-    },
-    []
-  );
+  /** Ajoute un prénom à la liste du jour (sans doublon, casse ignorée). */
+  const ajouter = useCallback((nom: string) => {
+    const propre = nom.trim();
+    if (!propre) return;
+    // Relu sur l'appareil : un autre écran a pu ajouter un prénom, ou minuit est passé.
+    const actuelle = lireDuJour();
+    const suivante = actuelle.some((n) => n.toLowerCase() === propre.toLowerCase()) ? actuelle : [...actuelle, propre];
+    ecrireDuJour(suivante);
+    setEquipe(suivante);
+  }, []);
 
+  /** Retire un prénom de la liste du jour (faute de frappe). */
   const retirer = useCallback((nom: string) => {
-    setEquipe((actuelle) => {
-      const suivante = actuelle.filter((n) => n !== nom);
-      ecrire(CLE_LISTE, suivante);
-      return suivante;
-    });
+    const suivante = lireDuJour().filter((n) => n !== nom);
+    ecrireDuJour(suivante);
+    setEquipe(suivante);
   }, []);
 
-  return { equipe, vendeur, prete, definirVendeur, definirEquipe, ajouter, retirer };
+  return { equipe, vendeur, prete, definirVendeur, ajouter, retirer };
 }

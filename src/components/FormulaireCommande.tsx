@@ -69,7 +69,7 @@ import {
 import { ajouterJoursOuvres, fermetureDuJour, formaterDate, prochainJourOuvert } from '@/domaine/calendrier';
 import { formaterEuros, resteDu, somme } from '@/domaine/argent';
 import { formaterQuantite } from '@/domaine/unites';
-import { LIBELLES_FORME, libelleCorrection } from '@/domaine/messages';
+import { LIBELLES_FORME, libelleCorrection, signaler } from '@/domaine/messages';
 import { estForme, formesPossibles } from '@/domaine/formes';
 import { estSupplementParPersonne } from '@/domaine/supplementsParPersonne';
 import { horairesOuvertureDuJour, validerJourMeme, validerLendemain } from '@/domaine/reglement';
@@ -135,14 +135,19 @@ import {
   separerLigneGateau,
   SUPPLEMENT_ECRITURE,
   SUPPLEMENT_PHOTO,
+  etapeDuChamp,
   goutDitParLaTuile,
+  groupesDuCarnet,
+  ligneOuverteDuBon,
   toucherProduit,
   toucherRaccourci,
   tuilesRaccourcis,
   versCommandeSaisie,
   type CatalogueCommande,
   type ContexteCalendrier,
+  type EtapeCommande,
   type EtatFormulaire,
+  type GroupeCarnet,
   type FicheCatalogue,
   type LigneEcran,
   type TuileRaccourci,
@@ -276,7 +281,10 @@ export function FormulaireCommande({ commande }: { commande?: Commande }) {
 
 function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRecommencer: () => void }) {
   const router = useRouter();
-  const { vendeur, prete } = useEquipe();
+  // Propriétaire, 14/11/2026 : le prénom se choisit à CHAQUE commande, au-dessus
+  // de « Valider », jamais présélectionné ni retenu (voir src/lib/vendeurs.ts).
+  const { vendeur, prete, equipe, definirVendeur, ajouter } = useEquipe();
+  const blocVendeur = useRef<HTMLDivElement>(null);
   const modification = commande !== undefined;
 
   // --- Données serveur ---------------------------------------------------
@@ -331,6 +339,8 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
   const [rayonsOuverts, setRayonsOuverts] = useState(false);
   const [eclair, setEclair] = useState<Eclair | null>(null);
   const [ligneDetail, setLigneDetail] = useState<string | null>(null);
+  // Bon en accordéon (19/11/2026) : dernière ligne touchée — c'est elle qui est ouverte.
+  const [ligneChoisie, setLigneChoisie] = useState<string | null>(null);
   // Galerie de photos de modèles (26/10/2026) : montée seulement quand elle est
   // ouverte (aucune image chargée avant). Photo sans produit unique (bûches…) :
   // gardée en attente, posée sur le prochain produit touché (bandeau visible).
@@ -347,6 +357,9 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
   const cadre = useRef<HTMLDivElement>(null);
   const [hautCadre, setHautCadre] = useState<number | null>(null);
   const [tentative, setTentative] = useState(false);
+  // Tablette : l'écran en trois étapes (propriétaire, 19/11/2026) — 1 Client,
+  // 2 Produits, 3 Paiement. Une commande à modifier s'ouvre sur ses produits.
+  const [etape, setEtape] = useState<EtapeCommande>(commande ? 2 : 1);
   // Récapitulatif « Il manque… » au centre, ouvert par « Valider » (22/10/2026).
   const [recapOuvert, setRecapOuvert] = useState(false);
   const [refusServeur, setRefusServeur] = useState<Echec | null>(null);
@@ -360,6 +373,8 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
   const priseLe = useRef<string | null>(null);
   // Commande refusée à l'arrivée, rouverte pour être corrigée (« ?reprise=… »).
   const [reprise, setReprise] = useState<CommandeEnAttente | null>(null);
+  /** Qui signe : le prénom gardé avec une commande reprise, sinon celui choisi sur cet écran. */
+  const signataire = reprise?.vendeur || vendeur;
   const [demande, setDemande] = useState<DemandeGerant | null>(null);
   const [parGerant, setParGerant] = useState<string | null>(null);
   const champClient = useRef<HTMLInputElement>(null);
@@ -429,10 +444,6 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
       annule = true;
     };
   }, [chargerCatalogue, datePrix]);
-
-  useEffect(() => {
-    if (prete && !vendeur) router.replace('/commandes');
-  }, [prete, vendeur, router]);
 
   // « Rouvrir pour corriger » (voyant des commandes gardées) : la saisie gardée
   // revient telle quelle, avec le message du magasin à côté de « Valider ».
@@ -575,6 +586,8 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
   ]) {
     if (!manques.some((x) => x.code === m.code && x.champ === m.champ)) manques.push(m);
   }
+  // La signature fait partie de ce qui manque : listée avec le reste, jamais oubliée.
+  if (!signataire) manques.push(signaler('ERR_CHAMP_OBLIGATOIRE', { champLibelle: 'nom du vendeur' }, { champ: 'vendeur' }));
   const pour = (champs: readonly string[]) => tous.filter((s) => champs.includes(champLocal(s.champ)) && indexLigne(s.champ) === null);
   const signauxClient = tentative ? pour(['client', 'telephone']) : pour(['telephone']).filter((s) => s.niveau !== 'bloquant' || telephone !== '');
   // Retrait le jour même ou le lendemain : ACCEPTÉ (LOI 11, 15/10 et 18/10/2026),
@@ -648,8 +661,11 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
     return f ? goutsAttendus(GOUTS_SUR_COMMANDE[f.produit.id], f) : 0;
   };
   /** Amène une ligne du bon à l'écran (champ simplement vide : rien à « corriger » d'autre). */
-  const montrerLigne = (i: number) =>
-    document.getElementById(`bon-${lignes[i]?.cle ?? ''}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  const montrerLigne = (i: number) => {
+    const cle = lignes[i]?.cle ?? '';
+    // Le bon n'est à l'écran qu'à l'étape Produits : on laisse l'étape s'afficher.
+    window.setTimeout(() => document.getElementById(`bon-${cle}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 60);
+  };
 
   const avecGerant = (raison: string, appliquer: (d: Deverrouillage) => void) => {
     if (parGerant !== null) {
@@ -674,6 +690,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
     setLignes(t.lignes);
     setActif(`${t.cle}.${t.champ}`);
     setEclair((e) => ({ cle: t.cle, produitId: f.produit.id, n: (e?.n ?? 0) + 1 }));
+    setLigneChoisie(t.cle);
     const ligne = t.lignes.find((l) => l.cle === t.cle);
     const fiche = ficheDe(catalogue, f.produit.id);
     // Une ligne par gâteau (28/10/2026) : « nouveau gâteau », jamais « 2 ».
@@ -710,6 +727,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
     setLignes(photo ? t.lignes.map((l) => (l.cle === t.cle ? { ...l, photoModele: photo.id } : l)) : t.lignes);
     setActif(`${t.cle}.${t.champ}`);
     setEclair((e) => ({ cle: t.cle, produitId: tuile.raccourci.cle, n: (e?.n ?? 0) + 1 }));
+    setLigneChoisie(t.cle);
     setAnnonce(`${photo ? `Photo ${photo.id} — ` : ''}${tuile.raccourci.libelle} au bon\u00a0: choisissez la taille`);
   };
 
@@ -744,6 +762,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
     setActif(`${ligne.cle}.quantite`);
     setLigneDetail(ligne.cle);
     setEclair((e) => ({ cle: ligne.cle, produitId: null, n: (e?.n ?? 0) + 1 }));
+    setLigneChoisie(ligne.cle);
     setAnnonce('Autre demande ajoutée au bon');
     setRecherche('');
   };
@@ -786,6 +805,10 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
   /** Applique la sortie proposée par le domaine (un geste). */
   const corriger = (s: SignalementAffichable, v: unknown) => {
     const i = indexLigne(s.champ);
+    // Trois étapes : la sortie amène d'abord à l'étape où le champ se corrige.
+    const etapeCible = etapeDuChamp(s.champ);
+    if (etapeCible !== null) setEtape(etapeCible);
+    if (i !== null && lignes[i]) setLigneChoisie(lignes[i].cle);
     const champ = champLocal(s.champ);
     const ligne = i !== null ? lignes[i] : undefined;
 
@@ -893,7 +916,8 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
         setRemise(null);
         return;
       case 'client':
-        champClient.current?.focus();
+        // Le champ n'existe qu'à l'étape Client : on attend qu'elle soit affichée.
+        window.setTimeout(() => champClient.current?.focus(), 60);
         return;
       case 'telephone':
         setActif('telephone');
@@ -1182,13 +1206,18 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
       setRecapOuvert(true);
       return;
     }
+    if (!signataire) {
+      // Tout le reste est bon : il ne manque que la signature, juste au-dessus du bouton.
+      blocVendeur.current?.scrollIntoView({ block: 'nearest' });
+      return;
+    }
     setEnvoi(true);
     try {
       idClient.current ??= nouvelIdCommande();
       priseLe.current ??= new Date().toISOString();
       const corps = {
         // Commande reprise : elle reste au nom de qui l'a prise, à l'heure où elle l'a été.
-        ...(modification ? { id: commande.id, action: 'modification', auteur: vendeur } : { vendeur: reprise?.vendeur ?? vendeur }),
+        ...(modification ? { id: commande.id, action: 'modification', auteur: signataire } : { vendeur: signataire }),
         // Horodatage de la tablette (hors ligne, l'envoi peut arriver bien plus tard).
         priseLe: priseLe.current,
         client,
@@ -1241,7 +1270,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
           client,
           dateRetrait,
           heureRetrait: heureRetrait || null,
-          vendeur: reprise?.vendeur ?? vendeur ?? '',
+          vendeur: signataire ?? '',
           priseLe: priseLe.current,
           corps,
           ecran,
@@ -1277,7 +1306,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
 
   /* ---------------------------------------------------------------- Rendu */
 
-  if (!prete || !vendeur) return null;
+  if (!prete) return null;
 
   if (gardee) {
     return (
@@ -1454,6 +1483,13 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
   };
 
   /* ----------------------------------------------- Le bon (lignes saisies) */
+  // Bon en accordéon : la ligne qu'on règle est ouverte, les autres se lisent
+  // d'un coup d'œil, comme sur le carnet (propriétaire, 19/11/2026).
+  const cleOuverte = ligneOuverteDuBon(lignes, actif, ligneChoisie);
+  // « Comme des dossiers » (propriétaire, 19/11/2026) : la liste des lignes reste
+  // en haut, toujours visible ; les réglages de la ligne choisie s'affichent
+  // dessous, dans leur propre zone. Rempli pendant le rendu de la liste.
+  let reglagesLigne: ReactNode = null;
   const bon =
     cal && catalogue ? (
       <div ref={zoneBon}>
@@ -1465,7 +1501,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
             Touchez un produit pour l’ajouter. Chaque toucher ajoute 1.
           </p>
         ) : (
-          <ul className="grid gap-2">
+          <ul className="flex flex-wrap gap-1.5" aria-label="Lignes du bon">
             {lignes.map((ligne, i) => {
               const fiche = ficheDe(catalogue, ligne.produitId);
               const r = resultatsLignes[i];
@@ -1489,15 +1525,20 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                 ...tous.filter((s) => indexLigne(s.champ) === i && s.code === 'AVERT_PRODUIT_EN_DOUBLE'),
               ];
               const eclaire = eclair?.cle === ligne.cle;
-              return (
-                <li
-                  key={ligne.cle}
-                  id={`bon-${ligne.cle}`}
-                  style={{ scrollMarginTop: 8 }}
-                  className={`rounded-xl border-2 p-2.5 transition-colors duration-500 ${
-                    eclaire ? 'border-accent bg-accent-doux' : 'border-line bg-surface'
-                  }`}
-                >
+              const ouverte = ligne.cle === cleOuverte;
+              // Un refus reste visible sans ouvrir la ligne (« à corriger »).
+              const aCorriger =
+                (r !== undefined && r !== null && !r.ok) ||
+                blocagesLigne.length > 0 ||
+                signauxSurGateau.some((s) => s.niveau === 'bloquant');
+              if (ouverte) {
+                reglagesLigne = (
+                  <div
+                    id={`reglages-${ligne.cle}`}
+                    className={`rounded-xl border-2 p-2.5 transition-colors duration-500 ${
+                      eclaire ? 'border-accent bg-accent-doux' : 'border-accent bg-surface'
+                    }`}
+                  >
                   <LigneDuBon
                     ligne={ligne}
                     fiche={fiche}
@@ -1534,6 +1575,27 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                   />
                   {rendre(signaux, unite, `ligne-${ligne.cle}`)}
                   {gateau ? blocGateauDe(ligne, i, signauxSurGateau) : null}
+                  </div>
+                );
+              }
+              return (
+                <li
+                  key={ligne.cle}
+                  id={`bon-${ligne.cle}`}
+                  style={{ scrollMarginTop: 8 }}
+                  aria-current={ouverte ? 'true' : undefined}
+                  className={`max-w-full rounded-lg border-2 transition-colors duration-500 ${
+                    ouverte ? 'border-accent bg-accent-doux' : aCorriger ? 'border-alerte bg-surface' : 'border-line-fort bg-surface'
+                  }`}
+                >
+                  <LigneCarnet
+                    ligne={ligne}
+                    catalogue={catalogue}
+                    montant={r && r.ok ? r.donnees.totalCentimes : null}
+                    aCorriger={aCorriger}
+                    onglet
+                    onClick={() => { setActif(null); setLigneChoisie(ligne.cle); }}
+                  />
                 </li>
               );
             })}
@@ -1553,6 +1615,22 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
       </div>
     ) : null;
 
+  // Acompte jamais oublié (propriétaire, 19/11/2026) : avant de valider, un
+  // montant ou « Pas d'acompte ». Geste d'écran seulement — le domaine garde
+  // sa règle (sous 50 % : avertissement, décision du 18/10/2026).
+  const acompteARepondre = acompte === null;
+  const boutonPasAcompte = (
+    <button
+      type="button"
+      aria-pressed={acompte === 0}
+      onClick={() => { setAcompte(0); if (actif === 'acompte') setActif(null); }}
+      className={`mt-2 min-h-12 w-full rounded-xl border-2 px-3 text-base font-medium ${
+        acompte === 0 ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
+      }`}
+    >
+      Pas d’acompte
+    </button>
+  );
   /* ------------------------------------- Montants : convenu, acompte, reste */
   const paiement =
     cal && catalogue ? (
@@ -1594,17 +1672,37 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
 
   const libelleValider = envoi ? 'Enregistrement…' : modification ? 'Enregistrer les changements' : 'Valider la commande';
 
+  // Signature, juste au-dessus du bouton. Une commande REPRISE (gardée sur la
+  // tablette) reste au nom de qui l'a prise : rien à choisir.
+  const choixVendeur = reprise?.vendeur ? null : (
+    <div ref={blocVendeur} data-champ="vendeur">
+      <ChoixVendeur
+        titre={modification ? 'Qui modifie la commande ?' : 'Qui prend la commande ?'}
+        equipe={equipe}
+        vendeur={vendeur}
+        manque={tentative && !signataire}
+        onChoisir={definirVendeur}
+        onAjouter={ajouter}
+      />
+    </div>
+  );
+
   /** Téléphone : montants, reste et validation en fin de page. */
   const montants =
     cal && catalogue ? (
       <div className="grid gap-3">
         {paiement}
+        {boutonPasAcompte}
         <div className="flex items-baseline justify-between border-t border-line pt-3">
           <span className="text-base text-ink-2">Reste à payer au retrait</span>
           <span className="chiffres text-xl font-semibold text-ink">{texteReste.replace(/^reste /, '')}</span>
         </div>
         {refusServeur ? rendre([refusServeur]) : null}
-        <Bouton variante="principal" className="min-h-14 w-full text-lg" disabled={envoi} onClick={() => void valider()}>
+        {choixVendeur}
+        {acompteARepondre ? (
+          <p className="text-sm font-medium text-ink">Saisissez l’acompte reçu, ou touchez «&nbsp;Pas d’acompte&nbsp;».</p>
+        ) : null}
+        <Bouton variante="principal" className="min-h-14 w-full text-lg" disabled={envoi || acompteARepondre} onClick={() => void valider()}>
           {libelleValider}
         </Bouton>
       </div>
@@ -1766,6 +1864,64 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
     </>
   );
 
+  /* ------------------------------------------------ Trois étapes (19/11/2026) */
+  /** 1 Client · 2 Produits · 3 Paiement : la même barre sur tablette et sur écran étroit. */
+  const barreEtapes = (
+    <nav aria-label="Étapes de la commande" className="flex min-w-0 flex-1 gap-1 rounded-xl border-2 border-line-fort bg-surface p-0.5">
+      {(
+        [
+          { n: 1, libelle: 'Client', fait: client.trim() !== '' && telephone !== '' && dateRetrait !== null && heureRetrait !== '', resume: client.trim() || null },
+          { n: 2, libelle: 'Produits', fait: lignes.length > 0, resume: lignes.length > 0 ? `${lignes.length} ligne${lignes.length > 1 ? 's' : ''}` : null },
+          { n: 3, libelle: 'Paiement', fait: acompte !== null, resume: lignes.length > 0 ? (texteTotal.montant ?? null) : null },
+        ] as const
+      ).map((e) => (
+        <button
+          key={e.n}
+          type="button"
+          aria-current={etape === e.n ? 'step' : undefined}
+          onClick={() => { setActif(null); setEtape(e.n); }}
+          className={`flex min-h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg px-2 text-left ${
+            etape === e.n ? 'bg-accent text-white shadow' : 'text-ink hover:bg-surface-2'
+          }`}
+        >
+          <span
+            className={`chiffres flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+              etape === e.n ? 'bg-white text-accent' : e.fait ? 'bg-accent-doux text-accent' : 'border-2 border-line-fort text-ink-2'
+            }`}
+            aria-hidden
+          >
+            {e.fait && etape !== e.n ? '✓' : e.n}
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-base font-bold leading-tight">{e.libelle}</span>
+            {e.resume ? (
+              <span className={`chiffres block truncate text-xs leading-tight ${etape === e.n ? 'text-white/90' : 'text-ink-2'}`}>{e.resume}</span>
+            ) : null}
+          </span>
+        </button>
+      ))}
+    </nav>
+  );
+  /** Le bon relu à l'étape Paiement, « comme le carnet ». */
+  const bonCarnet =
+    cal && catalogue ? (
+      <BonCarnet
+        groupes={groupesDuCarnet(lignes, catalogue)}
+        catalogue={catalogue}
+        total={(cle) => {
+          const r = resultatsLignes[lignes.findIndex((l) => l.cle === cle)];
+          return r && r.ok ? r.donnees.totalCentimes : null;
+        }}
+        onModifier={(cle) => {
+          setActif(null);
+          setLigneChoisie(cle);
+          setEtape(2);
+          window.setTimeout(() => document.getElementById(`bon-${cle}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+        }}
+        onProduits={() => setEtape(2)}
+      />
+    ) : null;
+
   /* ======================================================== Rendu tablette */
   // Tout tient dans l'écran (1180×820 paysage comme 820×1180 portrait) :
   //   bande client (nom · téléphone · retrait · comptoir/téléphone) — 1 ligne en paysage
@@ -1784,7 +1940,10 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
           libelle={(m) => libelleManque(m, lignes, catalogue)}
           onAller={(m) => {
             setRecapOuvert(false);
+            const etapeCible = etapeDuChamp(m.champ);
+            if (etapeCible !== null) setEtape(etapeCible);
             const i = indexLigne(m.champ);
+            if (i !== null && lignes[i]) { setActif(null); setLigneChoisie(lignes[i].cle); }
             window.setTimeout(() => {
               const cible =
                 document.querySelector(`[data-champ="${CSS.escape(m.champ ?? '')}"]`) ??
@@ -1798,6 +1957,13 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
 
   if (!etroit) {
     const gauche = cotePave === 'gauche';
+    // Accès du manager : par-dessus la zone de gauche, quelle que soit l'étape.
+    const voileGerant = accesGerant ? (
+      <div className="absolute inset-0 z-20 overflow-y-auto overscroll-contain rounded-2xl border-2 border-accent bg-surface p-4 shadow-lg">
+        {accesGerant}
+      </div>
+    ) : null;
+
     const styleCadre: CSSProperties = {
       // Pleine largeur de la tablette (la page est limitée à max-w-5xl), plafonnée à 90rem.
       marginInline: 'max(calc(50% - 50vw + 1rem), calc(50% - 45rem))',
@@ -1814,108 +1980,159 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
         )}
         {cal && catalogue ? (
           <div ref={cadre} style={styleCadre} className="-mb-8 -mt-4 flex min-h-[28rem] flex-col gap-2">
-            {/* -------------------------------------------- Bande client */}
+            {/* ------------------------------- Titre, étapes, annuler */}
             <div className="flex flex-none flex-wrap items-center gap-2">
               <div className="min-w-0 max-w-[12rem] shrink-0">
                 <h1 className="truncate text-lg font-semibold leading-tight tracking-tight text-ink" title={titre}>
                   {modification ? `Commande ${commande.numero}` : 'Nouvelle commande'}
                 </h1>
                 <p className="truncate text-xs text-ink-2">
-                  {modification ? 'Changements enregistrés et datés' : <>Prise par <span className="font-medium text-ink">{vendeur}</span></>}
+                  {modification ? (
+                    'Changements enregistrés et datés'
+                  ) : signataire ? (
+                    <>Prise par <span className="font-medium text-ink">{signataire}</span></>
+                  ) : (
+                    'Votre prénom se choisit avant de valider'
+                  )}
                 </p>
               </div>
-              <div className="flex min-w-[8rem] flex-[1_1_10rem] flex-col">
-                <input
-                  ref={champClient}
-                  className={`min-h-12 w-full rounded-xl border-2 bg-surface px-3 text-base text-ink placeholder:text-ink-3 ${
-                    videNom ? 'border-alerte' : 'border-line-fort'
-                  }`}
-                  value={client}
-                  onChange={(e) => setClient(e.target.value)}
-                  placeholder="Nom du client"
-                  aria-label="Nom du client"
-                  aria-invalid={videNom ? true : undefined}
-                  autoComplete="off"
-                />
-                {sousLeChamp(videNom)}
-              </div>
-              <div className="flex min-w-0 flex-[1_1_10rem] flex-col">
-                <BoutonBande
-                  libelle="Tél."
-                  valeur={telephone || null}
-                  vide="Toucher"
-                  actif={actif === 'telephone'}
-                  enErreur={videTelephone !== null || refusClient.some((s) => s.niveau === 'bloquant' && champLocal(s.champ) === 'telephone')}
-                  onClick={() => setActif(actif === 'telephone' ? null : 'telephone')}
-                  className="w-full"
-                  ariaLabel={`Téléphone du client${telephone ? ` : ${telephone}` : ''}`}
-                />
-                {sousLeChamp(videTelephone)}
-              </div>
-              <div role="group" aria-label="Commande prise" className="flex shrink-0 gap-0.5 rounded-xl border-2 border-line-fort bg-surface p-0.5">
-                <Segment actif={origine === 'comptoir'} onClick={() => { setOrigine('comptoir'); setModePaiement('especes'); }}>
-                  Comptoir
-                </Segment>
-                <Segment actif={origine === 'telephone'} onClick={() => { setOrigine('telephone'); setModePaiement('virement'); }}>
-                  Téléphone
-                </Segment>
-              </div>
+              {barreEtapes}
               <Bouton className="shrink-0" onClick={annuler}>Annuler</Bouton>
             </div>
 
-            {/* Signalements qui ne tiennent pas dans la bande (rares : ils prennent sur la grille, jamais sur la page). */}
-            {refusChargement || signauxStatut.length > 0 || refusClient.length > 0 ? (
+            {/* Signalements généraux (rares : ils prennent sur la zone de travail, jamais sur la page). */}
+            {refusChargement || signauxStatut.length > 0 || (etape !== 1 && refusClient.length > 0) ? (
               <div className="max-h-[40%] flex-none overflow-y-auto overscroll-contain">
                 {refusChargement ? rendre([refusChargement]) : null}
                 {rendre(signauxStatut)}
-                {rendre(refusClient)}
+                {etape !== 1 ? rendre(refusClient) : null}
               </div>
             ) : null}
 
             {/* ------------------------------------------ Zone de travail */}
             <div className={`flex min-h-0 flex-1 gap-3 ${gauche ? 'flex-row-reverse' : 'flex-row'}`}>
-              {/* Produits */}
-              <section aria-label="Produits" className="relative flex min-h-0 min-w-0 flex-1 flex-col rounded-2xl border border-line bg-surface">
-                {/* Jour et heure de retrait : bande compacte, toujours visible, jamais par-dessus les produits. */}
-                <div className="flex-none px-3 pt-3">{bande}</div>
-                {grille(
-                  true,
-                  bandeauPhoto || signauxProduits.length > 0 ? (
-                    <>
-                      {bandeauPhoto}
-                      {signauxProduits.length > 0 ? rendre(signauxProduits) : null}
-                    </>
-                  ) : null,
-                )}
-
-                {accesGerant ? (
-                  <div className="absolute inset-0 z-20 overflow-y-auto overscroll-contain rounded-2xl border-2 border-accent bg-surface p-4 shadow-lg">
-                    {accesGerant}
+              {etape === 1 ? (
+                /* ============================== Étape 1 : le client et le retrait */
+                <section aria-label="Client et retrait" className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain rounded-2xl border border-line bg-surface p-4">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="flex min-w-0 flex-col">
+                      <label htmlFor="commande-client" className="mb-1 text-sm font-semibold text-ink">Nom du client</label>
+                      <input
+                        id="commande-client"
+                        ref={champClient}
+                        className={`min-h-14 w-full rounded-xl border-2 bg-surface px-3 text-lg text-ink placeholder:text-ink-3 ${
+                          videNom ? 'border-alerte' : 'border-line-fort'
+                        }`}
+                        value={client}
+                        onChange={(e) => setClient(e.target.value)}
+                        placeholder="Nom du client"
+                        aria-invalid={videNom ? true : undefined}
+                        autoComplete="off"
+                      />
+                      {sousLeChamp(videNom)}
+                    </div>
+                    <div className="flex min-w-0 flex-col">
+                      <span className="mb-1 text-sm font-semibold text-ink">Téléphone</span>
+                      <BoutonBande
+                        libelle="Tél."
+                        valeur={telephone || null}
+                        vide="Toucher pour saisir"
+                        actif={actif === 'telephone'}
+                        enErreur={videTelephone !== null || refusClient.some((s) => s.niveau === 'bloquant' && champLocal(s.champ) === 'telephone')}
+                        onClick={() => setActif(actif === 'telephone' ? null : 'telephone')}
+                        className="min-h-14 w-full"
+                        ariaLabel={`Téléphone du client${telephone ? ` : ${telephone}` : ''}`}
+                      />
+                      {sousLeChamp(videTelephone)}
+                    </div>
                   </div>
-                ) : null}
-              </section>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-sm font-semibold text-ink">Commande prise</span>
+                    <div role="group" aria-label="Commande prise" className="flex shrink-0 gap-0.5 rounded-xl border-2 border-line-fort bg-surface p-0.5">
+                      <Segment actif={origine === 'comptoir'} onClick={() => { setOrigine('comptoir'); setModePaiement('especes'); }}>
+                        Comptoir
+                      </Segment>
+                      <Segment actif={origine === 'telephone'} onClick={() => { setOrigine('telephone'); setModePaiement('virement'); }}>
+                        Téléphone
+                      </Segment>
+                    </div>
+                  </div>
+                  {refusClient.length > 0 ? <div>{rendre(refusClient)}</div> : null}
+                  <div>
+                    <p className="mb-1 text-sm font-semibold text-ink">Retrait</p>
+                    {bande}
+                  </div>
+                  {voileGerant}
+                </section>
+              ) : etape === 2 ? (
+                /* ======================================= Étape 2 : les produits */
+                <section aria-label="Produits" className="relative flex min-h-0 min-w-0 flex-1 flex-col rounded-2xl border border-line bg-surface">
+                  {grille(
+                    true,
+                    bandeauPhoto || signauxProduits.length > 0 ? (
+                      <>
+                        {bandeauPhoto}
+                        {signauxProduits.length > 0 ? rendre(signauxProduits) : null}
+                      </>
+                    ) : null,
+                  )}
+                  {voileGerant}
+                </section>
+              ) : (
+                /* ============================ Étape 3 : le bon relu, comme le carnet */
+                <section aria-label="Le bon à relire" className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain rounded-2xl border border-line bg-surface p-4">
+                  {bonCarnet}
+                  {voileGerant}
+                </section>
+              )}
 
-              {/* Colonne du pavé : pavé, bon (défile), total + Valider (toujours visibles) */}
+              {/* Colonne du pavé : pavé, puis ce que l'étape demande ; le pied reste visible */}
               <aside
-                aria-label="Le bon et le pavé de saisie"
-                className="flex min-h-0 w-72 shrink-0 flex-col overflow-hidden rounded-2xl border-2 border-line-fort bg-surface lg:w-80"
+                aria-label={etape === 3 ? 'Remarques et paiement' : etape === 2 ? 'Le bon et le pavé de saisie' : 'Pavé de saisie'}
+                className={`flex min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl border-2 border-line-fort bg-surface ${
+                  etape === 2 ? 'w-[22rem] lg:w-[27rem]' : 'w-72 lg:w-80'
+                }`}
               >
                 {blocPave ? (
                   <div className="flex-none border-b border-line p-3 pb-1">
                     <ContexteTaillePave.Provider value="compact">{blocPave}</ContexteTaillePave.Provider>
                   </div>
                 ) : null}
-                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
-                  {bon}
-                  <section aria-label="Remarques" className="mt-3 border-t border-line pt-2">{precisions}</section>
-                  <section className="mt-4 border-t border-line pt-3">
-                    <h2 className={TITRE}>Paiement</h2>
-                    {paiement}
-                  </section>
-                  <div className="mt-4 border-t border-line pt-3">
-                    <BasculeCotePave />
+                {etape === 2 ? (
+                  <div className="flex min-h-0 flex-1 flex-col">
+                    {/* Les lignes du bon : toujours visibles, comme des dossiers. */}
+                    <div className="max-h-[40%] flex-none overflow-y-auto overscroll-contain border-b border-line p-3 pb-2">{bon}</div>
+                    {/* Les réglages de la ligne choisie. */}
+                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
+                      {reglagesLigne}
+                      <div className={reglagesLigne ? 'mt-4 border-t border-line pt-3' : ''}>
+                        <BasculeCotePave />
+                      </div>
+                    </div>
                   </div>
+                ) : (
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
+                  {etape === 1 ? (
+                    blocPave ? null : (
+                      <p className="text-sm text-ink-2">
+                        Touchez «&nbsp;Téléphone&nbsp;» pour saisir le numéro au pavé, puis choisissez le jour et l’heure du retrait.
+                      </p>
+                    )
+                  ) : (
+                    <>
+                      <section aria-label="Remarques">
+                        <h2 className={TITRE}>Remarques</h2>
+                        {precisions}
+                      </section>
+                      <section className="mt-4 border-t border-line pt-3">
+                        <h2 className={TITRE}>Paiement</h2>
+                        {paiement}
+                        {boutonPasAcompte}
+                      </section>
+                    </>
+                  )}
                 </div>
+                )}
                 <div className="flex-none border-t border-line bg-surface p-3">
                   <div className="flex items-end justify-between gap-2" aria-live="polite">
                     <div className="min-w-0 text-sm leading-tight text-ink-2">
@@ -1935,10 +2152,29 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                       ) : null}
                     </span>
                   </div>
-                  {refusServeur ? <div className="max-h-48 overflow-y-auto">{rendre([refusServeur])}</div> : null}
-                  <Bouton variante="principal" className="mt-2 min-h-14 w-full text-lg" disabled={envoi} onClick={() => void valider()}>
-                    {libelleValider}
-                  </Bouton>
+                  {etape === 3 ? (
+                    <>
+                      {refusServeur ? <div className="max-h-48 overflow-y-auto">{rendre([refusServeur])}</div> : null}
+                      {choixVendeur ? <div className="mt-2">{choixVendeur}</div> : null}
+                      {acompteARepondre ? (
+                        <p className="mt-2 text-sm font-medium text-ink">
+                          Saisissez l’acompte reçu, ou touchez «&nbsp;Pas d’acompte&nbsp;».
+                        </p>
+                      ) : null}
+                      <Bouton
+                        variante="principal"
+                        className="mt-2 min-h-14 w-full text-lg"
+                        disabled={envoi || acompteARepondre}
+                        onClick={() => void valider()}
+                      >
+                        {libelleValider}
+                      </Bouton>
+                    </>
+                  ) : (
+                    <Bouton variante="principal" className="mt-2 min-h-14 w-full text-lg" onClick={() => { setActif(null); setEtape(etape === 1 ? 2 : 3); }}>
+                      {etape === 1 ? <>Continuer&nbsp;: les produits</> : <>Continuer&nbsp;: le paiement</>}
+                    </Bouton>
+                  )}
                 </div>
               </aside>
             </div>
@@ -1959,8 +2195,10 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
         sousTitre={
           modification ? (
             <>Chaque changement est enregistré et daté. Prix au tarif du jour de la prise de commande.</>
+          ) : signataire ? (
+            <>Prise par <span className="font-medium text-ink">{signataire}</span></>
           ) : (
-            <>Prise par <span className="font-medium text-ink">{vendeur}</span></>
+            <>Votre prénom se choisit avant de valider.</>
           )
         }
         actions={<Bouton onClick={annuler}>Annuler</Bouton>}
@@ -1971,11 +2209,19 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
 
       {accesGerant ? <div className="mb-4">{accesGerant}</div> : null}
 
+      {/* Trois étapes (19/11/2026) : la barre reste en haut pendant qu'on fait défiler. */}
+      {cal && catalogue ? (
+        <div className="sticky top-[61px] z-20 -mx-1 mb-3 flex bg-ground/95 px-1 py-1.5 backdrop-blur">{barreEtapes}</div>
+      ) : null}
+
       {cal && catalogue ? (
         <DispositionAvecPave pave={blocPave}>
           <div className={`grid grid-cols-[minmax(0,1fr)] gap-4 ${!blocPave ? 'pb-24' : ''}`}>
             {signauxStatut.length > 0 ? rendre(signauxStatut) : null}
+            {etape !== 1 && refusClient.length > 0 ? rendre(refusClient) : null}
 
+            {etape === 1 ? (
+            <>
             {/* ---------------------------------------------------- Client */}
             <Carte className="p-4">
               <h2 className={TITRE}>Client</h2>
@@ -2016,7 +2262,9 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
 
             {/* ----------------------------------- Date et heure de retrait */}
             <Carte className="p-3">{bande}</Carte>
-
+            </>
+            ) : etape === 2 ? (
+            <>
             {/* -------------------------------------------------- Produits */}
             <div ref={zoneProduits}>
               <Carte className="p-4">
@@ -2028,11 +2276,25 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
             <Carte className="p-4">
               {totalAnnonce}
               <div className="mt-3">{bon}</div>
+              {reglagesLigne ? <div className="mt-2">{reglagesLigne}</div> : null}
+            </Carte>
+            </>
+            ) : (
+            <>
+            {/* ------------------------- Paiement : le bon relu, remarques, argent */}
+            <Carte className="p-4">{bonCarnet}</Carte>
+
+            <Carte className="p-4">
+              <h2 className={TITRE}>Remarques</h2>
+              {precisions}
             </Carte>
 
-            <Carte className="p-4">{precisions}</Carte>
-
-            <Carte className="p-4">{montants}</Carte>
+            <Carte className="p-4">
+              <h2 className={TITRE}>Paiement</h2>
+              {montants}
+            </Carte>
+            </>
+            )}
           </div>
         </DispositionAvecPave>
       ) : null}
@@ -2057,9 +2319,19 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                 ) : null}
               </div>
             </div>
-            <Bouton variante="principal" className="shrink-0" disabled={envoi} onClick={() => void valider()}>
-              {envoi ? 'Envoi…' : 'Valider'}
-            </Bouton>
+            {etape === 3 ? (
+              <Bouton variante="principal" className="shrink-0" disabled={envoi || acompteARepondre} onClick={() => void valider()}>
+                {envoi ? 'Envoi…' : 'Valider'}
+              </Bouton>
+            ) : (
+              <Bouton
+                variante="principal"
+                className="shrink-0"
+                onClick={() => { setActif(null); setEtape(etape === 1 ? 2 : 3); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+              >
+                {etape === 1 ? 'Produits' : 'Paiement'}&nbsp;→
+              </Bouton>
+            )}
           </div>
         </div>
       ) : null}
@@ -2282,7 +2554,7 @@ function RecapManques({
         </ul>
         <button
           type="button"
-          onClick={onFermer}
+          onClick={() => (manques[0] ? onAller(manques[0]) : onFermer())}
           className="mt-4 min-h-12 w-full rounded-xl bg-accent text-base font-semibold text-white active:bg-accent-fort"
         >
           Compléter
@@ -2347,6 +2619,102 @@ function FenetreAbandon({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Signature de la commande (propriétaire, 14/11/2026) : le prénom se touche — ou
+ * s'écrit — à chaque commande, juste au-dessus de « Valider ». Rien n'est
+ * présélectionné : la tablette est partagée, un prénom déjà coché ferait signer
+ * la vendeuse précédente. Un prénom écrit rejoint la liste de cette tablette.
+ */
+function ChoixVendeur({
+  titre,
+  equipe,
+  vendeur,
+  manque,
+  onChoisir,
+  onAjouter,
+}: {
+  titre: string;
+  equipe: readonly string[];
+  vendeur: string | null;
+  /** Validation tentée sans prénom : le bloc passe en alerte, avec la consigne. */
+  manque: boolean;
+  onChoisir: (nom: string | null) => void;
+  onAjouter: (nom: string) => void;
+}) {
+  const [libre, setLibre] = useState(equipe.length === 0);
+  const [saisi, setSaisi] = useState('');
+  const pastille = (actif: boolean) =>
+    `min-h-11 rounded-full border-2 px-3.5 text-base font-medium ${
+      actif ? 'border-sortie bg-sortie text-sortie-texte' : 'border-line-fort bg-surface text-ink'
+    }`;
+  const ecrit = () => {
+    const nom = saisi.trim();
+    if (!nom) return;
+    onAjouter(nom);
+    onChoisir(equipe.find((n) => n.toLowerCase() === nom.toLowerCase()) ?? nom);
+    setSaisi('');
+    setLibre(false);
+  };
+  return (
+    <div
+      role="group"
+      aria-label={titre}
+      className={`rounded-xl border-2 p-2 ${manque ? 'border-alerte bg-alerte-doux' : vendeur ? 'border-line' : 'border-accent bg-accent-doux/40'}`}
+    >
+      <p className="mb-1.5 text-sm font-semibold text-ink">
+        {titre}
+        {vendeur ? <span className="ml-1 font-bold text-accent">— {vendeur}</span> : null}
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {equipe.map((nom) => (
+          <button key={nom} type="button" aria-pressed={vendeur === nom} onClick={() => onChoisir(nom)} className={pastille(vendeur === nom)}>
+            {nom}
+          </button>
+        ))}
+        {vendeur && !equipe.includes(vendeur) ? (
+          <button type="button" aria-pressed className={pastille(true)}>
+            {vendeur}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => setLibre((v) => !v)}
+          className="min-h-11 rounded-full px-3 text-sm text-ink-2 underline underline-offset-2"
+        >
+          Autre prénom…
+        </button>
+      </div>
+      {libre ? (
+        <div className="mt-1.5 flex gap-1.5">
+          <input
+            value={saisi}
+            onChange={(e) => setSaisi(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                ecrit();
+              }
+            }}
+            placeholder="Votre prénom"
+            autoComplete="off"
+            maxLength={40}
+            aria-label="Écrire votre prénom"
+            className={`${CHAMP_TEXTE} min-w-0 flex-1`}
+          />
+          <button type="button" onClick={ecrit} className="min-h-11 shrink-0 rounded-xl bg-segment-fond px-4 text-base font-semibold text-ink">
+            OK
+          </button>
+        </div>
+      ) : null}
+      {manque ? (
+        <p role="alert" className="mt-1.5 text-sm font-semibold text-ink">
+          {signaler('ERR_CHAMP_OBLIGATOIRE', { champLibelle: 'nom du vendeur' }, { champ: 'vendeur' }).message}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -3375,6 +3743,141 @@ function GrilleProduits({
         {pied}
       </div>
     </>
+  );
+}
+
+/**
+ * Une ligne du bon écrite « comme sur le carnet » : quantité, nom, précisions
+ * en petit, prix. Sert au bon relu (étape Paiement) et aux lignes repliées du
+ * bon (étape Produits, `dense`). Toucher la ligne l'ouvre pour la modifier.
+ */
+function LigneCarnet({
+  ligne: l,
+  catalogue,
+  montant,
+  aCorriger,
+  dense,
+  onglet,
+  onClick,
+}: {
+  ligne: LigneEcran;
+  catalogue: CatalogueCommande;
+  /** Total contrôlé de la ligne, ou null si elle n'est pas encore chiffrable. */
+  montant: number | null;
+  /** Un refus porte sur cette ligne : dit en rouge à la place du prix. */
+  aCorriger?: boolean;
+  /** Colonne étroite du bon : texte un cran plus petit. */
+  dense?: boolean;
+  /** Onglet du bon (étape Produits) : les lignes côte à côte, on touche pour afficher ses réglages. */
+  onglet?: boolean;
+  onClick: () => void;
+}) {
+  const fiche = ficheDe(catalogue, l.produitId);
+  const nom = fiche ? libelleLigneEcran(l, fiche, LIBELLES_SELON_GOUT) : l.libelleLibre || 'Autre demande';
+  const parPersonne = fiche?.prix.basePrix === 'personne';
+  const quantite =
+    l.quantite === null
+      ? '—'
+      : fiche?.produit.unite === 'kg'
+        ? formaterQuantite('kg', l.quantite)
+        : parPersonne
+          ? `${l.quantite} parts`
+          : `${l.quantite} ×`;
+  const gouts = (l.gouts ?? []).map((x) => x.trim()).filter(Boolean);
+  const details = [
+    gouts.length > 0 && !goutDitParLaTuile(l) ? `goût : ${gouts.join(' · ')}` : null,
+    l.forme === 'carre' ? 'carré' : l.forme === 'rond' ? 'rond' : null,
+    (l.decorations ?? []).length > 0 ? `décoration : ${(l.decorations ?? []).join(', ')}` : null,
+    l.texteGateau ? `écriture : « ${l.texteGateau} »` : null,
+    l.photoModele ? `photo ${l.photoModele}` : null,
+    l.precision ? l.precision : null,
+  ].filter(Boolean);
+  const taille = dense ? 'text-base' : 'text-lg';
+  const manque = aCorriger === true || montant === null;
+  if (onglet) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={`${quantite} ${nom}${manque ? ', à compléter' : ''}, afficher`}
+        className="flex min-h-11 max-w-full flex-col justify-center px-2.5 py-1 text-left"
+      >
+        <span className="break-words text-sm font-semibold leading-tight text-ink">
+          <span className="chiffres font-bold">{quantite}</span> {nom}
+        </span>
+        <span className={`chiffres text-xs font-medium leading-tight ${manque ? 'text-alerte' : 'text-ink-2'}`}>
+          {aCorriger === true ? 'à corriger' : montant === null ? 'à compléter' : formaterEuros(montant)}
+        </span>
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`${quantite} ${nom}${manque ? ', à compléter' : ''}, modifier`}
+      className={`flex w-full items-baseline text-left hover:bg-surface-2 ${dense ? 'min-h-11 gap-2 py-1' : 'min-h-12 gap-3 py-2'}`}
+    >
+      <span className={`chiffres shrink-0 text-right font-bold text-ink ${taille} ${dense ? 'w-14' : 'w-20'}`}>{quantite}</span>
+      <span className="min-w-0 flex-1">
+        <span className={`block break-words font-semibold leading-snug text-ink ${taille}`}>{nom}</span>
+        {details.length > 0 ? <span className="block break-words text-sm leading-snug text-ink-2">{details.join(' · ')}</span> : null}
+      </span>
+      <span className={`chiffres shrink-0 font-semibold ${taille} ${manque ? 'text-alerte' : 'text-ink'}`}>
+        {aCorriger === true ? 'à corriger' : montant === null ? 'à compléter' : formaterEuros(montant)}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * Le bon relu à l'étape Paiement, « comme le carnet » (propriétaire,
+ * 19/11/2026) : une ligne par produit — quantité, nom, prix —, les précisions
+ * en petit dessous, regroupé par famille. Lecture seule : toucher une ligne
+ * ramène à l'étape Produits, sur cette ligne.
+ */
+function BonCarnet({
+  groupes,
+  catalogue,
+  total,
+  onModifier,
+  onProduits,
+}: {
+  groupes: readonly GroupeCarnet[];
+  catalogue: CatalogueCommande;
+  /** Total contrôlé de la ligne, ou null si elle n'est pas encore chiffrable. */
+  total: (cle: string) => number | null;
+  onModifier: (cle: string) => void;
+  onProduits: () => void;
+}) {
+  if (groupes.length === 0) {
+    return (
+      <div className="m-auto max-w-sm text-center">
+        <p className="text-base text-ink-2">Le bon est vide.</p>
+        <Bouton className="mt-3 min-h-12" onClick={onProduits}>Ajouter des produits</Bouton>
+      </div>
+    );
+  }
+  const nb = groupes.reduce((n, g) => n + g.lignes.length, 0);
+  return (
+    <div>
+      <h2 className="mb-1 text-lg font-semibold text-ink">
+        Le bon à relire <span className="font-normal text-ink-2">· {nb} ligne{nb > 1 ? 's' : ''}</span>
+      </h2>
+      <p className="mb-3 text-sm text-ink-2">Relisez avec le client. Touchez une ligne pour la modifier.</p>
+      {groupes.map((g) => (
+        <section key={g.titre} aria-label={g.titre} className="mb-4">
+          <h3 className="border-b-2 border-line-fort pb-1 text-sm font-bold uppercase tracking-wide text-ink-2">{g.titre}</h3>
+          <ul>
+            {g.lignes.map((l) => (
+              <li key={l.cle} className="border-b border-line last:border-b-0">
+                <LigneCarnet ligne={l} catalogue={catalogue} montant={total(l.cle)} onClick={() => onModifier(l.cle)} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
   );
 }
 

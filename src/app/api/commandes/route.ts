@@ -860,6 +860,11 @@ export async function PATCH(request: Request) {
       }
 
       case 'modification': {
+        // Propriétaire, 14/11/2026 : qui modifie se redit à chaque modification, pour
+        // l'historique. Sans prénom, refus — jamais une ligne « Modifiée par inconnu ».
+        if (!nomDeclare(corps.auteur)) {
+          return refus(signaler('ERR_CHAMP_OBLIGATOIRE', { champLibelle: 'nom du vendeur' }, { champ: 'vendeur' }), route);
+        }
         // Prix au tarif de la date de PRISE d'origine (R4) ; « aujourd'hui » = jour de la modification.
         const prise = priseBruxelles(existante.priseLe);
         const aujourdhui = priseBruxelles(maintenant).datePrise;

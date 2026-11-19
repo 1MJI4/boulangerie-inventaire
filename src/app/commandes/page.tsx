@@ -36,7 +36,10 @@ export default function PageCommandes() {
 }
 
 function EcranCommandes() {
-  const { equipe, vendeur, prete, definirVendeur, ajouter, retirer } = useEquipe();
+  // Propriétaire, 14/11/2026 : plus de « Qui prend la commande ? » à l'entrée. Le prénom se
+  // choisit à chaque commande, avant « Valider ». Ici ne reste que la liste des prénoms.
+  const { equipe, prete, ajouter, retirer } = useEquipe();
+  const [gestionEquipe, setGestionEquipe] = useState(false);
   const [gererNoms, setGererNoms] = useState(false);
   const parametres = useSearchParams();
   const [commandes, setCommandes] = useState<Commande[] | null>(null);
@@ -110,7 +113,6 @@ function EcranCommandes() {
   }, [charger, chargerAnnulees, vue]);
 
   useEffect(() => {
-    if (!vendeur) return;
     let annule = false;
     (async () => {
       await Promise.resolve();
@@ -119,7 +121,7 @@ function EcranCommandes() {
     return () => {
       annule = true;
     };
-  }, [vendeur, charger]);
+  }, [charger]);
 
   const groupes = useMemo(
     () => grouperCommandes(chercherCommandes(commandes ?? [], recherche), aujourdhui, minutes),
@@ -128,7 +130,7 @@ function EcranCommandes() {
   const annuleesTrouvees = useMemo(() => chercherCommandes(annulees ?? [], recherche), [annulees, recherche]);
   const ouverte = [...(commandes ?? []), ...(annulees ?? [])].find((c) => c.id === ouverteId) ?? null;
 
-  /* ----------------------------------------- Qui prend la commande ? */
+  /* ------------------------------------------- Prénoms de l'équipe */
 
   if (!prete)
     return (
@@ -138,12 +140,23 @@ function EcranCommandes() {
       </>
     );
 
-  if (!vendeur) {
+  if (gestionEquipe) {
     return (
       <>
         <Entete
-          titre="Qui prend la commande ?"
-          sousTitre="Le prénom est retenu pour le service et s’affiche en haut de l’écran."
+          titre="Prénoms du jour"
+          sousTitre="Les prénoms écrits aujourd’hui restent proposés jusqu’à ce soir, sans jamais être cochés d’avance. Demain, la liste repart vide."
+          actions={
+            <Bouton
+              variante="principal"
+              onClick={() => {
+                setGestionEquipe(false);
+                setGererNoms(false);
+              }}
+            >
+              Retour aux commandes
+            </Bouton>
+          }
         />
         <Carte className="p-4">
           <div className="flex flex-wrap gap-2">
@@ -154,12 +167,12 @@ function EcranCommandes() {
                   {nom} ×
                 </Bouton>
               ) : (
-                <Bouton key={nom} variante="secondaire" className="min-h-14 px-6 text-base" onClick={() => definirVendeur(nom)}>
+                <span key={nom} className="inline-flex min-h-11 items-center rounded-full bg-segment-fond px-4 text-base font-medium text-ink">
                   {nom}
-                </Bouton>
+                </span>
               ),
             )}
-            {equipe.length === 0 ? <p className="text-sm text-ink-2">Aucun prénom : ajoutez le vôtre ci-dessous.</p> : null}
+            {equipe.length === 0 ? <p className="text-sm text-ink-2">Aucun prénom aujourd’hui : chacun écrit le sien à sa première commande.</p> : null}
           </div>
           {equipe.length > 0 ? (
             <button
@@ -177,7 +190,6 @@ function EcranCommandes() {
               const nom = nouveauNom.trim();
               if (!nom) return;
               ajouter(nom);
-              definirVendeur(nom);
               setNouveauNom('');
             }}
           >
@@ -191,8 +203,8 @@ function EcranCommandes() {
               placeholder="Prénom"
               className="min-h-11 rounded-lg border border-line-fort bg-surface px-3 text-sm text-ink"
             />
-            <Bouton type="submit" variante="principal">
-              Continuer
+            <Bouton type="submit" variante="secondaire">
+              Ajouter
             </Bouton>
           </form>
           <p className="mt-4 text-xs text-ink-3">
@@ -211,16 +223,13 @@ function EcranCommandes() {
       <Entete
         titre="Commandes"
         sousTitre={
-          <>
-            Prise par <span className="font-medium text-ink">{vendeur}</span>.{' '}
-            <button
-              type="button"
-              onClick={() => definirVendeur(null)}
-              className="underline underline-offset-2 hover:text-ink"
-            >
-              Ce n’est pas moi
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={() => setGestionEquipe(true)}
+            className="underline underline-offset-2 hover:text-ink"
+          >
+            Prénoms du jour
+          </button>
         }
         actions={
           <>
