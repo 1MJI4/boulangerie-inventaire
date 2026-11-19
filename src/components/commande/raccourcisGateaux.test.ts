@@ -85,8 +85,8 @@ const SANS_LIGNE_AU_TARIF = ['Bavarois fraise', 'Bavarois chocolat au lait prali
 const sc = (r: RaccourciGateau) => (r.type === 'surCommande' ? r : null);
 
 test('donnée : chaque raccourci pointe vers des produits du catalogue, libellés à la lettre (LOI 5, LOI 6)', () => {
-  assert.equal(RACCOURCIS_GATEAUX.length, 13);
-  assert.equal(new Set(RACCOURCIS_GATEAUX.map((r) => r.cle)).size, 13, 'clés uniques');
+  assert.equal(RACCOURCIS_GATEAUX.length, 16);
+  assert.equal(new Set(RACCOURCIS_GATEAUX.map((r) => r.cle)).size, 16, 'clés uniques');
   const choix = GOUTS_SUR_COMMANDE[BAV];
   const enTete = choix.liste === 'parfum' ? (choix.goutsEnTete ?? []) : [];
   for (const r of RACCOURCIS_GATEAUX) {
@@ -112,7 +112,10 @@ test('donnée : chaque raccourci pointe vers des produits du catalogue, libellé
         assert.equal(f.produit.regimePrix, 'A', t.comptoir);
         assert.equal(f.prix.basePrix, 'piece', t.comptoir);
         assert.ok(FAMILLES_GATEAU.includes(f.produit.famille), t.comptoir);
-        assert.equal(`${f.produit.produit} ${f.produit.sousCategorie}`, `${r.libelle} ${t.parts}P`, 'libellé du tarif, à la lettre');
+        // Libellé du tarif, à la lettre : la tuile et son bouton reprennent ses mots.
+        const tarif: string = `${f.produit.produit} ${f.produit.sousCategorie ?? ''}`.trim();
+        const attendu: string = t.libelle ? (tarif.endsWith(`${t.parts}P`) ? `${r.libelle.replace(/ \d+P$/, '')} ${t.libelle} ${t.parts}P` : `${r.libelle} ${t.libelle}`) : (tarif === r.libelle ? r.libelle : `${r.libelle} ${t.parts}P`);
+        assert.equal(tarif, attendu, t.comptoir);
       }
     }
   }
@@ -290,4 +293,25 @@ test('gâteaux sans ligne au tarif (propriétaire, 19/11/2026) : prix du Bavaroi
     assert.equal(r10.donnees.totalCentimes, 10 * prix(BAV));
     assert.equal(goutDitParLaTuile(dix), true);
   }
+});
+
+test('tartes, entremets 8P, Trompe l’oeil XXL : tailles du comptoir seulement, prix du catalogue', () => {
+  const tarte = tuile('Tarte 6P');
+  assert.deepEqual(tarte.tailles.map((x) => x.libelle), ['riz', 'fromage', 'pommes', 'frangipane poires cerises', 'abricots', 'cerises', 'Moelleux']);
+  const entremet = tuile('Entremet 8P');
+  assert.deepEqual(entremet.tailles.map((x) => x.libelle), ['Noisette chocolat', 'Framboise', 'Passion', 'Vanille']);
+  const trompe = tuile("Trompe l'oeil XXL 4P");
+  assert.deepEqual(trompe.tailles.map((x) => x.libelle), ['4P']);
+  assert.deepEqual(tuile('Croûte Fraises').tailles.map((x) => x.libelle), ['6P', '8P']);
+  for (const t of [tarte, entremet, trompe]) {
+    assert.equal(toucherRaccourci([], t), null, 'le choix se touche sur la tuile');
+    for (const x of t.tailles) {
+      const r = toucherProduit([], x.fiche);
+      assert.equal(r.champ, 'gateau');
+      const c = controler({ ...r.lignes[0], sansEcriture: true });
+      assert.ok(c.ok, JSON.stringify(c));
+      assert.equal(c.donnees.totalCentimes, fiche(x.fiche.produit.id).prix.prixCentimes);
+    }
+  }
+  assert.deepEqual(tuilesRaccourcis(catalogue, [], 'tarte', null).map((t) => t.raccourci.libelle), ['Tarte 6P']);
 });

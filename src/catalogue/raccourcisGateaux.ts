@@ -21,7 +21,13 @@
 
 export type RaccourciGateau =
   | { cle: string; libelle: string; type: 'surCommande'; surCommande: string; gout: string }
-  | { cle: string; libelle: string; type: 'comptoir'; tailles: readonly { parts: number; comptoir: string }[] };
+  | {
+      cle: string;
+      libelle: string;
+      type: 'comptoir';
+      /** `libelle` : texte du bouton (le parfum) quand la taille ne suffit pas à choisir ; absent → « 6P ». */
+      tailles: readonly { parts: number; comptoir: string; libelle?: string }[];
+    };
 
 const BAVAROIS = 'gateaux-sur-commande/bavarois';
 
@@ -69,5 +75,38 @@ export const RACCOURCIS_GATEAUX: readonly RaccourciGateau[] = [
       { parts: 6, comptoir: 'gateaux-et-tartes/croute/fruits-6p' },
       { parts: 8, comptoir: 'gateaux-et-tartes/croute/fruits-8p' },
     ],
+  },
+  // Autres gâteaux du rayon « Gâteaux et tartes » qui n'ont qu'UNE taille au
+  // comptoir (propriétaire, 19/11/2026) : la tuile porte un bouton par parfum.
+  {
+    cle: 'tarte-6p',
+    libelle: 'Tarte 6P',
+    type: 'comptoir',
+    tailles: [
+      { parts: 6, libelle: 'riz', comptoir: 'gateaux-et-tartes/tarte/riz-6p' },
+      { parts: 6, libelle: 'fromage', comptoir: 'gateaux-et-tartes/tarte/fromage-6p' },
+      { parts: 6, libelle: 'pommes', comptoir: 'gateaux-et-tartes/tarte/pommes-6p' },
+      { parts: 6, libelle: 'frangipane poires cerises', comptoir: 'gateaux-et-tartes/tarte/frangipane-poires-cerises-6p' },
+      { parts: 6, libelle: 'abricots', comptoir: 'gateaux-et-tartes/tarte/abricots-6p' },
+      { parts: 6, libelle: 'cerises', comptoir: 'gateaux-et-tartes/tarte/cerises-6p' },
+      { parts: 6, libelle: 'Moelleux', comptoir: 'gateaux-et-tartes/tarte/moelleux-6p' },
+    ],
+  },
+  {
+    cle: 'entremet-8p',
+    libelle: 'Entremet 8P',
+    type: 'comptoir',
+    tailles: [
+      { parts: 8, libelle: 'Noisette chocolat', comptoir: 'gateaux-et-tartes/entremet-8p/noisette-chocolat' },
+      { parts: 8, libelle: 'Framboise', comptoir: 'gateaux-et-tartes/entremet-8p/framboise' },
+      { parts: 8, libelle: 'Passion', comptoir: 'gateaux-et-tartes/entremet-8p/passion' },
+      { parts: 8, libelle: 'Vanille', comptoir: 'gateaux-et-tartes/entremet-8p/vanille' },
+    ],
+  },
+  {
+    cle: 'trompe-loeil-xxl-4p',
+    libelle: "Trompe l'oeil XXL 4P",
+    type: 'comptoir',
+    tailles: [{ parts: 4, comptoir: 'gateaux-et-tartes/trompe-loeil-xxl-4p' }],
   },
 ];

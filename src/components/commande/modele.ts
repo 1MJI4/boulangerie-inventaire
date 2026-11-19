@@ -1221,8 +1221,11 @@ export type TuileRaccourci = {
   raccourci: RaccourciGateau;
   /** Tuile « sur commande » : fiche du gâteau sur commande (prix par personne). Sinon null. */
   fiche: FicheCatalogue | null;
-  /** Tuile « comptoir » (croûtes) : une entrée par taille qui a un prix à la date. Sinon []. */
-  tailles: { parts: number; fiche: FicheCatalogue }[];
+  /**
+   * Tuile « comptoir » (croûtes, tartes…) : une entrée par bouton qui a un prix
+   * à la date. `libelle` : texte du bouton (« 6P », ou le parfum). Sinon [].
+   */
+  tailles: { parts: number; libelle: string; fiche: FicheCatalogue }[];
   /** Nombre de gâteaux de cette tuile déjà au bon. */
   auBon: number;
 };
@@ -1274,10 +1277,10 @@ export function tuilesRaccourcis(
       const auBon = lignes.filter((l) => ligneDuRaccourci(l, r.surCommande, r.gout)).length;
       sortie.push({ raccourci: r, fiche: f, tailles: [], auBon });
     } else {
-      const tailles: { parts: number; fiche: FicheCatalogue }[] = [];
+      const tailles: TuileRaccourci['tailles'] = [];
       for (const t of r.tailles) {
         const f = fiche(t.comptoir);
-        if (f) tailles.push({ parts: t.parts, fiche: f });
+        if (f) tailles.push({ parts: t.parts, libelle: t.libelle ?? `${t.parts}P`, fiche: f });
       }
       if (tailles.length === 0) continue;
       const ids = tailles.map((t) => t.fiche.produit.id);

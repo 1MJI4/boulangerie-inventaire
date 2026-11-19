@@ -3242,23 +3242,23 @@ function GrilleProduits({
           }
           // Gâteau sans prix par personne (croûtes) : ses tailles du comptoir, chacune à son prix.
           return (
-            <li key={`raccourci-${r.cle}`}>
+            <li key={`raccourci-${r.cle}`} className={t.tailles.length > 2 ? 'col-span-2' : undefined}>
               <div
                 role="group"
                 aria-label={r.libelle}
                 className={`relative flex w-full flex-col justify-between rounded-xl border-2 transition duration-300 ${carte} ${cadre}`}
               >
                 <span className={nomCarte(r.libelle)}>{r.libelle}</span>
-                <span className="mt-1 flex gap-1.5">
+                <span className="mt-1 flex flex-wrap gap-1.5">
                   {t.tailles.map((x) => (
                     <button
                       key={x.fiche.produit.id}
                       type="button"
                       onClick={() => onToucher(x.fiche)}
                       aria-label={`${libelleProduit(x.fiche)}, ${formaterEuros(x.fiche.prix.prixCentimes)}`}
-                      className="chiffres min-h-11 flex-1 rounded-lg border-2 border-line-fort bg-surface px-1 text-sm leading-tight text-ink hover:bg-surface-2 active:scale-[0.97]"
+                      className={`chiffres min-h-11 flex-1 rounded-lg border-2 border-line-fort bg-surface px-1.5 py-0.5 text-sm leading-tight text-ink hover:bg-surface-2 active:scale-[0.97] ${t.tailles.length > 2 ? 'min-w-16' : ''}`}
                     >
-                      <span className="block font-bold">{x.parts}P</span>
+                      <span className="block font-bold">{x.libelle}</span>
                       <span className="block text-ink-2">{formaterEuros(x.fiche.prix.prixCentimes)}</span>
                     </button>
                   ))}
