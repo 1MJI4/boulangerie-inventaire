@@ -341,6 +341,8 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
   const [ligneDetail, setLigneDetail] = useState<string | null>(null);
   // Bon en accordéon (19/11/2026) : dernière ligne touchée — c'est elle qui est ouverte.
   const [ligneChoisie, setLigneChoisie] = useState<string | null>(null);
+  // Étape Produits : la remarque s'écrit depuis le bon (bouton « Remarque »).
+  const [remarqueOuverte, setRemarqueOuverte] = useState(false);
   // Galerie de photos de modèles (26/10/2026) : montée seulement quand elle est
   // ouverte (aucune image chargée avant). Photo sans produit unique (bûches…) :
   // gardée en attente, posée sur le prochain produit touché (bandeau visible).
@@ -1902,6 +1904,69 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
       ))}
     </nav>
   );
+  /**
+   * Sur le bon, à l'étape Produits (propriétaire, 19/11/2026) : la remarque, les
+   * trois options de la commande et l'acompte se voient et se touchent sans
+   * changer d'étape. Ce sont les MÊMES données qu'à l'étape Paiement.
+   */
+  const puceBon = (actif: boolean) =>
+    `min-h-11 rounded-lg border-2 px-2.5 text-left text-sm font-medium leading-tight ${
+      actif ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
+    }`;
+  const barreBon = (
+    <div className="grid gap-1.5" role="group" aria-label="Remarque, options et acompte de la commande">
+      {remarqueOuverte ? (
+        <label className="block">
+          <span className="mb-1 block text-sm font-semibold text-ink">Remarque sur la commande</span>
+          <textarea
+            autoFocus
+            className={`${CHAMP_TEXTE} min-h-20 py-2`}
+            value={remarques}
+            onChange={(e) => setRemarques(e.target.value)}
+            placeholder="Allergie, emballage, heure précise…"
+          />
+        </label>
+      ) : remarques.trim() !== '' ? (
+        <button
+          type="button"
+          onClick={() => setRemarqueOuverte(true)}
+          className="rounded-lg border-l-4 border-accent bg-surface-2 px-2.5 py-1.5 text-left text-sm leading-snug text-ink"
+        >
+          <span className="font-semibold">Remarque&nbsp;: </span>
+          <span className="break-words">{remarques.trim()}</span>
+        </button>
+      ) : null}
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          aria-expanded={remarqueOuverte}
+          onClick={() => { setActif(null); setRemarqueOuverte((v) => !v); }}
+          className={puceBon(remarqueOuverte)}
+        >
+          {remarqueOuverte ? 'Fermer' : remarques.trim() !== '' ? 'Modifier la remarque' : '＋ Remarque'}
+        </button>
+        <button type="button" aria-pressed={demandeInhabituelle} onClick={() => setDemandeInhabituelle(!demandeInhabituelle)} className={puceBon(demandeInhabituelle)}>
+          Demande inhabituelle
+        </button>
+        <button type="button" aria-pressed={zoneDessin} onClick={() => setZoneDessin(!zoneDessin)} className={puceBon(zoneDessin)}>
+          Dessin sur le bon
+        </button>
+        <button type="button" aria-pressed={photoWhatsapp} onClick={() => setPhotoWhatsapp(!photoWhatsapp)} className={puceBon(photoWhatsapp)}>
+          Photo WhatsApp
+        </button>
+        <button
+          type="button"
+          aria-pressed={actif === 'acompte'}
+          onClick={() => { setRemarqueOuverte(false); setActif(actif === 'acompte' ? null : 'acompte'); }}
+          className={puceBon(actif === 'acompte')}
+        >
+          Acompte&nbsp;: <span className="chiffres font-bold">{acompte === null ? 'à saisir' : formaterEuros(acompte)}</span>
+        </button>
+      </div>
+      {rendre(signauxInhabituelle)}
+    </div>
+  );
+
   /** Le bon relu à l'étape Paiement, « comme le carnet ». */
   const bonCarnet =
     cal && catalogue ? (
@@ -2134,6 +2199,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                 </div>
                 )}
                 <div className="flex-none border-t border-line bg-surface p-3">
+                  {etape === 2 ? <div className="mb-2 max-h-56 overflow-y-auto overscroll-contain">{barreBon}</div> : null}
                   <div className="flex items-end justify-between gap-2" aria-live="polite">
                     <div className="min-w-0 text-sm leading-tight text-ink-2">
                       <div>Total à annoncer</div>
@@ -2277,6 +2343,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
               {totalAnnonce}
               <div className="mt-3">{bon}</div>
               {reglagesLigne ? <div className="mt-2">{reglagesLigne}</div> : null}
+              <div className="mt-3 border-t border-line pt-3">{barreBon}</div>
             </Carte>
             </>
             ) : (
