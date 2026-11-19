@@ -131,3 +131,86 @@ Inventaire, prévisions, caisse, tarifs eux-mêmes, affiches.
 Noms des fichiers et des fonctions, détail visuel (géré par `design-ux`), répartition entre
 agents propriétaires (`regles-metier`, `catalogue-prix`, `commandes-traiteur`, `impression`,
 `tests`), mise à jour de `CLAUDE.md`, `docs/REGLES-METIER.md` et `docs/QUESTIONS-GERANT.md`.
+
+---
+
+# Complément du 19/11/2026 — viande des burgers et un papier par poste
+
+Demande du propriétaire, avec ses réponses du même jour. Statut : **à valider**. Rien n'est codé.
+Ce complément **remplace le Lot 1** (bon atelier sans la pâtisserie), qu'il englobe.
+
+## Lot 5 — Viande obligatoire sur les burgers
+
+- Un burger porte **une viande** : Poulet tenders · Kefta · Viande hachée de poulet.
+  Sans viande, la ligne est **refusée à la saisie**, avec les trois viandes en boutons.
+  Pas de sortie « au choix » : un burger sans viande ne se vend pas.
+- Produits concernés (*proposition de Claude, à confirmer*) : Burger, Mini-Burger (comptoir),
+  Mini burger (sur commande). La liste est une donnée, jamais déduite du nom.
+- **Une viande par ligne** (décision du propriétaire) : 15 kefta et 15 tenders font **deux
+  lignes**. Un bouton « ＋ Autre viande » sur la ligne en crée une seconde ; deux lignes du même
+  burger à des viandes différentes ne sont pas signalées comme doublon.
+- Le minimum de 10 mini burgers se compte **sur le total des lignes** du même produit, pas par
+  viande (*proposition de Claude, à confirmer* : sinon 15 + 5 serait refusé).
+- Sur les bons : « VIANDE : KEFTA » sous la ligne.
+- Réalisation : même mécanisme que le goût à liste fermée des bûches (R67), avec son propre
+  vocabulaire et sans « Au choix du pâtissier ».
+
+## Lot 6 — Un papier par poste de production
+
+**Trois postes** : pâtissier, atelier (salé), boulanger. Une commande peut en concerner un,
+deux ou trois ; il sort **un papier par poste concerné**, et seulement ceux-là.
+
+Qui fait quoi (réponses du propriétaire, 19/11/2026) :
+
+| Produit | Pâtissier | Atelier | Boulanger |
+|---|---|---|---|
+| Gâteaux, entremets, pièces montées, individuelles | tout | | |
+| **Minis sucrés** (tartelette, bavarois, éclair / mille-feuille) | tout | | |
+| **Viennoiserie** | tout | | |
+| Traiteur salé, sandwichs, salés du comptoir | | tout | |
+| **Burger, mini burger** | | montage | **le pain**, 1 par pièce |
+| **Msemen, Meloui** | | | la pâte, **cuits** |
+| **Batbout** (petit, farci, healthy, mini) | | la farce s'il y en a | **le pain** |
+| **Crêpe farcie** | | tout | **prévenu au-delà de 5**, sur le **total de la commande** |
+| Pains (rayon Boulangerie) | | | tout (*proposition de Claude, à confirmer*) |
+
+Ce tableau est une **donnée** par produit (`src/catalogue/postesProduction.ts`), contrôlée par un
+test sur le vrai catalogue : chaque produit vendable a au moins un poste, sinon le test échoue —
+plus aucun produit ne peut « n'être à personne », comme les minis sucrés aujourd'hui.
+
+**Échéance du boulanger** : **2 heures avant l'heure de retrait**, pour tout ce qui le concerne
+(retrait 10h00 → prêt à 8h00). La durée est un réglage, pas un chiffre en dur. Le boulanger
+travaille la nuit : une échéance à 4h ou 5h est normale et n'est pas signalée.
+
+**Les papiers**
+
+- CLIENT, BUREAU, MAGASIN : complets, comme aujourd'hui.
+- PÂTISSIER, ATELIER, BOULANGER : **bons de production** — seulement les lignes du poste, **sans
+  prix**, avec en tête la date et l'heure, les allergies et les remarques.
+- BOULANGER : « **PRÊT POUR 8h00** » en gros, puis « retrait 10h00 ».
+- ATELIER : sous un burger, « Pain : boulanger, prêt à 8h00 », pour que personne n'attende l'autre.
+- Chaque bon de production cite les autres postes concernés (« + pâtissier : 1 gâteau »).
+- **Réimpression** (demande du propriétaire) : sur la page d'impression, un bouton par papier,
+  en **1 ou 2 exemplaires**.
+- Commande modifiée : seuls les postes dont les lignes ont changé sont réimprimés.
+
+**Ce que ce lot règle en passant** (constats de la simulation) : le bon atelier inutile pour la
+pâtisserie seule, le prix qui encombre les bons de production, les minis sucrés sans poste.
+
+## Approches envisagées (Lot 6)
+
+- **A — Postes par produit, en donnée, plusieurs postes possibles (retenue).** Un burger
+  concerne deux postes avec un rôle chacun. Demande un tableau à tenir, vérifié par un test.
+- **B — Garder le champ « poste » unique existant** sur chaque produit. Plus simple, mais un
+  burger ne peut pas dire « atelier **et** boulanger » : c'est exactement le cas demandé.
+- **C — Déduire le poste du rayon** (Salés → atelier…). Aucun tableau, mais faux pour le
+  burger, le batbout, le msemen (rayon Oriental) et les minis sucrés, et interdit par la LOI 6.
+
+## Hors de ce complément
+
+Une liste « à préparer aujourd'hui » par poste, réimprimée chaque matin (proposée par Claude,
+pas demandée) ; les allergies comme champ à part (constat de la simulation, à traiter seul).
+
+## Ordre
+
+Lot 5 (petit, indépendant) puis Lot 6.
