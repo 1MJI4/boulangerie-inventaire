@@ -84,7 +84,8 @@ test('ligne libre sans accord du gérant : refus, sortie « Saisir le code géra
 
 test('acompte insuffisant : accepté, avertissement avec le bouton « Mettre l’acompte à X »', () => {
   const total = 9000;
-  const r = validerAcompte(0, total, REGLEMENT_COMMANDE.acomptePourcentageMin);
+  // 1 € : un acompte existe (obligatoire depuis le 19/11/2026), mais sous 50 %.
+  const r = validerAcompte(100, total, REGLEMENT_COMMANDE.acomptePourcentageMin);
   assert.equal(r.ok, true, 'avertissement, plus un refus (18/10/2026)');
   if (!r.ok) return;
   const a = r.signalements.find((s) => s.code === 'AVERT_ACOMPTE_INSUFFISANT');

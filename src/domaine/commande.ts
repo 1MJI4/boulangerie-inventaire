@@ -16,7 +16,7 @@
 import type { Echec, Resultat, Signalement } from './resultat.ts';
 import { succes } from './resultat.ts';
 import { signaler } from './messages.ts';
-import { multiplier, resteDu, somme } from './argent.ts';
+import { multiplier, partMinimale, resteDu, somme } from './argent.ts';
 import { dateProduction, estDateISO, formaterDate, validerDateRetrait, validerDelai } from './calendrier.ts';
 import type { JourFerme } from './calendrier.ts';
 import { FAMILLES_GATEAU, SUPPLEMENTS_PAR_PERSONNE } from './constantes.ts';
@@ -192,6 +192,12 @@ export type CommandeSaisie = {
   client: string;
   telephone: string;
   /**
+   * Commande reçue par WhatsApp (propriétaire, 19/11/2026) : le numéro est déjà
+   * dans WhatsApp, il n'est PAS exigé. Le nom reste obligatoire (l'écran le
+   * pré-remplit « WhatsApp », modifiable). Un numéro donné reste contrôlé.
+   */
+  parWhatsapp?: boolean;
+  /**
    * Date de prise de commande : date des PRIX (R4). Enregistrée
    * AUTOMATIQUEMENT par l'appelant (horloge de la tablette), jamais saisie (R56).
    */
@@ -212,6 +218,8 @@ export type CommandeSaisie = {
   totalConvenuCentimes?: number | null;
   /** Accord du gérant pour une remise sur le total. */
   remise?: Deverrouillage | null;
+  /** Accord du gérant pour une commande SANS acompte (propriétaire, 19/11/2026). */
+  accordSansAcompte?: Deverrouillage | null;
   /**
    * @deprecated lot 2 (28/10/2026) : l'écriture est une donnée de LIGNE
    * (`LigneSaisie.texteGateau`). Lu seulement pour une saisie à l'ancien
@@ -289,6 +297,8 @@ export type CommandeControlee = {
   /** Total à facturer : le tarif, ou le prix convenu autorisé par le gérant. */
   totalCentimes: number;
   acompteCentimes: number;
+  /** Commande acceptée SANS acompte avec l'accord du gérant : qui, quand (à tracer en base). */
+  sansAcompte?: Deverrouillage;
   resteDuCentimes: number;
   dateRetrait: DateISO;
   /** « HH:MM », ou null si non précisée (facultative). */
@@ -731,7 +741,8 @@ function analyser(c: CommandeSaisie, ctx: ContexteCommande): Analyse {
     garder(validerModification(ctx.existante, aujourdhui, ctx.joursAvantArchivage ?? 0));
   }
   garder(validerChampObligatoire(c.client, 'nom du client', 'client'));
-  garder(validerTelephone(c.telephone));
+  // WhatsApp : pas de numéro exigé ; s'il est donné, même contrôle que les autres.
+  if (!(c.parWhatsapp === true && (c.telephone ?? '').trim() === '')) garder(validerTelephone(c.telephone));
   const dateRetrait = garder(validerDateRetrait(c.dateRetrait, ctx.joursFermes, aujourdhui));
 
   // Heure de retrait (R54) : OBLIGATOIRE (propriétaire, 22/10/2026 — elle était
@@ -844,7 +855,9 @@ function analyser(c: CommandeSaisie, ctx: ContexteCommande): Analyse {
   if (lignesOk && lignes.length > 0) {
     const convenu = garder(validerPrixConvenu(totalTarif, c.totalConvenuCentimes, c.remise));
     if (convenu !== undefined) total = convenu;
-    const a = garder(validerAcompte(c.acompteCentimes ?? 0, total, ctx.reglement.acomptePourcentageMin));
+    const a = garder(
+      validerAcompte(c.acompteCentimes ?? 0, total, ctx.reglement.acomptePourcentageMin, 'acompte', c.accordSansAcompte),
+    );
     if (a !== undefined) acompte = a;
   }
 
@@ -888,6 +901,10 @@ function analyser(c: CommandeSaisie, ctx: ContexteCommande): Analyse {
     delaiJoursOuvres: delai,
   };
   if (total < totalTarif && c.remise) donnees.remise = { par: c.remise.par.trim(), le: c.remise.le };
+  // Accord « sans acompte » : tracé seulement s'il a servi (aucun acompte alors qu'il en fallait un).
+  if (acompte === 0 && partMinimale(total, ctx.reglement.acomptePourcentageMin) > 0 && deverrouillageValide(c.accordSansAcompte)) {
+    donnees.sansAcompte = { par: c.accordSansAcompte.par.trim(), le: c.accordSansAcompte.le };
+  }
   return { blocages, signalements, donnees };
 }
 

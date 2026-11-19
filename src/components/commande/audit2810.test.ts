@@ -58,7 +58,8 @@ const ctx: ContexteCommande = {
   resoudre: resoudreLocal(cat),
   joursFermes: [],
   delais: DELAIS_PAR_DEFAUT,
-  reglement: REGLEMENT_COMMANDE,
+  // Acompte hors sujet ici : réglage à 0 % (aucun acompte attendu).
+  reglement: { ...REGLEMENT_COMMANDE, acomptePourcentageMin: 0 },
   correspondancesComptoir: [],
   supplementEcriture: SUPPLEMENT_ECRITURE,
 };

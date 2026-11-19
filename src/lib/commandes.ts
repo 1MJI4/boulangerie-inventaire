@@ -30,7 +30,10 @@ export const LIBELLE_STATUT: Record<StatutCommande, string> = {
 };
 
 export type ModePaiement = 'especes' | 'virement';
-export type Origine = 'comptoir' | 'telephone';
+export type Origine = 'comptoir' | 'telephone' | 'whatsapp';
+
+/** Nom mis d'office sur une commande WhatsApp (modifiable) : le client se retrouve dans WhatsApp. */
+export const NOM_CLIENT_WHATSAPP = 'WhatsApp';
 
 export type LigneCommande = {
   id?: number;
@@ -100,6 +103,9 @@ export type Commande = {
   totalTarifCentimes?: number | null;
   remiseAutoriseePar?: string | null;
   remiseAutoriseeLe?: string | null;
+  /** Commande acceptée sans acompte : accord du gérant (nom, heure). */
+  sansAcompteAutorisePar?: string | null;
+  sansAcompteAutoriseLe?: string | null;
   accordLendemainPar?: string | null;
   accordLendemainLe?: string | null;
   /**

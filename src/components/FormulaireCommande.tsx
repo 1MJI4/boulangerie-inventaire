@@ -41,7 +41,7 @@ import {
 } from 'react';
 import { Bouton, Carte, Chargement, Entete } from '@/components/ui';
 import { useEquipe } from '@/lib/vendeurs';
-import { surLesGateaux, type Commande, type ModePaiement, type Origine } from '@/lib/commandes';
+import { NOM_CLIENT_WHATSAPP, surLesGateaux, type Commande, type ModePaiement, type Origine } from '@/lib/commandes';
 import type { OptionsGateau } from '@/lib/gateaux';
 import { dateDuJour } from '@/lib/dateProduction';
 import {
@@ -246,6 +246,7 @@ type EcranGarde = {
   acompte: number | null;
   totalConvenu: number | null;
   remise: Deverrouillage | null;
+  accordSansAcompte?: Deverrouillage | null;
   photoWhatsapp: boolean;
   demandeInhabituelle: boolean;
   zoneDessin: boolean;
@@ -322,6 +323,13 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
   const [remise, setRemise] = useState<Deverrouillage | null>(() =>
     commande?.remiseAutoriseePar && commande.remiseAutoriseeLe
       ? { par: commande.remiseAutoriseePar, le: commande.remiseAutoriseeLe }
+      : null,
+  );
+  // Acompte obligatoire (propriétaire, 19/11/2026) : sans acompte, il faut le
+  // code du gérant ; l'accord (nom + heure) part avec la commande et y reste.
+  const [accordSansAcompte, setAccordSansAcompte] = useState<Deverrouillage | null>(() =>
+    commande?.sansAcompteAutorisePar && commande.sansAcompteAutoriseLe
+      ? { par: commande.sansAcompteAutorisePar, le: commande.sansAcompteAutoriseLe }
       : null,
   );
   // Écriture et photo à imprimer : sur chaque ligne gâteau (lot 2, 28/10/2026).
@@ -477,6 +485,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
     setAcompte(e.acompte ?? null);
     setTotalConvenu(e.totalConvenu ?? null);
     setRemise(e.remise ?? null);
+    setAccordSansAcompte(e.accordSansAcompte ?? null);
     setPhotoWhatsapp(e.photoWhatsapp === true);
     setDemandeInhabituelle(e.demandeInhabituelle === true);
     setZoneDessin(e.zoneDessin === true);
@@ -494,7 +503,21 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
   // R64 : la case « Pâte à sucre » est sous le gâteau qui la reçoit.
   const iPateASucre = cal ? indexGateauPateASucre(lignes, SUPPLEMENT_PATE_A_SUCRE, catalogue, famillesGateau, SUPPLEMENTS_PAR_PERSONNE) : null;
 
+  /**
+   * D'où vient la commande. WhatsApp (propriétaire, 19/11/2026) : le nom se met
+   * d'office à « WhatsApp » (modifiable) et le numéro n'est plus exigé — le
+   * client se retrouve dans WhatsApp. Revenir au comptoir retire ce nom s'il
+   * n'a pas été changé.
+   */
+  const choisirOrigine = (o: Origine) => {
+    setOrigine(o);
+    setModePaiement(o === 'comptoir' ? 'especes' : 'virement');
+    if (o === 'whatsapp') {
+      if (client.trim() === '') setClient(NOM_CLIENT_WHATSAPP);
+    } else if (client === NOM_CLIENT_WHATSAPP) setClient('');
+  };
   const etat: EtatFormulaire = {
+    parWhatsapp: origine === 'whatsapp',
     client,
     telephone,
     dateRetrait,
@@ -503,6 +526,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
     acompteCentimes: acompte,
     totalConvenuCentimes: totalConvenu,
     remise,
+    accordSansAcompte,
     demandeInhabituelle,
   };
 
@@ -1251,6 +1275,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
         acompteCentimes: acompte ?? 0,
         totalConvenuCentimes: totalConvenu,
         remise,
+        accordSansAcompte,
         // Écriture et photo à imprimer : dans chaque ligne (`saisie.lignes`, lot 2).
         photoWhatsapp,
         demandeInhabituelle,
@@ -1279,6 +1304,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
           acompte,
           totalConvenu,
           remise,
+          accordSansAcompte,
           photoWhatsapp,
           demandeInhabituelle,
           zoneDessin,
@@ -1653,20 +1679,28 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
       </div>
     ) : null;
 
-  // Acompte jamais oublié (propriétaire, 19/11/2026) : avant de valider, un
-  // montant ou « Pas d'acompte ». Geste d'écran seulement — le domaine garde
-  // sa règle (sous 50 % : avertissement, décision du 18/10/2026).
+  // Acompte OBLIGATOIRE (propriétaire, 19/11/2026) : avant de valider, un
+  // montant — n'importe lequel. Sans acompte : seulement avec le code du
+  // gérant, tracé sur la commande (règle : domaine, validerAcompte ; le
+  // serveur revérifie le code). Sous 50 % : simple avertissement (18/10/2026).
   const acompteARepondre = acompte === null;
+  const sansAcompteAccorde = acompte === 0 && accordSansAcompte !== null;
   const boutonPasAcompte = (
     <button
       type="button"
-      aria-pressed={acompte === 0}
-      onClick={() => { setAcompte(0); if (actif === 'acompte') setActif(null); }}
+      aria-pressed={sansAcompteAccorde}
+      onClick={() =>
+        avecGerant('Commande sans acompte.', (d) => {
+          setAccordSansAcompte(d);
+          setAcompte(0);
+          if (actif === 'acompte') setActif(null);
+        })
+      }
       className={`mt-2 min-h-12 w-full rounded-xl border-2 px-3 text-base font-medium ${
-        acompte === 0 ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
+        sansAcompteAccorde ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
       }`}
     >
-      Pas d’acompte
+      {sansAcompteAccorde ? `Sans acompte — accord de ${accordSansAcompte.par}` : 'Sans acompte : code du gérant'}
     </button>
   );
   /* ------------------------------------- Montants : convenu, acompte, reste */
@@ -1738,7 +1772,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
         {refusServeur ? rendre([refusServeur]) : null}
         {choixVendeur}
         {acompteARepondre ? (
-          <p className="text-sm font-medium text-ink">Saisissez l’acompte reçu, ou touchez «&nbsp;Pas d’acompte&nbsp;».</p>
+          <p className="text-sm font-medium text-ink">Un acompte est obligatoire : saisissez le montant reçu.</p>
         ) : null}
         <Bouton variante="principal" className="min-h-14 w-full text-lg" disabled={envoi || acompteARepondre} onClick={() => void valider()}>
           {libelleValider}
@@ -2129,13 +2163,19 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                     <div className="flex flex-wrap items-center gap-3">
                       <span className="text-sm font-semibold text-ink">Commande prise</span>
                       <div role="group" aria-label="Commande prise" className="flex shrink-0 gap-0.5 rounded-xl border-2 border-line-fort bg-surface p-0.5">
-                        <Segment actif={origine === 'comptoir'} onClick={() => { setOrigine('comptoir'); setModePaiement('especes'); }}>
+                        <Segment actif={origine === 'comptoir'} onClick={() => choisirOrigine('comptoir')}>
                           Comptoir
                         </Segment>
-                        <Segment actif={origine === 'telephone'} onClick={() => { setOrigine('telephone'); setModePaiement('virement'); }}>
+                        <Segment actif={origine === 'telephone'} onClick={() => choisirOrigine('telephone')}>
                           Téléphone
                         </Segment>
+                        <Segment actif={origine === 'whatsapp'} onClick={() => choisirOrigine('whatsapp')}>
+                          WhatsApp
+                        </Segment>
                       </div>
+                      {origine === 'whatsapp' ? (
+                        <span className="text-sm text-ink-2">Pas besoin du numéro&nbsp;: il est dans WhatsApp.</span>
+                      ) : null}
                     </div>
                     {refusClient.length > 0 ? <div>{rendre(refusClient)}</div> : null}
                     <div>
@@ -2243,7 +2283,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                       {choixVendeur ? <div className="mt-2">{choixVendeur}</div> : null}
                       {acompteARepondre ? (
                         <p className="mt-2 text-sm font-medium text-ink">
-                          Saisissez l’acompte reçu, ou touchez «&nbsp;Pas d’acompte&nbsp;».
+                          Un acompte est obligatoire : saisissez le montant reçu.
                         </p>
                       ) : null}
                       <Bouton
@@ -2336,13 +2376,19 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Choix actif={origine === 'comptoir'} onClick={() => { setOrigine('comptoir'); setModePaiement('especes'); }}>
+                <Choix actif={origine === 'comptoir'} onClick={() => choisirOrigine('comptoir')}>
                   Au comptoir
                 </Choix>
-                <Choix actif={origine === 'telephone'} onClick={() => { setOrigine('telephone'); setModePaiement('virement'); }}>
+                <Choix actif={origine === 'telephone'} onClick={() => choisirOrigine('telephone')}>
                   Par téléphone
                 </Choix>
+                <Choix actif={origine === 'whatsapp'} onClick={() => choisirOrigine('whatsapp')}>
+                  Par WhatsApp
+                </Choix>
               </div>
+              {origine === 'whatsapp' ? (
+                <p className="mt-2 text-sm text-ink-2">Pas besoin du numéro&nbsp;: il est dans WhatsApp.</p>
+              ) : null}
               {rendre(refusClient)}
             </Carte>
 

@@ -472,12 +472,16 @@ export function versLigneSaisie(l: LigneEcran, fiche: FicheTarifee | null): Lign
 export type EtatFormulaire = {
   client: string;
   telephone: string;
+  /** Commande reçue par WhatsApp : pas de numéro exigé. */
+  parWhatsapp?: boolean;
   dateRetrait: string | null;
   heureRetrait: string;
   lignes: LigneEcran[];
   acompteCentimes: number | null;
   totalConvenuCentimes: number | null;
   remise: Deverrouillage | null;
+  /** Accord du gérant pour une commande sans acompte. */
+  accordSansAcompte?: Deverrouillage | null;
   demandeInhabituelle: boolean;
 };
 
@@ -490,6 +494,7 @@ export function versCommandeSaisie(
   return {
     client: e.client,
     telephone: e.telephone,
+    parWhatsapp: e.parWhatsapp === true,
     datePrise: prise.datePrise,
     heurePrise: prise.heurePrise,
     dateRetrait: e.dateRetrait ?? '',
@@ -498,6 +503,7 @@ export function versCommandeSaisie(
     acompteCentimes: e.acompteCentimes ?? 0,
     totalConvenuCentimes: e.totalConvenuCentimes,
     remise: e.remise,
+    accordSansAcompte: e.accordSansAcompte ?? null,
     // Écriture et photo à imprimer : sur chaque ligne gâteau (lot 2, 28/10/2026).
     demandeInhabituelle: e.demandeInhabituelle,
   };

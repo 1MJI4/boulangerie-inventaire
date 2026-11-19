@@ -112,3 +112,11 @@ test('m3 : accord confirmé (gérant présent ou déjà enregistré) utilisé �
     null,
   );
 });
+
+test('sans acompte : accord non confirmé refusé seulement si le domaine s’en est servi', () => {
+  const attente = { lignes: [], remise: false, sansAcompte: true };
+  assert.deepEqual(accordManquant(attente, { lignes: [], sansAcompte: { par: 'Y', le: 'x' } }), { type: 'sansAcompte' });
+  // Un acompte a été versé : l'accord est devenu inutile, il est ignoré.
+  assert.equal(accordManquant(attente, { lignes: [] }), null);
+  assert.equal(accordManquant({ lignes: [], remise: false }, { lignes: [], sansAcompte: { par: 'Y', le: 'x' } }), null);
+});

@@ -70,18 +70,24 @@ export function validerTelephone(telephone: string | null | undefined, champ = '
  * Niveaux :
  *  - illisible / négatif → BLOQUANT ERR_SAISIE_INVALIDE, sortie « mettre le minimum » ;
  *  - supérieur au total → BLOQUANT ERR_ACOMPTE_SUPERIEUR_TOTAL, `valeurProposee` = total ;
- *  - sous le minimum (0 € compris) → ACCEPTÉ avec l'AVERTISSEMENT
+ *  - AUCUN acompte (0 €) alors que le règlement en demande un (pourcentage > 0)
+ *    → BLOQUANT ERR_ACOMPTE_OBLIGATOIRE (propriétaire, 19/11/2026),
+ *    `valeurProposee` = minimum (« Mettre l'acompte à X € »), SAUF accord du
+ *    gérant { par, le } → accepté, accord tracé par l'appelant ;
+ *  - sous le minimum → ACCEPTÉ avec l'AVERTISSEMENT
  *    AVERT_ACOMPTE_INSUFFISANT (signalé, tracé avec la commande),
  *    `valeurProposee` = minimum (bouton « Mettre l'acompte à X € »).
  * `pourcentageMin` est une DONNÉE (réglage `reglement:acompte_min_pourcent`).
- * N'interdit pas : un acompte faible ou nul (la vente n'est plus perdue pour
- * un acompte), un acompte entre le minimum et le total (total payé d'avance).
+ * N'interdit pas : un acompte faible (n'importe quel montant suffit), un
+ * acompte entre le minimum et le total (total payé d'avance), une commande
+ * sans acompte quand le réglage est à 0 % ou que le total est nul.
  */
 export function validerAcompte(
   acompteCentimes: number,
   totalCentimes: number,
   pourcentageMin: number,
   champ = 'acompte',
+  accordSansAcompte?: Deverrouillage | null,
 ): Resultat<number> {
   const minimum = partMinimale(totalCentimes, pourcentageMin);
   if (!Number.isSafeInteger(acompteCentimes) || acompteCentimes < 0) {
@@ -93,6 +99,9 @@ export function validerAcompte(
       { acompteFormate: formaterEuros(acompteCentimes), totalFormate: formaterEuros(totalCentimes) },
       { champ, valeurProposee: totalCentimes },
     );
+  }
+  if (acompteCentimes === 0 && minimum > 0 && !deverrouillageValide(accordSansAcompte)) {
+    return signaler('ERR_ACOMPTE_OBLIGATOIRE', { minimumFormate: formaterEuros(minimum) }, { champ, valeurProposee: minimum });
   }
   if (acompteCentimes < minimum) {
     return succes(

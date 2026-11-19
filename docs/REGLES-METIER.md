@@ -242,6 +242,15 @@ visibles du client.
 - **« Commandes pour demain »** : un gâteau vendu par personne ne s'additionne plus en pièces — deux Bavarois de 10 et 12
   personnes se lisent « 1 gâteau · Bavarois — 10 personnes » et « 1 gâteau · Bavarois — 12 personnes », plus « 22 × Bavarois ».
 
+## Décisions du propriétaire — 19/11/2026 (acompte, WhatsApp)
+
+- **Acompte obligatoire** : une commande sans aucun acompte est refusée, avec le bouton « Mettre l'acompte à X € » (la moitié
+  du total). N'importe quel montant suffit ; sous 50 % il reste un simple avertissement (R52). Le bouton « Pas d'acompte »
+  devient « Sans acompte : code du gérant » : l'accord est noté sur la commande (nom + heure) et revérifié par le serveur.
+  Si le réglage « acompte minimum » est mis à 0 %, plus aucun acompte n'est exigé.
+- **Commande WhatsApp** : à l'étape Client, « WhatsApp » met le nom « WhatsApp » (modifiable) et n'exige plus le numéro.
+  La fiche dit « prise par WhatsApp ».
+
 ## Comportements par défaut appliqués en l'absence de réponse
 
 Chacun est marqué `// HYPOTHÈSE À VALIDER` dans le code et visible à l'écran :

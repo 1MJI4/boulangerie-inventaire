@@ -64,6 +64,8 @@ function parametres(s: S, uniteQuantite: string): Record<string, unknown> {
       return { acompteFormate: '', minimumFormate: euros(v), pourcentage: 0 };
     case 'ERR_ACOMPTE_SUPERIEUR_TOTAL':
       return { acompteFormate: '', totalFormate: euros(v) };
+    case 'ERR_ACOMPTE_OBLIGATOIRE':
+      return { minimumFormate: euros(v) };
     case 'ERR_REMISE_NON_AUTORISEE':
     case 'ERR_TOTAL_INCOHERENT':
       return { totalFormate: euros(v) };

@@ -638,3 +638,14 @@ l'avez pas confirmé ici.
      Pain chocolat sont reliés à la feuille du fournil. *(en attendant : les autres produits
      commandés restent affichés en haut, dans « Commandes pour demain », sans remplir de
      champ. Donnez la liste, produit commandé → produit de la feuille.)*
+
+### Acompte obligatoire (19/11/2026)
+
+117. **Anciennes commandes sans acompte : faut-il un acompte pour les modifier ?** *(en
+     attendant : oui — dès qu'on change les produits, la date ou les montants d'une
+     commande restée sans acompte, il faut saisir un acompte ou le code du gérant ; changer
+     seulement le nom, le téléphone, l'heure ou une remarque reste possible sans rien.)*
+118. **Commande par téléphone ou WhatsApp payée par virement : l'acompte n'est pas encore
+     reçu au moment de la commande. Que saisit le vendeur ?** *(en attendant : il saisit le
+     montant annoncé au client ; la commande garde « virement à vérifier » jusqu'à
+     réception.)*

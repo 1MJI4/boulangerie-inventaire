@@ -95,6 +95,7 @@ const EXEMPLES: Partial<Record<CodeCatalogue, unknown>> = {
   ERR_SOUS_PLANCHER: { produit: 'P', plancherFormate: 'X €' },
   ERR_MONTANT_NUL: { objet: 'la commande' },
   ERR_ACOMPTE_SUPERIEUR_TOTAL: { acompteFormate: 'A €', totalFormate: 'T €' },
+  ERR_ACOMPTE_OBLIGATOIRE: { minimumFormate: 'M €' },
   ERR_REMISE_NON_AUTORISEE: { totalFormate: 'T €' },
   ERR_TOTAL_INCOHERENT: { totalFormate: 'T €' },
   ERR_CHAMP_OBLIGATOIRE: { champLibelle: 'nom du client' },

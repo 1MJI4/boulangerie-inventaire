@@ -344,6 +344,11 @@ model Commande {
   totalTarifCentimes Int?
   remiseAutoriseePar String? // nom declare du gerant (les deux ou aucun)
   remiseAutoriseeLe  DateTime?
+  // Acompte obligatoire (proprietaire, 19/11/2026) : une commande SANS
+  // acompte n'est acceptee qu'avec le code du gerant, trace ici (nom declare
+  // + heure serveur, les deux ou aucun). Migration 20261119230000.
+  sansAcompteAutorisePar String?
+  sansAcompteAutoriseLe  DateTime?
 
   texteGateau         String? // ce qui sera ecrit sur le gateau, orthographe comprise
   sansEcriture        Boolean @default(false) // choix explicite : rien a ecrire

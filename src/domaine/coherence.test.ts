@@ -90,9 +90,18 @@ test('R52 acompte sous 50 % → ACCEPTÉ avec AVERT_ACOMPTE_INSUFFISANT, minimum
   assert.equal(a.valeurProposee, 4500);
   assert.equal(a.champ, 'acompte');
   assert.equal(a.message, 'Essayez d’obtenir au moins 50 % d’acompte (45,00 €) : 44,99 € saisi. La commande reste acceptée.');
+  // 0 € : refusé depuis le 19/11/2026 (acompte obligatoire), sauf accord du gérant.
   const zero = validerAcompte(0, 9000, 50);
-  assert.ok(zero.ok, '0 € : accepté, signalé');
-  assert.equal(avertAcompte(zero)?.valeurProposee, 4500);
+  assert.equal(zero.ok, false);
+  if (!zero.ok) {
+    assert.equal(zero.code, 'ERR_ACOMPTE_OBLIGATOIRE');
+    assert.equal(zero.valeurProposee, 4500);
+  }
+  const accorde = validerAcompte(0, 9000, 50, 'acompte', { par: 'Yassine', le: '2026-11-19T17:00:00.000Z' });
+  assert.ok(accorde.ok, 'avec le code du gérant');
+  assert.equal(avertAcompte(accorde)?.valeurProposee, 4500);
+  // Réglage à 0 % : aucun acompte attendu, rien d'obligatoire.
+  assert.ok(validerAcompte(0, 9000, 0).ok);
 });
 
 test('R52 acompte pile 50 % sans avertissement ; total impair → minimum arrondi au centime supérieur', () => {
@@ -103,7 +112,7 @@ test('R52 acompte pile 50 % sans avertissement ; total impair → minimum arrond
   assert.equal(avertAcompte(impair)?.valeurProposee, 1466, '1465 < 1465,5');
   assert.equal(avertAcompte(validerAcompte(1466, 2931, 50)), undefined);
   assert.equal(avertAcompte(validerAcompte(1, 1, 50)), undefined, '1 centime : minimum 1');
-  assert.ok(avertAcompte(validerAcompte(0, 1, 50)));
+  assert.equal(validerAcompte(0, 1, 50).ok, false, '0 € : acompte obligatoire');
 });
 
 test('R52 le pourcentage est une donnée ; acompte > total reste BLOQUANT', () => {

@@ -116,6 +116,8 @@ export type ParametresMessages = {
   ERR_MONTANT_NUL: { objet?: string };
   /** Montants déjà formatés par `formaterEuros` ; absents si refus de la base. */
   ERR_ACOMPTE_SUPERIEUR_TOTAL: { acompteFormate?: string; totalFormate?: string };
+  /** Acompte conseillé (pourcentage du règlement), déjà formaté ; absent si refus de la base. */
+  ERR_ACOMPTE_OBLIGATOIRE: { minimumFormate?: string };
   /** Total du tarif, déjà formaté ; absent si refus de la base. */
   ERR_REMISE_NON_AUTORISEE: { totalFormate?: string };
   /** Total du tarif, déjà formaté ; absent si refus de la base. */
@@ -619,6 +621,15 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
       (p.objet ? `Le prix de ${p.objet} est nul.` : `Le prix indiqué est nul.`) +
       ` Indiquez le prix, s’il vous plaît. Pour un geste commercial, demandez d’abord au manager.`,
     correction: () => 'Indiquer le prix',
+  },
+  ERR_ACOMPTE_OBLIGATOIRE: {
+    niveau: 'bloquant',
+    cas: 'Commande sans aucun acompte (décision du propriétaire du 19/11/2026) : refusée, sauf code du gérant, tracé.',
+    message: (p) =>
+      `Un acompte est obligatoire pour valider la commande. ` +
+      (p.minimumFormate ? `Demandez ${p.minimumFormate} au client, ou un autre montant.` : `Indiquez le montant reçu du client.`),
+    correction: (p) => (p.minimumFormate ? `Mettre l’acompte à ${p.minimumFormate}` : 'Indiquer l’acompte'),
+    autreSortie: 'Sans acompte : code du gérant',
   },
   ERR_ACOMPTE_SUPERIEUR_TOTAL: {
     niveau: 'bloquant',

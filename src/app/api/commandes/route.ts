@@ -181,6 +181,7 @@ function commandeParIdClient(idClient: string) {
 function detailCreation(origine: string, priseLe: Date, maintenant: Date): string | null {
   const morceaux: string[] = [];
   if (origine === 'telephone') morceaux.push('Prise par téléphone');
+  if (origine === 'whatsapp') morceaux.push('Reçue par WhatsApp');
   if (maintenant.getTime() - priseLe.getTime() > TOLERANCE_HORLOGE_MS) {
     const arrivee = priseBruxelles(maintenant);
     morceaux.push(`Gardée sur la tablette (coupure réseau), arrivée au magasin le ${arrivee.datePrise} à ${arrivee.heurePrise}`);
@@ -407,10 +408,15 @@ function preparer(
   // Remise : seul le type est vérifié ici ; les totaux le sont après le domaine.
   const remise = confirmer(lireAccord(corps.remise), (a) => a.type === 'remise');
   nonConfirmes.remise = enAttente;
+  // Commande sans acompte : accord du gérant (propriétaire, 19/11/2026).
+  const accordSansAcompte = confirmer(lireAccord(corps.accordSansAcompte), (a) => a.type === 'sansAcompte');
+  nonConfirmes.sansAcompte = enAttente;
 
   const saisie: CommandeSaisie = {
     client: texte(corps.client, 80),
     telephone: texte(corps.telephone, 30),
+    // Commande WhatsApp : pas de numéro exigé (propriétaire, 19/11/2026).
+    parWhatsapp: corps.origine === 'whatsapp',
     // R56 : date et heure de prise (Bruxelles) choisies par la route : heure du serveur,
     // ou heure de la tablette si plausible (lirePriseTablette) — jamais lues ici du corps.
     datePrise: prise.datePrise,
@@ -421,6 +427,7 @@ function preparer(
     acompteCentimes: entierOuNull(corps.acompteCentimes) ?? 0,
     totalConvenuCentimes: entierOuNull(corps.totalConvenuCentimes),
     remise,
+    accordSansAcompte,
     // Ancien format seulement (aucune ligne ne porte son écriture) : repli du domaine.
     texteGateau: texte(corps.texteGateau, 200) || null,
     sansEcriture: corps.sansEcriture === true,
@@ -441,6 +448,9 @@ function refusAccordManquant(prep: Extract<Preparation, { ok: true }>, r: Ok): E
   if (!manque) return null;
   if (manque.type === 'remise') {
     return signaler('ERR_DROIT_INSUFFISANT', { action: 'accorder une réduction sur le total', role: 'gérant' }, { champ: 'total' });
+  }
+  if (manque.type === 'sansAcompte') {
+    return signaler('ERR_DROIT_INSUFFISANT', { action: 'accepter une commande sans acompte', role: 'gérant' }, { champ: 'acompte' });
   }
   const i = manque.ligne;
   if (manque.type === 'taille') {
@@ -581,6 +591,9 @@ function champsCommande(r: Ok, prep: Extract<Preparation, { ok: true }>) {
     totalTarifCentimes: d.totalTarifCentimes,
     remiseAutoriseePar: remise ? d.remise!.par : null,
     remiseAutoriseeLe: remise ? quand(remise) : null,
+    // Sans acompte : tracé seulement si le domaine s'en est servi.
+    sansAcompteAutorisePar: d.sansAcompte && prep.saisie.accordSansAcompte ? d.sansAcompte.par : null,
+    sansAcompteAutoriseLe: d.sansAcompte && prep.saisie.accordSansAcompte ? quand(prep.saisie.accordSansAcompte) : null,
     // Avertissements affichés puis passés outre : ceux recalculés par le serveur.
     avertissements: r.signalements.length > 0 ? JSON.stringify(r.signalements.map(({ code, message, champ }) => ({ code, message, champ }))) : null,
   };
@@ -645,7 +658,7 @@ export async function POST(request: Request) {
       if (!encore.ok) return refus(encore, route);
     }
 
-    const origine = corps.origine === 'telephone' ? 'telephone' : 'comptoir';
+    const origine = corps.origine === 'telephone' ? 'telephone' : corps.origine === 'whatsapp' ? 'whatsapp' : 'comptoir';
     const modePaiement = corps.modePaiement === 'virement' ? 'virement' : 'especes';
     const annee = Number(resultat.donnees.dateRetrait.slice(0, 4));
 
@@ -895,7 +908,11 @@ export async function PATCH(request: Request) {
           if (!sansEffetPrix) return refus(refusAncienTarif(), route);
           const client = validerChampObligatoire(texte(corps.client, 80), 'nom du client', 'client');
           if (!client.ok) return refus(client, route);
-          const telephone = validerTelephone(texte(corps.telephone, 30));
+          // Commande WhatsApp : le numéro reste facultatif à la modification aussi.
+          const telephone =
+            existante.origine === 'whatsapp' && texte(corps.telephone, 30) === ''
+              ? ({ ok: true, donnees: '' } as const)
+              : validerTelephone(texte(corps.telephone, 30));
           if (!telephone.ok) return refus(telephone, route);
           const contexte = await chargerContexte(route);
           // Heure facultative, dans les heures d'ouverture du jour (R54, 18/10/2026).
@@ -964,6 +981,9 @@ export async function PATCH(request: Request) {
               if (!cle || !l.goutAutorisePar || !l.goutAutoriseLe) return [];
               return [{ type: 'gout', cle, par: l.goutAutorisePar, le: l.goutAutoriseLe, gouts: l.gouts ?? [] }];
             }),
+            ...(existante.sansAcompteAutorisePar && existante.sansAcompteAutoriseLe
+              ? [{ type: 'sansAcompte' as const, par: existante.sansAcompteAutorisePar, le: existante.sansAcompteAutoriseLe }]
+              : []),
             ...(existante.remiseAutoriseePar && existante.remiseAutoriseeLe
               ? [
                   {

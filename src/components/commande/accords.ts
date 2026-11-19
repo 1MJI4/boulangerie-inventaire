@@ -59,6 +59,16 @@ export type AccordEnregistre =
       le: Date;
       /** Goûts autorisés, tels qu'enregistrés. */
       gouts: readonly string[];
+    }
+  | {
+      /**
+       * Commande acceptée SANS acompte (propriétaire, 19/11/2026), tracée sur la
+       * commande (`sansAcompteAutorisePar` / `sansAcompteAutoriseLe`). Conservée
+       * à la modification tant que la commande reste sans acompte.
+       */
+      type: 'sansAcompte';
+      par: string;
+      le: Date;
     };
 
 /** Accord renvoyé par la tablette : nom et horodatage lus tels qu'enregistrés. */
@@ -126,17 +136,20 @@ export function goutCouvert(a: AccordEnregistre, ligne: { produitId: string | nu
 export type AccordsNonConfirmes = {
   lignes: { prix: boolean; taille: boolean; gout?: boolean }[];
   remise: boolean;
+  sansAcompte?: boolean;
 };
 
 /** Ce que le domaine a réellement utilisé (autorisations tracées). */
 export type AccordsUtilises = {
   lignes: { autorisation?: unknown; autorisationTaille?: unknown; autorisationGout?: unknown }[];
   remise?: unknown;
+  sansAcompte?: unknown;
 };
 
 export type AccordManquant =
   | { type: 'prix' | 'taille' | 'gout'; ligne: number }
-  | { type: 'remise' };
+  | { type: 'remise' }
+  | { type: 'sansAcompte' };
 
 /**
  * Réserve m3 (qa-metier) : un accord devenu INUTILE (taille redevenue
@@ -155,5 +168,6 @@ export function accordManquant(attente: AccordsNonConfirmes, utilises: AccordsUt
     if (a.gout && l.autorisationGout) return { type: 'gout', ligne: i };
   }
   if (attente.remise && utilises.remise) return { type: 'remise' };
+  if (attente.sansAcompte && utilises.sansAcompte) return { type: 'sansAcompte' };
   return null;
 }

@@ -321,7 +321,7 @@ function Contenu({
           <Cellule libelle="Prise">
             <span>
               par {commande.vendeur}
-              {commande.origine === 'telephone' ? ', au téléphone' : ', au comptoir'}
+              {commande.origine === 'telephone' ? ', au téléphone' : commande.origine === 'whatsapp' ? ', par WhatsApp' : ', au comptoir'}
             </span>
           </Cellule>
         </Groupe>

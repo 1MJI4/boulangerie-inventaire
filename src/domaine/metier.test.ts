@@ -11,7 +11,7 @@ import { chargerCatalogueDepuisDossier } from '../catalogue/chargerFichiers.ts';
 import { creerApiCatalogue } from '../catalogue/catalogue.ts';
 import { CORRESPONDANCES_COMPTOIR } from '../catalogue/correspondancesComptoir.ts';
 
-import { multiplier, prixAuPoids } from './argent.ts';
+import { multiplier, partMinimale, prixAuPoids } from './argent.ts';
 import type { JourFerme } from './calendrier.ts';
 import { DELAIS_PAR_DEFAUT, REGLEMENT_COMMANDE } from './constantes.ts';
 import {
@@ -593,8 +593,9 @@ test('R52 acompte sous 50 % du total → ACCEPTÉ avec AVERT_ACOMPTE_INSUFFISANT
   assert.equal(avert[0]?.champ, 'acompte');
   assert.equal(avert[0]?.valeurProposee, minimum);
   const sansAcompte = controlerCommande(commande([{ produitId: ID.baguette, quantite: 31 }], { acompteCentimes: 0 }), ctxReglement);
-  assert.ok(sansAcompte.ok, '0 € : accepté, signalé');
-  assert.ok(sansAcompte.signalements.some((s) => s.code === 'AVERT_ACOMPTE_INSUFFISANT'));
+  // 0 € : refusé depuis le 19/11/2026 (acompte obligatoire).
+  assert.equal(sansAcompte.ok, false);
+  if (!sansAcompte.ok) assert.equal(sansAcompte.code, 'ERR_ACOMPTE_OBLIGATOIRE');
   const ok = controlerCommande(commande([{ produitId: ID.baguette, quantite: 31 }], { acompteCentimes: minimum }), ctxReglement);
   assert.ok(ok.ok, JSON.stringify(ok));
   assert.ok(!ok.signalements.some((s) => s.code === 'AVERT_ACOMPTE_INSUFFISANT'));
@@ -924,4 +925,62 @@ test('R62 + R60 : Bavarois commandé en 6 parts devenu le 6P du comptoir → son
   // Origine qui ne correspond pas au produit du comptoir : ignorée (achat au rayon).
   const fausse = controlerLigne({ produitId: ID.bavarois6pComptoir, quantite: 1, origineSurCommande: ID.layer }, 0, PRISE, ctxGouts);
   assert.equal(fausse.ok, true);
+});
+
+// ------------------------------------------- Commande WhatsApp (19/11/2026)
+
+test('commande WhatsApp : pas de numéro exigé (il est déjà dans WhatsApp) ; le nom reste obligatoire', () => {
+  const lignes = [{ produitId: ID.layer, quantite: 20 }];
+  const champs = (extra: Partial<CommandeSaisie>) => blocagesCommande(commande(lignes, extra), ctx).map((e) => e.champ);
+  assert.deepEqual(champs({ telephone: '', parWhatsapp: true }), []);
+  // Sans l'option, le numéro reste obligatoire.
+  assert.deepEqual(champs({ telephone: '' }), ['telephone']);
+  assert.deepEqual(champs({ telephone: '', parWhatsapp: false }), ['telephone']);
+  // Le nom, lui, est toujours demandé (l'écran le pré-remplit « WhatsApp »).
+  assert.deepEqual(champs({ client: '', telephone: '', parWhatsapp: true }), ['client']);
+  // Un numéro donné quand même reste contrôlé comme les autres (simple avertissement s'il est improbable).
+  const r = controlerCommande(commande(lignes, { telephone: '12345', parWhatsapp: true }), ctx);
+  assert.ok(r.ok);
+});
+
+// ------------------------------------------- Acompte obligatoire (19/11/2026)
+
+test('acompte obligatoire : sans acompte la commande est refusée, sortie « Mettre l’acompte à 50 % »', () => {
+  const lignes = [{ produitId: ID.layer, quantite: 20 }];
+  const sans = controlerCommande(commande(lignes, { acompteCentimes: 0 }), ctxReglement);
+  assert.equal(sans.ok, false);
+  if (!sans.ok) {
+    assert.equal(sans.code, 'ERR_ACOMPTE_OBLIGATOIRE');
+    assert.equal(sans.niveau, 'bloquant');
+    assert.equal(sans.champ, 'acompte');
+    const total = controlerCommande(commande(lignes, { acompteCentimes: 1 }), ctxReglement);
+    assert.ok(total.ok);
+    // La sortie en un geste : la moitié du total (pourcentage du règlement).
+    assert.equal(sans.valeurProposee, partMinimale(total.donnees.totalCentimes, REGLEMENT_COMMANDE.acomptePourcentageMin));
+    assert.match(sans.message, /acompte/i);
+  }
+  // Acompte absent = pas d'acompte.
+  assert.equal(controlerCommande(commande(lignes), ctxReglement).ok, false);
+});
+
+test('acompte obligatoire : n’importe quel montant suffit ; sous 50 % reste un simple avertissement', () => {
+  const r = controlerCommande(commande([{ produitId: ID.layer, quantite: 20 }], { acompteCentimes: 500 }), ctxReglement);
+  assert.ok(r.ok);
+  assert.equal(r.donnees.acompteCentimes, 500);
+  assert.ok(r.signalements.some((s) => s.code === 'AVERT_ACOMPTE_INSUFFISANT'));
+  assert.equal(r.donnees.sansAcompte, undefined);
+});
+
+test('acompte obligatoire : sans acompte avec le code du gérant → acceptée, accord tracé (nom + heure)', () => {
+  const accord = { par: 'Yassine', le: '2026-11-19T17:00:00.000Z' };
+  const lignes = [{ produitId: ID.layer, quantite: 20 }];
+  const r = controlerCommande(commande(lignes, { acompteCentimes: 0, accordSansAcompte: accord }), ctxReglement);
+  assert.ok(r.ok);
+  assert.deepEqual(r.donnees.sansAcompte, accord);
+  // Accord incomplet : refusé comme sans accord.
+  assert.equal(controlerCommande(commande(lignes, { acompteCentimes: 0, accordSansAcompte: { par: '', le: '' } }), ctxReglement).ok, false);
+  // Accord devenu inutile (un acompte est versé) : il n'est pas tracé.
+  const avec = controlerCommande(commande(lignes, { acompteCentimes: 500, accordSansAcompte: accord }), ctxReglement);
+  assert.ok(avec.ok);
+  assert.equal(avec.donnees.sansAcompte, undefined);
 });
