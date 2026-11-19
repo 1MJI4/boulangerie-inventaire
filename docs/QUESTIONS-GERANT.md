@@ -626,3 +626,15 @@ l'avez pas confirmé ici.
 114. **L'échéance du boulanger (2 heures avant) : faut-il aussi une heure pour l'atelier et le
      pâtissier ?** *(en attendant : seul le boulanger a son heure, les autres lisent l'heure
      de retrait.)*
+
+### Prévisions : plateaux des commandes (19/11/2026)
+
+115. **Le manager doit-il pouvoir demander MOINS de plateaux que ce que les commandes
+     exigent ?** *(en attendant : le champ montre les plateaux des commandes et il peut en
+     ajouter ; s'il tape moins, le champ revient au nombre des commandes — pour baisser, il
+     faut modifier ou annuler la commande.)*
+116. **« Les couques et les autres » : quels autres produits commandés doivent remplir tout
+     seuls les prévisions ?** Aujourd'hui seuls Croissant, Croissant à la pâte d'amande et
+     Pain chocolat sont reliés à la feuille du fournil. *(en attendant : les autres produits
+     commandés restent affichés en haut, dans « Commandes pour demain », sans remplir de
+     champ. Donnez la liste, produit commandé → produit de la feuille.)*

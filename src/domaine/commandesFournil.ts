@@ -187,6 +187,47 @@ export function plateauxEnPlus(
   };
 }
 
+/**
+ * Prévisions (propriétaire, 19/11/2026) : les plateaux sortis pour les
+ * commandes sont DÉJÀ dans le champ du manager, qui peut ensuite le modifier.
+ * Rend, par sorte, le nombre de plateaux ENTIERS à y afficher. Le total est
+ * celui de `plateauxEnPlus` ; chaque sorte reçoit d'abord ses plateaux pleins,
+ * et un plateau partagé s'affiche une seule fois, sur la sorte qui en occupe
+ * le plus (à égalité, la première de la liste).
+ */
+export function plateauxParSorte(
+  parts: readonly { fournil: string; pieces: number }[],
+  piecesParPlateau: number,
+  tolerance: number = TOLERANCE_SANS_PLATEAU,
+): Map<string, number> {
+  const total = plateauxEnPlus(parts, piecesParPlateau, tolerance).plateaux;
+  const sortes = parts.map((p) => {
+    const pieces = Number.isSafeInteger(p.pieces) && p.pieces > 0 ? p.pieces : 0;
+    const reste = pieces % piecesParPlateau;
+    return { fournil: p.fournil, plateaux: (pieces - reste) / piecesParPlateau, reste };
+  });
+  let aPlacer = total - sortes.reduce((s, x) => s + x.plateaux, 0);
+  const parReste = [...sortes].sort((a, b) => b.reste - a.reste);
+  for (const s of parReste) {
+    if (aPlacer <= 0) break;
+    if (s.reste === 0) continue;
+    s.plateaux += 1;
+    aPlacer -= 1;
+  }
+  return new Map(sortes.map((s) => [s.fournil, s.plateaux]));
+}
+
+/**
+ * Le champ des prévisions montre le TOTAL (plateaux du manager + plateaux des
+ * commandes). Ce que le manager demande en propre = total tapé − plateaux des
+ * commandes, jamais négatif : les commandes prises ne se retirent pas d'ici.
+ */
+export function partDuManager(plateauxTapes: number, plateauxDesCommandes: number): number {
+  const tapes = Number.isSafeInteger(plateauxTapes) && plateauxTapes > 0 ? plateauxTapes : 0;
+  const commandes = Number.isSafeInteger(plateauxDesCommandes) && plateauxDesCommandes > 0 ? plateauxDesCommandes : 0;
+  return Math.max(0, tapes - commandes);
+}
+
 /** « 14 Croissant + 2 Couque au chocolat » — contenu des plateaux en plus (noms à la lettre). */
 export function formaterContenuPlateaux(repartition: readonly PartPlateau[]): string {
   return repartition

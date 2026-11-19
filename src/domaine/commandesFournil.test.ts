@@ -11,6 +11,8 @@ import {
   totalAProduire,
   partCommandeeParBase,
   plateauxEnPlus,
+  plateauxParSorte,
+  partDuManager,
   type LienFournil,
   type LigneCommandee,
 } from './commandesFournil.ts';
@@ -235,4 +237,26 @@ test('contrôle de la table : clé inconnue ou citée deux fois', () => {
     (cle) => cle === CROISSANT,
   );
   assert.equal(erreurs.length, 2);
+});
+
+/* ---- Prévisions : les plateaux des commandes déjà dans le champ (propriétaire, 19/11/2026) */
+
+test('plateaux des commandes par sorte : 55 couques → 4 plateaux sur la Couque, rien sur le Croissant', () => {
+  assert.deepEqual(plateauxParSorte(sortes(0, 55), 16), new Map([['Croissant', 0], ['Couque au chocolat', 4]]));
+  // Plateau partagé : il s'affiche sur la sorte la plus commandée, une seule fois.
+  assert.deepEqual(plateauxParSorte(sortes(7, 2), 16), new Map([['Croissant', 1], ['Couque au chocolat', 0]]));
+  // Sous le seuil : aucun plateau en plus.
+  assert.deepEqual(plateauxParSorte(sortes(3, 0), 16), new Map([['Croissant', 0], ['Couque au chocolat', 0]]));
+  // Chaque sorte remplit ses plateaux : 32 + 16 = 2 et 1.
+  assert.deepEqual(plateauxParSorte(sortes(32, 16), 16), new Map([['Croissant', 2], ['Couque au chocolat', 1]]));
+  // 20 + 20 = 40 → 3 plateaux (8 en trop > 4) : 1 chacun, le 3e à la première des deux.
+  assert.deepEqual(plateauxParSorte(sortes(20, 20), 16), new Map([['Croissant', 2], ['Couque au chocolat', 1]]));
+});
+
+test('champ des prévisions : le manager modifie le total, sa part = total tapé − plateaux des commandes', () => {
+  assert.equal(partDuManager(7, 4), 3);
+  assert.equal(partDuManager(4, 4), 0);
+  // Il ne descend pas sous ce que les commandes demandent : sa part reste à 0.
+  assert.equal(partDuManager(2, 4), 0);
+  assert.equal(partDuManager(5, 0), 5);
 });

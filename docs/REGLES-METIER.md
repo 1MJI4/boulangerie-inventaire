@@ -233,6 +233,15 @@ visibles du client.
 - **Gâteau par personne** : à l'écran, sur la fiche et dans le message WhatsApp, il s’écrit « 1 gâteau · 10 personnes » (« personnes », pas « parts »),
   jamais « 10 parts » ou « 10 × » seul, qui se confond avec 10 individuels.
 
+## Décisions du propriétaire — 19/11/2026 (prévisions)
+
+- **Plateaux des commandes déjà dans le champ** : sur l'écran des prévisions, le champ « plateaux » du Croissant et de la
+  Couque au chocolat montre d'office les plateaux sortis pour les commandes de l'application (55 couques commandées → 4
+  plateaux), et le manager modifie ce total pour y ajouter les siens (R72). Il ne descend pas sous ce que les commandes
+  demandent (q. 115).
+- **« Commandes pour demain »** : un gâteau vendu par personne ne s'additionne plus en pièces — deux Bavarois de 10 et 12
+  personnes se lisent « 1 gâteau · Bavarois — 10 personnes » et « 1 gâteau · Bavarois — 12 personnes », plus « 22 × Bavarois ».
+
 ## Comportements par défaut appliqués en l'absence de réponse
 
 Chacun est marqué `// HYPOTHÈSE À VALIDER` dans le code et visible à l'écran :

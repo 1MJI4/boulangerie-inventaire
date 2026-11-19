@@ -7,14 +7,15 @@
 // tous les soirs entre 15 h et 22 h. C'est donc ici que les commandes du
 // lendemain apparaissent — en tête, avant les quantités.
 //
-// L'application ne convertit pas les pièces en plateaux : les deux listes ne
-// sont pas rapprochées, et c'est le manager qui sait ce que tient un plateau.
-// Elle pose les chiffres du client à côté, il en tient compte.
+// L'application pose les chiffres du client à côté des prévisions. Seuls les
+// produits reliés au fournil (R72 : croissants, couques) sont comptés tout
+// seuls dans leurs plateaux ; pour le reste, le manager en tient compte.
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Carte, Puce } from '@/components/ui';
 import type { Commande } from '@/lib/commandes';
+import { resumeCommandesDuJour } from '@/lib/commandesDuJour';
 import { formatDateRelative, type DateISO } from '@/lib/dateProduction';
 
 type CommandeApi = Commande & { retraitLe: string };
@@ -44,14 +45,10 @@ export function BandeauCommandes({ journee }: { journee: DateISO }) {
 
   if (commandes.length === 0 && aImprimer === 0) return null;
 
-  // Une même ligne peut venir de plusieurs commandes : on regroupe par
-  // libellé pour que le manager lise « 30 × Huit » et pas trois fois « 10 ».
-  const parProduit = new Map<string, number>();
-  for (const commande of commandes) {
-    for (const ligne of commande.lignes) {
-      parProduit.set(ligne.libelle, (parProduit.get(ligne.libelle) ?? 0) + ligne.quantite);
-    }
-  }
+  // Une même ligne peut venir de plusieurs commandes : on regroupe pour que le
+  // manager lise « 30 × Huit » et pas trois fois « 10 ». Un gâteau par personne
+  // ne s'additionne pas : « 1 gâteau · Bavarois — 10 personnes » (commandesDuJour).
+  const lignesDuJour = resumeCommandesDuJour(commandes);
 
   return (
     <Carte className="mb-5 border-accent/40 p-4">
@@ -70,20 +67,20 @@ export function BandeauCommandes({ journee }: { journee: DateISO }) {
         </div>
       </div>
 
-      {parProduit.size > 0 ? (
+      {lignesDuJour.length > 0 ? (
         <ul className="mt-3 grid gap-1 sm:grid-cols-2">
-          {[...parProduit.entries()].map(([libelle, quantite]) => (
-            <li key={libelle} className="flex items-baseline gap-2 text-sm">
-              <span className="chiffres w-12 shrink-0 font-semibold text-accent">{quantite} ×</span>
-              <span className="min-w-0 text-ink">{libelle}</span>
+          {lignesDuJour.map((l) => (
+            <li key={`${l.quantite}|${l.libelle}`} className="flex items-baseline gap-2 text-sm">
+              <span className="chiffres min-w-[4.5rem] shrink-0 whitespace-nowrap font-semibold text-accent">{l.quantite}</span>
+              <span className="min-w-0 text-ink">{l.libelle}</span>
             </li>
           ))}
         </ul>
       ) : null}
 
-      {parProduit.size > 0 ? (
+      {lignesDuJour.length > 0 ? (
         <p className="mt-3 text-xs text-ink-3">
-          Quantités dites par le client, en pièces. À ajouter à ce que vous prévoyez ci-dessous.
+          Quantités dites par le client. Croissants et couques commandés sont déjà comptés dans leurs plateaux ci-dessous.
         </p>
       ) : null}
     </Carte>

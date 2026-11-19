@@ -34,7 +34,7 @@ import {
   sePlanifieEnPlateaux,
   suggestionEnPlateaux,
 } from '@/domaine/plateaux';
-import { formaterDerives } from '@/domaine/commandesFournil';
+import { formaterDerives, partDuManager, plateauxParSorte } from '@/domaine/commandesFournil';
 import { usePartCommandee } from '@/lib/usePartCommandee';
 
 /** Le rayon que le manager planifie tous les jours. */
@@ -74,11 +74,32 @@ export default function SaisiePrevisions() {
     return Number.isFinite(n) ? n : 0;
   };
   const partCommandee = (produitId: number) => lireEntier(commande.valeurs[produitId] ?? '');
+  /*
+   * Plateaux sortis pour les commandes de l'application (propriétaire,
+   * 19/11/2026) : ils sont DÉJÀ dans le champ — 55 couques commandées, le
+   * champ montre 4 plateaux sans rien taper — et le manager modifie le total.
+   * La base ne change pas : sa demande à lui = total tapé − plateaux des
+   * commandes (domaine : plateauxParSorte, partDuManager).
+   */
+  const plateauxCommandes = useMemo(() => {
+    const parProduit = new Map<number, number>();
+    const contenances = new Set(saisie.produits.map((p) => p.piecesParPlateau).filter(sePlanifieEnPlateaux));
+    for (const contenance of contenances) {
+      const groupe = saisie.produits.filter((p) => p.piecesParPlateau === contenance);
+      const parSorte = plateauxParSorte(
+        groupe.map((p) => ({ fournil: p.nom, pieces: partCommandes.parProduit.get(p.id)?.commandeAuto ?? 0 })),
+        contenance,
+      );
+      for (const p of groupe) parProduit.set(p.id, parSorte.get(p.nom) ?? 0);
+    }
+    return parProduit;
+  }, [saisie.produits, partCommandes.parProduit]);
   const plateauxAffiches = (produit: Produit, parPlateau: number) => {
     const brut = saisie.valeurs[produit.id] ?? '';
-    if (brut === '') return '';
+    const pourCommandes = plateauxCommandes.get(produit.id) ?? 0;
+    if (brut === '') return pourCommandes > 0 ? String(pourCommandes) : '';
     const base = Math.max(0, lireEntier(brut) - partCommandee(produit.id));
-    return String(enPlateaux(base, parPlateau).plateaux);
+    return String(enPlateaux(base, parPlateau).plateaux + pourCommandes);
   };
   const definirPlateaux = (produit: Produit, parPlateau: number, saisieBrute: string) => {
     const chiffres = saisieBrute.replace(/[^0-9]/g, '');
@@ -87,7 +108,9 @@ export default function SaisiePrevisions() {
       saisie.definir(produit.id, commandees > 0 ? String(commandees) : '');
       return;
     }
-    saisie.definir(produit.id, String(piecesDePlateaux(Number(chiffres), parPlateau) + commandees));
+    const aLui = partDuManager(Number(chiffres), plateauxCommandes.get(produit.id) ?? 0);
+    const pieces = piecesDePlateaux(aLui, parPlateau) + commandees;
+    saisie.definir(produit.id, pieces > 0 ? String(pieces) : '');
   };
 
   /**
@@ -158,7 +181,7 @@ export default function SaisiePrevisions() {
       if (moyenne == null || moyenne <= 0) continue;
       if (sePlanifieEnPlateaux(produit.piecesParPlateau)) {
         const plateaux = suggestionEnPlateaux(moyenne, produit.piecesParPlateau);
-        if (plateaux != null) definirPlateaux(produit, produit.piecesParPlateau, String(plateaux));
+        if (plateaux != null) definirPlateaux(produit, produit.piecesParPlateau, String(plateaux + (plateauxCommandes.get(produit.id) ?? 0)));
       } else {
         saisie.definir(produit.id, String(moyenne));
       }
@@ -385,6 +408,7 @@ export default function SaisiePrevisions() {
                               : 0;
                           const resteAncien =
                             parPlateau !== null ? enPlateaux(baseHorsCommande, parPlateau).reste : 0;
+                          const plateauxAuto = plateauxCommandes.get(produit.id) ?? 0;
                           return (
                             <LigneSaisie
                               key={produit.id}
@@ -423,7 +447,7 @@ export default function SaisiePrevisions() {
                               onAppliquerSuggestion={
                                 parPlateau !== null
                                   ? suggestionPlateaux != null
-                                    ? () => definirPlateaux(produit, parPlateau, String(suggestionPlateaux))
+                                    ? () => definirPlateaux(produit, parPlateau, String(suggestionPlateaux + plateauxAuto))
                                     : undefined
                                   : repere?.moyenneProduite != null
                                     ? () => saisie.definir(produit.id, String(repere.moyenneProduite))
@@ -436,6 +460,9 @@ export default function SaisiePrevisions() {
                                       <span className="chiffres font-medium text-accent">
                                         + {commandeAuto} commandé{commandeAuto > 1 ? 's' : ''} dans l&apos;application
                                         {derives !== '' ? ` (${derives})` : ''}
+                                        {plateauxAuto > 0
+                                          ? ` → ${plateauxAuto} plateau${plateauxAuto > 1 ? 'x' : ''} déjà compté${plateauxAuto > 1 ? 's' : ''} ici, ajoutez les vôtres`
+                                          : ''}
                                         {parPlateau !== null || repere?.dernier?.produite != null ? ' · ' : ''}
                                       </span>
                                     ) : null}
