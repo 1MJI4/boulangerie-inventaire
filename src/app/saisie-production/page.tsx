@@ -8,7 +8,7 @@
 // s'affichent avec <Signalement>, sans bloquer.
 
 import { useMemo, useState } from 'react';
-import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide, Progression, Puce } from '@/components/ui';
+import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide, Progression } from '@/components/ui';
 import { IndicateurSauvegarde } from '@/components/IndicateurSauvegarde';
 import { LigneSaisie } from '@/components/LigneSaisie';
 import { SelecteurJournee } from '@/components/SelecteurJournee';
@@ -110,7 +110,7 @@ export default function SaisieProduction() {
   ) : null;
 
   return (
-    <div>
+    <div className="mx-auto max-w-3xl">
       <Entete
         titre="Production réalisée"
         sousTitre={
@@ -202,6 +202,8 @@ export default function SaisieProduction() {
                       onSelectionner={produit.unite === 'kg' ? () => setPesee(produit.id) : undefined}
                       valeur={saisie.valeurs[produit.id] ?? ''}
                       onChange={(v) => saisie.definir(produit.id, v)}
+                      sansZero
+                      faitQuandRempli
                       suggestion={produit.unite === 'kg' ? null : (prevue ?? null)}
                       onAppliquerSuggestion={
                         prevue != null ? () => saisie.definir(produit.id, String(prevue)) : undefined
@@ -233,16 +235,35 @@ export default function SaisieProduction() {
         )}
 
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5">
-          <Puce ton={saisie.nbRenseignes > 0 ? 'accent' : 'neutre'}>
-            <span className="chiffres">{saisie.nbRenseignes}</span> produits renseignés
-          </Puce>
-          <Bouton
-            variante="principal"
-            onClick={() => void saisie.enregistrerMaintenant()}
-            disabled={saisie.nbEnAttente === 0 || saisie.statut === 'envoi'}
-          >
-            {saisie.statut === 'envoi' ? 'Enregistrement…' : 'Enregistrer maintenant'}
-          </Bouton>
+          {/* Fin de saisie, dite clairement : rien à « rendre », tout s'enregistre seul. */}
+          {saisie.nbEnAttente === 0 && saisie.statut !== 'envoi' ? (
+            <p className="text-base text-ink" role="status">
+              {saisie.nbRenseignes > 0 ? (
+                <>
+                  <span className="font-semibold text-ok">
+                    Enregistré
+                    <svg aria-hidden viewBox="0 0 24 24" className="ml-1 inline-block h-[1em] w-[1em] align-[-0.125em]" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m5 12.5 4.5 4.5L19 7.5" />
+                    </svg>
+                  </span>{' '}
+                  <span className="chiffres">{saisie.nbRenseignes}</span>{' '}
+                  {saisie.nbRenseignes > 1 ? 'produits notés' : 'produit noté'}. Vous pouvez quitter l’écran.
+                </>
+              ) : (
+                <span className="text-ink-2">Notez les quantités sorties du four : chaque ligne s’enregistre toute seule.</span>
+              )}
+            </p>
+          ) : (
+            <>
+              <p className="text-base text-ink" role="status">
+                <span className="chiffres font-semibold">{saisie.nbEnAttente}</span>{' '}
+                {saisie.nbEnAttente > 1 ? 'lignes pas encore enregistrées' : 'ligne pas encore enregistrée'}. Gardez l’écran ouvert.
+              </p>
+              <Bouton variante="principal" onClick={() => void saisie.enregistrerMaintenant()} disabled={saisie.statut === 'envoi'}>
+                {saisie.statut === 'envoi' ? 'Enregistrement…' : 'Enregistrer maintenant'}
+              </Bouton>
+            </>
+          )}
         </div>
       </DispositionAvecPave>
     </div>

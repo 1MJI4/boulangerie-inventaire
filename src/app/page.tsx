@@ -1,8 +1,14 @@
 'use client';
 
+// Accueil (manager, pâtissier, boulanger). Le vendeur a le sien : `AccueilVendeur`.
+//
+// La question de l'écran : « où est-ce que je vais maintenant ? ». Le tour de la
+// journée se lit comme un horaire — le moment à gauche, l'écran, ce qu'on y fait —
+// et non comme une grille de cartes identiques (propriétaire, 19/11/2026 :
+// « propre »). Ce qui se consulte vient ensuite, dans une seconde liste.
+
 import Image from 'next/image';
 import Link from 'next/link';
-import { Carte } from '@/components/ui';
 import { useProfil } from '@/components/ProfilAppareil';
 import { dateDuJour, formatDateLong, journeeProduction } from '@/lib/dateProduction';
 import { DEFINITIONS, LIBELLES_ECRANS } from '@/lib/profils';
@@ -12,35 +18,74 @@ import { AccueilVendeur } from '@/components/AccueilVendeur';
 const DESCRIPTIONS: Record<string, { description: string; moment?: string }> = {
   '/saisie-prevue': {
     description: 'Noter les quantités voulues pour la prochaine fournée.',
-    moment: 'fin d’après-midi',
+    moment: 'Fin d’après-midi',
   },
   '/planification-demain': {
     description: 'Lire ce qu’il y a à produire, et cocher au fur et à mesure.',
-    moment: 'la nuit',
+    moment: 'La nuit',
   },
   '/saisie-production': {
-    description: 'Saisir les quantités réellement sorties du four.',
-    moment: 'au petit matin',
+    description: 'Noter les quantités réellement sorties du four.',
+    moment: 'Au petit matin',
   },
   '/saisie-vendeur': {
-    description: 'Compter ce qu’il reste en rayon, zone par zone.',
-    moment: 'en fin de journée',
+    description: 'Compter ce qu’il reste en rayon, page par page.',
+    moment: 'En fin de journée',
   },
   '/commandes': {
     description: 'Prendre une commande, l’imprimer, la retrouver au retrait.',
   },
+  '/commandes/reglages': { description: 'Heures d’ouverture, tailles et goûts des gâteaux, photos modèles.' },
   '/inventaire': { description: 'Demandé, produit, restant et vendu sur une journée.' },
-  '/dashboard': { description: 'Tendances et taux d’invendu sur la durée.' },
+  '/dashboard': { description: 'Ce qui est resté chaque soir, et ce qui a manqué.' },
   '/historique-previsions': { description: 'Ce qui a été demandé, jour après jour.' },
 };
 
 /** Les quatre écrans qui forment le tour de la journée, dans l'ordre. */
-const DEROULE = [
-  '/saisie-prevue',
-  '/planification-demain',
-  '/saisie-production',
-  '/saisie-vendeur',
-];
+const DEROULE = ['/saisie-prevue', '/planification-demain', '/saisie-production', '/saisie-vendeur'];
+
+const CHEVRON = (
+  <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-ink-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m9 6 6 6-6 6" />
+  </svg>
+);
+
+/** Une liste d'écrans : un seul cadre, une ligne par écran, tout ce qui est écrit se touche. */
+function ListeEcrans({ titre, ecrans, avecMoment }: { titre: string; ecrans: readonly string[]; avecMoment?: boolean }) {
+  return (
+    <section className="mt-8">
+      <h2 className="mb-2 text-sm text-ink-2">{titre}</h2>
+      <ul className="overflow-hidden rounded-xl border border-line bg-surface">
+        {ecrans.map((href, index) => (
+          <li key={href} className={index > 0 ? 'border-t border-line' : undefined}>
+            <Link
+              href={href}
+              className={`flex min-h-16 items-center gap-4 px-4 py-3 hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none ${
+                avecMoment ? 'sm:grid sm:grid-cols-[9.5rem_minmax(0,1fr)_auto]' : ''
+              }`}
+            >
+              {avecMoment ? (
+                <span className="hidden text-sm text-ink-2 sm:block">{DESCRIPTIONS[href]?.moment}</span>
+              ) : null}
+              <span className="min-w-0 flex-1">
+                <span className="block text-base font-medium text-ink">
+                  {LIBELLES_ECRANS[href]}
+                  {avecMoment && DESCRIPTIONS[href]?.moment ? (
+                    <span className="ml-2 text-sm font-normal text-ink-2 sm:hidden">{DESCRIPTIONS[href]?.moment}</span>
+                  ) : null}
+                </span>
+                {DESCRIPTIONS[href]?.description ? (
+                  <span className="mt-0.5 block text-sm text-ink-2 text-pretty">{DESCRIPTIONS[href]?.description}</span>
+                ) : null}
+              </span>
+              {CHEVRON}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
 export default function Accueil() {
   const { profil, prete, ouvrirSelecteur } = useProfil();
@@ -57,96 +102,43 @@ export default function Accueil() {
     return <AccueilVendeur libelleProfil={definition.libelle} onChangerProfil={ouvrirSelecteur} />;
   }
   const deroule = definition.ecrans.filter((e) => DEROULE.includes(e));
-  const consultation = definition.ecrans.filter(
-    (e) => !DEROULE.includes(e) && e !== '/commandes'
-  );
+  const consultation = definition.ecrans.filter((e) => !DEROULE.includes(e) && e !== '/commandes');
   const voitLesCommandes = definition.ecrans.includes('/commandes');
 
   return (
-    <>
-      <div className="mb-8">
-        {/* Ici le logotype a la place de respirer et reste lisible. */}
-        <Image
-          src="/logo.png"
-          alt="PAin PAtisserie"
-          width={900}
-          height={317}
-          priority
-          className="mb-3 h-auto w-52 sm:w-64"
-        />
-        <h1 className="text-xl font-semibold tracking-tight text-ink sm:text-2xl">
-          Inventaire
-        </h1>
-        <p className="mt-2 text-sm text-ink-2">
-          Prochaine fournée&nbsp;:{' '}
-          <span className="font-medium capitalize text-ink">{formatDateLong(journee)}</span>
-          {journee !== aujourdhui ? (
-            <span className="text-ink-3"> — la journée bascule à 14h</span>
-          ) : null}
-        </p>
-        <p className="mt-1 text-xs text-ink-3">
-          Cet appareil est réglé sur « {definition.libelle} ».{' '}
-          <button
-            type="button"
-            onClick={ouvrirSelecteur}
-            className="underline underline-offset-2 hover:text-ink-2"
-          >
-            Changer
-          </button>
-        </p>
+    <div className="mx-auto max-w-3xl">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0">
+          <Image src="/logo.png" alt="PAin PAtisserie" width={900} height={317} priority className="mb-4 h-auto w-40" />
+          <h1 className="text-2xl font-semibold tracking-tight text-ink first-letter:uppercase">{formatDateLong(aujourdhui)}</h1>
+          <p className="mt-1 text-base text-ink-2">
+            Prochaine fournée&nbsp;: <span className="font-medium text-ink first-letter:uppercase">{formatDateLong(journee)}</span>
+            {journee !== aujourdhui ? ' — la journée bascule à 14h' : null}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={ouvrirSelecteur}
+          className="inline-flex min-h-11 items-center rounded-xl border border-line-fort px-4 text-sm text-ink-2 hover:text-ink"
+        >
+          Profil&nbsp;: <span className="ml-1 font-medium text-ink">{definition.libelle}</span>
+          <span className="ml-2 underline underline-offset-2">Changer</span>
+        </button>
       </div>
 
-      {voitLesCommandes ? <CarteCommandes /> : null}
+      {voitLesCommandes ? (
+        // La carte porte sa propre marge basse (elle sert aussi ailleurs) : annulée ici,
+        // l'espacement entre les blocs est celui des listes.
+        <div className="mt-6 [&>a]:mb-0">
+          <CarteCommandes />
+        </div>
+      ) : null}
 
       {deroule.length > 0 ? (
-        <>
-          <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-ink-3">
-            {deroule.length > 1 ? 'Le tour de la journée' : 'Votre écran'}
-          </h2>
-          <ol className="mb-10 grid gap-3 sm:grid-cols-2">
-            {deroule.map((href, index) => (
-              <li key={href}>
-                <Link href={href} className="block h-full">
-                  <Carte className="h-full p-4 transition-colors hover:border-accent">
-                    <div className="flex items-baseline gap-2">
-                      {deroule.length > 1 ? (
-                        <span className="chiffres text-xs text-ink-3">{index + 1}</span>
-                      ) : null}
-                      <h3 className="text-base font-medium text-ink">{LIBELLES_ECRANS[href]}</h3>
-                    </div>
-                    <p className="mt-1.5 text-sm text-ink-2 text-pretty">
-                      {DESCRIPTIONS[href]?.description}
-                    </p>
-                    {DESCRIPTIONS[href]?.moment ? (
-                      <p className="mt-3 text-xs text-ink-3">{DESCRIPTIONS[href]?.moment}</p>
-                    ) : null}
-                  </Carte>
-                </Link>
-              </li>
-            ))}
-          </ol>
-        </>
+        <ListeEcrans titre={deroule.length > 1 ? 'Le tour de la journée' : 'Votre écran'} ecrans={deroule} avecMoment={deroule.length > 1} />
       ) : null}
 
-      {consultation.length > 0 ? (
-        <>
-          <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-ink-3">Consulter</h2>
-          <ul className="grid gap-3 sm:grid-cols-2">
-            {consultation.map((href) => (
-              <li key={href}>
-                <Link href={href} className="block h-full">
-                  <Carte className="h-full p-4 transition-colors hover:border-accent">
-                    <h3 className="text-base font-medium text-ink">{LIBELLES_ECRANS[href]}</h3>
-                    <p className="mt-1.5 text-sm text-ink-2 text-pretty">
-                      {DESCRIPTIONS[href]?.description}
-                    </p>
-                  </Carte>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </>
-      ) : null}
-    </>
+      {consultation.length > 0 ? <ListeEcrans titre="À consulter" ecrans={consultation} /> : null}
+    </div>
   );
 }

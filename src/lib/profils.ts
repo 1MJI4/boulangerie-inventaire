@@ -63,6 +63,9 @@ export const DEFINITIONS: Record<Profil, DefinitionProfil> = {
       '/inventaire',
       '/dashboard',
       '/historique-previsions',
+      // Comptage de la Glory (page de test du 17/11/2026) : RETIRÉ pour l'instant
+      // (propriétaire, 19/11/2026). L'écran et ses règles restent dans le code
+      // (`src/app/glory`, `src/domaine/caisse.ts`) ; pour le remettre, rajouter '/glory' ici.
     ],
     protege: true,
   },
@@ -80,6 +83,7 @@ export const LIBELLES_ECRANS: Record<string, string> = {
   '/inventaire': 'Inventaire',
   '/dashboard': 'Tableau de bord',
   '/historique-previsions': 'Historique',
+  '/glory': 'Glory',
 };
 
 export function estProfil(valeur: string | null | undefined): valeur is Profil {

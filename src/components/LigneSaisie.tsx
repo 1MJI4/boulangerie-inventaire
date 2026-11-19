@@ -67,7 +67,21 @@ export function LigneSaisie({
   niveauSignalement,
   surimpressionVers = 'bas',
   suffixe,
+  sansZero = false,
+  faitQuandRempli = false,
 }: {
+  /**
+   * Une seule case par ligne, comme sur la feuille (propriétaire, 19/11/2026) :
+   * le bouton « 0 » à côté du champ se lisait comme un zéro déjà saisi. Le zéro
+   * se tape (ou se donne d'un toucher sur le pavé : « Plus rien »).
+   */
+  sansZero?: boolean;
+  /**
+   * Comptage et production : une ligne remplie est une ligne FAITE — son nom
+   * s'estompe, comme une ligne cochée sur la feuille ; ce qui reste à faire
+   * garde l'encre pleine et saute aux yeux.
+   */
+  faitQuandRempli?: boolean;
   /** Grille plein écran : hauteur imposée de la ligne en px (signalements en surimpression). */
   hauteurFixe?: number;
   /** Niveau le plus grave des signalements (icône sur la ligne, grille plein écran). */
@@ -225,7 +239,12 @@ export function LigneSaisie({
             <span className="sr-only">{NIVEAUX[niveauSignalement].libelle}</span>
           </span>
         ) : null}
-        <div ref={refNom} className={`min-w-0 text-ink ${classesNom}`} title={nom} aria-label={nom}>
+        <div
+          ref={refNom}
+          className={`min-w-0 ${faitQuandRempli && rempli && !selectionne ? 'text-ink-2' : 'text-ink'} ${classesNom}`}
+          title={nom}
+          aria-label={nom}
+        >
           {nom}
         </div>
         {indice && !compact && !fixe ? (
@@ -249,23 +268,25 @@ export function LigneSaisie({
           </button>
         ) : null}
 
-        <button
-          type="button"
-          onClick={(e) => {
-            // Le « 0 » ne fait que le zéro : il ne déplace pas la sélection (grille fixe).
-            if (fixe) e.stopPropagation();
-            onChange(zero ? '' : '0');
-          }}
-          aria-pressed={zero}
-          aria-label={zero ? `Annuler le zéro pour ${nom}` : `${nom} : épuisé`}
-          className={`sans-impression shrink-0 rounded-lg border font-medium transition-colors ${grande ? 'text-base' : 'text-sm'} ${tailleCible} ${
-            zero
-              ? 'border-accent bg-accent-doux text-accent'
-              : 'border-line text-ink-3 hover:border-line-fort hover:text-ink-2'
-          }`}
-        >
-          0
-        </button>
+        {sansZero ? null : (
+          <button
+            type="button"
+            onClick={(e) => {
+              // Le « 0 » ne fait que le zéro : il ne déplace pas la sélection (grille fixe).
+              if (fixe) e.stopPropagation();
+              onChange(zero ? '' : '0');
+            }}
+            aria-pressed={zero}
+            aria-label={zero ? `Annuler le zéro pour ${nom}` : `${nom} : épuisé`}
+            className={`sans-impression shrink-0 rounded-lg border font-medium transition-colors ${grande ? 'text-base' : 'text-sm'} ${tailleCible} ${
+              zero
+                ? 'border-accent bg-accent-doux text-accent'
+                : 'border-line text-ink-3 hover:border-line-fort hover:text-ink-2'
+            }`}
+          >
+            0
+          </button>
+        )}
 
         <input
           type="text"
@@ -296,8 +317,9 @@ export function LigneSaisie({
             selectionne
               ? 'border-accent bg-surface font-medium text-ink ring-2 ring-accent/30'
               : rempli
-                ? 'border-line-fort bg-surface font-medium text-ink'
-                : 'border-line bg-surface-2 text-ink-2'
+                ? `border-line-fort bg-surface text-ink ${faitQuandRempli ? 'font-semibold' : 'font-medium'}`
+                : // Case vide = case à remplir : en pointillés, comme la case blanche de la feuille.
+                  `${faitQuandRempli ? 'border-dashed border-line-fort bg-transparent' : 'border-line bg-surface-2'} text-ink-2`
           }`}
         />
 

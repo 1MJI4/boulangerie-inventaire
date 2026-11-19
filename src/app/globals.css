@@ -9,17 +9,17 @@
 :root {
   --ground: #f5f4f2;
   --surface: #ffffff;
-  --surface-2: #faf9f7;
+  --surface-2: #f9f8f7;                 /* pierre claire, peu saturée (inspecteur de design, 19/11/2026) */
   --line: #e3e0dc;
   --line-fort: #cdc8c1;
 
   --ink: #1a1917;
   --ink-2: #5c5852;
-  --ink-3: #8b857d;
+  --ink-3: #706a62;                     /* ≥ 4,5:1 sur fond, surfaces et accent doux (était 3,7:1) */
 
   --accent: #a04f22;
   --accent-fort: #83401b;
-  --accent-doux: #f6ece4;
+  --accent-doux: #eeeae8;               /* pierre chaude, plus un crème jaune (inspecteur, 19/11/2026) ; --accent dessus : 4,7:1 */
 
   --ok: #2c6a4a;
   --ok-doux: #e6f0e9;
@@ -88,7 +88,7 @@
 
     --ink: #ecebe7;
     --ink-2: #adaaa3;
-    --ink-3: #837f78;
+    --ink-3: #948f88;                   /* ≥ 4,5:1 sur les surfaces sombres (était 4,0:1) */
 
     --accent: #d98b57;
     --accent-fort: #e8a074;

@@ -83,7 +83,8 @@ export function BandeauProgression({
           ) : null}
         </p>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-          {restants > 0 ? (
+          {/* Panneau « ce qui manque » ouvert : il porte déjà ce bouton, pas de doublon. */}
+          {restants > 0 && !(enCours && panneauOuvert) ? (
             <Bouton variante="principal" onClick={onProchain} className="shrink-0">
               Aller au prochain non compté ›
             </Bouton>
@@ -151,14 +152,27 @@ export function BandeauProgression({
         <div
           role="status"
           className={`mt-2 rounded-xl p-3 ${
-            bilan.incomplet ? NIVEAUX.avertissement.cadre : 'border-2 border-ok bg-ok-doux'
+            bilan.incomplet ? NIVEAUX.avertissement.cadre : 'bg-ok-doux'
           }`}
         >
-          <p className="text-lg font-semibold text-ink">
-            {bilan.incomplet
-              ? `Inventaire terminé — ${bilan.restants} ${pluriel(bilan.restants, 'produit non compté', 'produits non comptés')}`
-              : 'Inventaire terminé ✓'}
+          <p className="text-xl font-semibold text-ink">
+            {bilan.incomplet ? (
+              `Inventaire terminé — ${bilan.restants} ${pluriel(bilan.restants, 'produit non compté', 'produits non comptés')}`
+            ) : (
+              <>
+                Inventaire terminé
+                <span className="text-ok">
+                  <svg aria-hidden viewBox="0 0 24 24" className="ml-1 inline-block h-[1em] w-[1em] align-[-0.125em]" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m5 12.5 4.5 4.5L19 7.5" />
+                  </svg>
+                </span>
+              </>
+            )}
           </p>
+          {/* La feuille, on la rend : ici on dit que c'est fait et qu'il n'y a plus rien à faire. */}
+          {bilan.incomplet ? null : (
+            <p className="mt-0.5 text-base text-ink">Tout est compté et enregistré. Vous pouvez poser la tablette.</p>
+          )}
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-ink-2">
             <span className="chiffres">
               {comptes} {pluriel(comptes, 'produit compté', 'produits comptés')} · tout est enregistré

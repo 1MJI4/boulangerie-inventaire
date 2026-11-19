@@ -45,6 +45,17 @@ export type PropsPaveSaisieProduit = {
   peutAllerSuivant?: boolean;
   /** Absent (comptage plein écran : le pavé reste toujours ouvert) → pas de bouton « Fermer ». */
   onFermer?: () => void;
+  /**
+   * Dernier produit du parcours validé (plus de « suivant ») : l'écran dit où on en
+   * est — ce qui manque, ou que c'est fini. Sans cela, « Valider » ne faisait rien de visible.
+   */
+  onDernier?: () => void;
+  /**
+   * Un toucher pour « il n'en reste plus » : pose 0 et passe au suivant
+   * (propriétaire, 19/11/2026 — plus simple que la feuille). Libellé du bouton ;
+   * absent → pas de bouton (production : « rien produit » n'est pas un cas courant).
+   */
+  libelleZero?: string;
 };
 
 const versNombre = (v: string): number | null => (v === '' ? null : Number(v));
@@ -59,6 +70,8 @@ export function PaveSaisieProduit({
   onSuivant,
   peutAllerSuivant = false,
   onFermer,
+  onDernier,
+  libelleZero,
 }: PropsPaveSaisieProduit) {
   const [ajout, setAjout] = useState<number | null>(null);
   const racine = useRef<HTMLDivElement>(null);
@@ -82,10 +95,21 @@ export function PaveSaisieProduit({
       onAjouter(n);
       return;
     }
+    avancer();
+  };
+  /** Produit suivant ; au bout du parcours, l'écran fait le point ; sinon le pavé se ferme. */
+  const avancer = () => {
     if (onSuivant && peutAllerSuivant) onSuivant();
+    else if (onDernier) onDernier();
     else onFermer?.();
   };
-  const libelleValider = enAjout ? 'Ajouter au comptage' : peutAllerSuivant ? 'Valider · suivant' : 'Valider';
+  const libelleValider = enAjout
+    ? 'Ajouter au comptage'
+    : peutAllerSuivant
+      ? 'Valider · suivant'
+      : onDernier
+        ? 'Valider · c’est le dernier'
+        : 'Valider';
 
   return (
     <div
@@ -148,6 +172,18 @@ export function PaveSaisieProduit({
           onValider={valider}
         />
       )}
+      {libelleZero && !enAjout ? (
+        <button
+          type="button"
+          onClick={() => {
+            onChange('0');
+            avancer();
+          }}
+          className="mt-2 min-h-12 w-full rounded-xl border-2 border-line-fort bg-surface text-base font-semibold text-ink active:bg-surface-2"
+        >
+          {libelleZero}
+        </button>
+      ) : null}
       {sousTitre ? <p className="mt-1.5 text-center text-sm text-ink-2">{sousTitre}</p> : null}
     </div>
   );

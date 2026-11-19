@@ -529,6 +529,19 @@ export default function Comptage() {
     if (id !== null) allerA(id);
   };
 
+  /**
+   * Dernier produit du parcours validé (propriétaire, 19/11/2026 : « la fin de la
+   * saisie est-elle claire ? »). Sur la feuille, on voit d'un coup d'œil les cases
+   * restées blanches ; ici l'écran le dit : la liste de ce qui manque s'ouvre.
+   * S'il ne manque rien, l'état « Inventaire terminé » s'affiche de lui-même.
+   * Le produit qu'on vient de valider est compté, même si l'écran ne l'a pas encore redessiné.
+   */
+  const finDeParcours = () => {
+    const manque = progression.restants.some((id) => id !== selectionEffective);
+    setBandeauOuvert(null);
+    setPanneauFin(manque);
+  };
+
   // Inventaire terminé — compté ET enregistré, jamais avec un envoi en attente
   // ou une saisie refusée : un rappel d'équipe, une fois par journée. Il part
   // au moment où le dernier envoi est confirmé (statut « enregistré »), ou à la
@@ -585,6 +598,8 @@ export default function Comptage() {
         }
         onSuivant={validerEtSuivant}
         peutAllerSuivant={peutValiderSuivant}
+        onDernier={finDeParcours}
+        libelleZero="Plus rien · 0"
         // Plein écran : le pavé reste ouvert ; « Fermer » n'annule qu'un recomptage.
         onFermer={pleinEcran && recomptage !== produitSelectionne.id ? undefined : fermerPave}
       />
@@ -809,6 +824,18 @@ export default function Comptage() {
         </button>
       </div>
 
+      {/* Le point de fin (ce qui manque, terminé, envoi en attente) : AU-DESSUS du pavé, là où l'œil est. */}
+      {bandeauVisible ? (
+        <div className="rounded-xl border border-line bg-surface p-2">
+          {bandeauProgression(null)}
+          <div className="flex justify-end">
+            <Bouton variante="secondaire" onClick={() => setBandeauOuvert(false)} className="shrink-0">
+              Masquer
+            </Bouton>
+          </div>
+        </div>
+      ) : null}
+
       {pave}
 
       {/* Changer de page sans quitter le pavé des yeux. */}
@@ -842,21 +869,9 @@ export default function Comptage() {
         </div>
       ) : null}
 
-      {/* Bilan et avertissement LOI 11 SOUS le pavé : rien de la grille n'est caché. */}
-      {blocAvertissementDebut.length > 0 || bandeauVisible ? (
-        <div className="rounded-xl border border-line-fort bg-surface p-2">
-          {blocAvertissementDebut}
-          {bandeauVisible ? (
-            <>
-              {bandeauProgression(null)}
-              <div className="flex justify-end">
-                <Bouton variante="secondaire" onClick={() => setBandeauOuvert(false)} className="shrink-0">
-                  Masquer
-                </Bouton>
-              </div>
-            </>
-          ) : null}
-        </div>
+      {/* Avertissement LOI 11 (inventaire avant la fermeture) SOUS le pavé : il ne gêne pas la saisie. */}
+      {blocAvertissementDebut.length > 0 ? (
+        <div className="rounded-xl border border-line bg-surface p-2">{blocAvertissementDebut}</div>
       ) : null}
     </div>
   );
@@ -919,6 +934,8 @@ export default function Comptage() {
                     setRecomptage(recomptable ? produit.id : null);
                   }}
                   hauteurFixe={disposition.hauteurLigne}
+                  sansZero
+                  faitQuandRempli
                   niveauSignalement={niveauDe(produit)}
                   surimpressionVers={rangee >= disposition.rangees / 2 ? 'haut' : 'bas'}
                   signalements={blocSignalements(produit)}
@@ -933,6 +950,7 @@ export default function Comptage() {
 
   return (
     <div>
+      {pleinEcran ? <h1 className="sr-only">Comptage du restant</h1> : null}
       {pleinEcran ? null : (
         <Entete
           titre="Comptage du restant"
@@ -1140,6 +1158,8 @@ export default function Comptage() {
                           setRecomptage(recomptable ? produit.id : null);
                         }}
                         variante={enCartes ? 'carte' : 'ligne'}
+                        sansZero
+                        faitQuandRempli
                         signalements={blocSignalements(produit)}
                       />
                     );
