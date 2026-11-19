@@ -2151,7 +2151,10 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
               >
                 {blocPave && etape === 2 ? (
                   <div className="flex-none border-b border-line p-3 pb-1">
-                    <ContexteTaillePave.Provider value="compact">{blocPave}</ContexteTaillePave.Provider>
+                    {/* Le pavé compact a sa largeur propre : il se tient au centre de la colonne. */}
+                    <div className="mx-auto w-full max-w-xs">
+                      <ContexteTaillePave.Provider value="compact">{blocPave}</ContexteTaillePave.Provider>
+                    </div>
                   </div>
                 ) : null}
                 {etape === 2 ? (
