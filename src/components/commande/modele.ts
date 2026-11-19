@@ -26,6 +26,7 @@ import { FAMILLE_SUPPLEMENT, FAMILLES_GATEAU, SUPPLEMENT_ECRITURE, SUPPLEMENT_PH
 import type { ChoixGout } from '../../domaine/gouts.ts';
 import { goutsInitiaux } from '../../domaine/gouts.ts';
 import { GOUTS_SUR_COMMANDE } from '../../catalogue/goutsSurCommande.ts';
+import { RACCOURCIS_GATEAUX, type RaccourciGateau } from '../../catalogue/raccourcisGateaux.ts';
 
 // ---------------------------------------------------------------------------
 // Données reçues du serveur
@@ -1205,4 +1206,106 @@ export function creneauxRetrait(plage: PlageOuverture | null, pas: number, chois
     creneaux.sort();
   }
   return creneaux;
+}
+
+// ---------------------------------------------------------------------------
+// Gâteaux du comptoir en accès direct (propriétaire, 19/11/2026)
+// ---------------------------------------------------------------------------
+// Une tuile par gâteau (Fraisier, Matadi chocolat, croûtes…) en tête de la
+// famille « Gâteau ». La liste est une donnée (src/catalogue/raccourcisGateaux.ts) ;
+// AUCUNE règle ici : la tuile ouvre le gâteau sur commande avec son goût, ou
+// renvoie vers le produit du comptoir, et le domaine juge la ligne (R60, R65…).
+
+/** Une tuile prête à afficher : le raccourci et ce que le catalogue reçu en dit. */
+export type TuileRaccourci = {
+  raccourci: RaccourciGateau;
+  /** Tuile « sur commande » : fiche du gâteau sur commande (prix par personne). Sinon null. */
+  fiche: FicheCatalogue | null;
+  /** Tuile « comptoir » (croûtes) : une entrée par taille qui a un prix à la date. Sinon []. */
+  tailles: { parts: number; fiche: FicheCatalogue }[];
+  /** Nombre de gâteaux de cette tuile déjà au bon. */
+  auBon: number;
+};
+
+/** Même goût, sans casse ni espaces en bord (comme le domaine, R60). */
+function goutEgal(a: string | null, b: string): boolean {
+  return a !== null && a.trim().toLocaleLowerCase('fr') === b.trim().toLocaleLowerCase('fr');
+}
+
+/** La ligne est un gâteau de cette tuile « sur commande » (gâteau et goût), quelle que soit sa taille. */
+function ligneDuRaccourci(l: LigneEcran, surCommande: string, gout: string): boolean {
+  return gateauDeLaLigne(l) === surCommande && goutEgal(goutDeLaLigne(l.gouts), gout);
+}
+
+/**
+ * Tuiles à afficher AVANT les produits :
+ *  - dans le rayon du gâteau sur commande des raccourcis (la famille « Gâteau »,
+ *    lue sur la fiche — jamais un nom de rayon écrit ici) ;
+ *  - ou, quel que soit le rayon, quand tous les mots cherchés sont dans le
+ *    libellé de la tuile (« frais » → Fraisier, Croûte Fraises).
+ * Une tuile dont le produit n'a pas de prix à la date n'est pas proposée : une
+ * taille sans fiche est retirée, une tuile sans fiche ni taille disparaît.
+ */
+export function tuilesRaccourcis(
+  catalogue: CatalogueCommande,
+  lignes: readonly LigneEcran[],
+  recherche: string,
+  rayon: string | null,
+  raccourcis: readonly RaccourciGateau[] = RACCOURCIS_GATEAUX,
+): TuileRaccourci[] {
+  const mots = normaliserRecherche(recherche).split(/\s+/).filter(Boolean);
+  const fiche = (id: string) => catalogue.fiches.find((f) => f.produit.id === id && f.produit.regimePrix !== null) ?? null;
+  const rayonsGateau = new Set<string>();
+  for (const r of raccourcis) {
+    const f = r.type === 'surCommande' ? fiche(r.surCommande) : null;
+    if (f) rayonsGateau.add(f.produit.categorie);
+  }
+  const sortie: TuileRaccourci[] = [];
+  for (const r of raccourcis) {
+    if (mots.length > 0) {
+      const texte = normaliserRecherche(r.libelle);
+      if (!mots.every((m) => texte.includes(m))) continue;
+    } else if (rayon === null || !rayonsGateau.has(rayon)) {
+      continue;
+    }
+    if (r.type === 'surCommande') {
+      const f = fiche(r.surCommande);
+      if (!f) continue;
+      const auBon = lignes.filter((l) => ligneDuRaccourci(l, r.surCommande, r.gout)).length;
+      sortie.push({ raccourci: r, fiche: f, tailles: [], auBon });
+    } else {
+      const tailles: { parts: number; fiche: FicheCatalogue }[] = [];
+      for (const t of r.tailles) {
+        const f = fiche(t.comptoir);
+        if (f) tailles.push({ parts: t.parts, fiche: f });
+      }
+      if (tailles.length === 0) continue;
+      const ids = tailles.map((t) => t.fiche.produit.id);
+      const auBon = lignes.filter((l) => l.produitId !== null && ids.includes(l.produitId)).length;
+      sortie.push({ raccourci: r, fiche: null, tailles, auBon });
+    }
+  }
+  return sortie;
+}
+
+/**
+ * Un toucher sur une tuile « sur commande » : un NOUVEAU gâteau (une ligne par
+ * gâteau, 28/10/2026) avec son goût déjà choisi, boutons de taille ouverts.
+ * Le dernier gâteau de CETTE tuile encore sans taille est rouvert (un double
+ * toucher ne crée pas un gâteau vide de plus) ; un gâteau d'un autre goût
+ * n'est jamais repris (Matadi sans taille, puis Fraisier = deux gâteaux).
+ * Tuile « comptoir » : null — la taille se touche sur la tuile, et c'est
+ * `toucherProduit` qui ajoute le gâteau du comptoir.
+ */
+export function toucherRaccourci(
+  lignes: readonly LigneEcran[],
+  tuile: TuileRaccourci,
+): { lignes: LigneEcran[]; cle: string; champ: ChampTouche } | null {
+  const r = tuile.raccourci;
+  if (r.type !== 'surCommande' || !tuile.fiche) return null;
+  let deja: LigneEcran | undefined;
+  for (const l of lignes) if (ligneDuRaccourci(l, r.surCommande, r.gout)) deja = l;
+  if (deja && gateauSansTaille(deja)) return { lignes: [...lignes], cle: deja.cle, champ: 'taille' };
+  const ligne: LigneEcran = { ...ligneVide(r.surCommande), gouts: [r.gout] };
+  return { lignes: [...lignes, ligne], cle: ligne.cle, champ: 'taille' };
 }
