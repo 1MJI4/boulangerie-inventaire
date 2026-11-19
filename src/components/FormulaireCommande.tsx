@@ -1726,25 +1726,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
 
   /* ------------------- Remarques, demande inhabituelle, zone pour dessiner */
   // Valent pour toute la commande (salé compris) : en bas du bon, discrètes.
-  const precisions = (
-    <>
-      <label className="block">
-        <span className="mb-1 block text-sm text-ink-2">Remarques</span>
-        <textarea className={`${CHAMP_TEXTE} min-h-16 py-2`} value={remarques} onChange={(e) => setRemarques(e.target.value)} />
-      </label>
-      <Case compact coche={demandeInhabituelle} onChange={setDemandeInhabituelle}>
-        <span className="text-sm text-ink-2">Demande inhabituelle (ingrédient particulier, moule spécial…)</span>
-      </Case>
-      {rendre(signauxInhabituelle)}
-      <Case compact coche={zoneDessin} onChange={setZoneDessin}>
-        <span className="text-sm text-ink-2">Zone pour dessiner sur le bon (dessin, croquis du client)</span>
-      </Case>
-      {/* Photo d'exemple du client : une par COMMANDE (lot 2, 28/10/2026), salé compris. */}
-      <Case compact coche={photoWhatsapp} onChange={setPhotoWhatsapp}>
-        <span className="text-sm text-ink-2">Photo d’exemple envoyée sur WhatsApp</span>
-      </Case>
-    </>
-  );
+  // (Remarques et options : sur le bon relu de l'étape Paiement — `remarquesDuBon`, plus bas.)
 
   /* ------------------------------------------------ Jour et heure de retrait */
   // R54 (18/10/2026) : heures d'ouverture du magasin le jour choisi (réglages
@@ -1905,22 +1887,22 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
     </nav>
   );
   /**
-   * Sur le bon, à l'étape Produits (propriétaire, 19/11/2026) : la remarque, les
-   * trois options de la commande et l'acompte se voient et se touchent sans
-   * changer d'étape. Ce sont les MÊMES données qu'à l'étape Paiement.
+   * Étape Paiement (propriétaire, 19/11/2026) : la remarque et les trois options
+   * de la commande se lisent et se touchent SUR LE BON relu, à gauche. La
+   * colonne de droite ne garde que l'argent : l'acompte se voit tout de suite.
    */
   const puceBon = (actif: boolean) =>
-    `min-h-11 rounded-lg border-2 px-2.5 text-left text-sm font-medium leading-tight ${
+    `min-h-12 rounded-xl border-2 px-3 text-left text-base font-medium leading-tight ${
       actif ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
     }`;
-  const barreBon = (
-    <div className="grid gap-1.5" role="group" aria-label="Remarque, options et acompte de la commande">
+  const remarquesDuBon = (
+    <div className="mt-4 grid gap-2 border-t-2 border-line-fort pt-3" role="group" aria-label="Remarque et options de la commande">
       {remarqueOuverte ? (
         <label className="block">
-          <span className="mb-1 block text-sm font-semibold text-ink">Remarque sur la commande</span>
+          <span className="mb-1 block text-base font-semibold text-ink">Remarque sur la commande</span>
           <textarea
             autoFocus
-            className={`${CHAMP_TEXTE} min-h-20 py-2`}
+            className={`${CHAMP_TEXTE} min-h-24 py-2`}
             value={remarques}
             onChange={(e) => setRemarques(e.target.value)}
             placeholder="Allergie, emballage, heure précise…"
@@ -1930,9 +1912,9 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
         <button
           type="button"
           onClick={() => setRemarqueOuverte(true)}
-          className="rounded-lg border-l-4 border-accent bg-surface-2 px-2.5 py-1.5 text-left text-sm leading-snug text-ink"
+          className="rounded-lg border-l-4 border-accent bg-surface-2 px-3 py-2 text-left text-lg leading-snug text-ink"
         >
-          <span className="font-semibold">Remarque&nbsp;: </span>
+          <span className="font-bold">Remarque&nbsp;: </span>
           <span className="break-words">{remarques.trim()}</span>
         </button>
       ) : null}
@@ -1943,7 +1925,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
           onClick={() => { setActif(null); setRemarqueOuverte((v) => !v); }}
           className={puceBon(remarqueOuverte)}
         >
-          {remarqueOuverte ? 'Fermer' : remarques.trim() !== '' ? 'Modifier la remarque' : '＋ Remarque'}
+          {remarqueOuverte ? 'Fermer la remarque' : remarques.trim() !== '' ? 'Modifier la remarque' : '＋ Ajouter une remarque'}
         </button>
         <button type="button" aria-pressed={demandeInhabituelle} onClick={() => setDemandeInhabituelle(!demandeInhabituelle)} className={puceBon(demandeInhabituelle)}>
           Demande inhabituelle
@@ -1953,14 +1935,6 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
         </button>
         <button type="button" aria-pressed={photoWhatsapp} onClick={() => setPhotoWhatsapp(!photoWhatsapp)} className={puceBon(photoWhatsapp)}>
           Photo WhatsApp
-        </button>
-        <button
-          type="button"
-          aria-pressed={actif === 'acompte'}
-          onClick={() => { setRemarqueOuverte(false); setActif(actif === 'acompte' ? null : 'acompte'); }}
-          className={puceBon(actif === 'acompte')}
-        >
-          Acompte&nbsp;: <span className="chiffres font-bold">{acompte === null ? 'à saisir' : formaterEuros(acompte)}</span>
         </button>
       </div>
       {rendre(signauxInhabituelle)}
@@ -2147,6 +2121,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                 /* ============================ Étape 3 : le bon relu, comme le carnet */
                 <section aria-label="Le bon à relire" className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain rounded-2xl border border-line bg-surface p-4">
                   {bonCarnet}
+                  {remarquesDuBon}
                   {voileGerant}
                 </section>
               )}
@@ -2185,11 +2160,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                     )
                   ) : (
                     <>
-                      <section aria-label="Remarques">
-                        <h2 className={TITRE}>Remarques</h2>
-                        {precisions}
-                      </section>
-                      <section className="mt-4 border-t border-line pt-3">
+                      <section>
                         <h2 className={TITRE}>Paiement</h2>
                         {paiement}
                         {boutonPasAcompte}
@@ -2199,7 +2170,6 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                 </div>
                 )}
                 <div className="flex-none border-t border-line bg-surface p-3">
-                  {etape === 2 ? <div className="mb-2 max-h-56 overflow-y-auto overscroll-contain">{barreBon}</div> : null}
                   <div className="flex items-end justify-between gap-2" aria-live="polite">
                     <div className="min-w-0 text-sm leading-tight text-ink-2">
                       <div>Total à annoncer</div>
@@ -2343,17 +2313,14 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
               {totalAnnonce}
               <div className="mt-3">{bon}</div>
               {reglagesLigne ? <div className="mt-2">{reglagesLigne}</div> : null}
-              <div className="mt-3 border-t border-line pt-3">{barreBon}</div>
             </Carte>
             </>
             ) : (
             <>
             {/* ------------------------- Paiement : le bon relu, remarques, argent */}
-            <Carte className="p-4">{bonCarnet}</Carte>
-
             <Carte className="p-4">
-              <h2 className={TITRE}>Remarques</h2>
-              {precisions}
+              {bonCarnet}
+              {remarquesDuBon}
             </Carte>
 
             <Carte className="p-4">
