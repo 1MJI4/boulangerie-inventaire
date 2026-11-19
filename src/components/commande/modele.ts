@@ -1309,3 +1309,13 @@ export function toucherRaccourci(
   const ligne: LigneEcran = { ...ligneVide(r.surCommande), gouts: [r.gout] };
   return { lignes: [...lignes, ligne], cle: ligne.cle, champ: 'taille' };
 }
+
+/**
+ * Le goût de ce gâteau est déjà dit par sa tuile (Fraisier, Matadi chocolat…),
+ * à toutes les tailles. L'écran n'a plus à garder la liste des goûts ouverte :
+ * il affiche le goût choisi et un bouton pour en changer (propriétaire,
+ * 19/11/2026). Affichage seulement — le domaine exige toujours un goût (R62).
+ */
+export function goutDitParLaTuile(l: LigneEcran, raccourcis: readonly RaccourciGateau[] = RACCOURCIS_GATEAUX): boolean {
+  return raccourcis.some((r) => r.type === 'surCommande' && ligneDuRaccourci(l, r.surCommande, r.gout));
+}

@@ -135,6 +135,7 @@ import {
   separerLigneGateau,
   SUPPLEMENT_ECRITURE,
   SUPPLEMENT_PHOTO,
+  goutDitParLaTuile,
   toucherProduit,
   toucherRaccourci,
   tuilesRaccourcis,
@@ -2368,7 +2369,10 @@ function BlocGouts({
   onGouts,
   onDecorations,
   onGoutChoisi,
+  goutPose,
 }: {
+  /** Le goût est déjà dit par la tuile touchée (Fraisier…) : liste repliée, « Changer le goût ». */
+  goutPose?: boolean;
   choix: ChoixGout;
   attendus: number;
   gouts: readonly string[];
@@ -2387,6 +2391,9 @@ function BlocGouts({
   const noms = goutsProposes(choix, { parfums: actifs(options?.parfums), entremets: actifs(options?.entremets) });
   const [toutOuvert, setTout] = useState(false);
   const tout = toutOuvert || ferme;
+  // Goût posé par une tuile (19/11/2026) : la liste ne s'ouvre que si on veut en changer.
+  const [changer, setChanger] = useState(false);
+  const replie = goutPose === true && attendus === 1 && Boolean(gouts[0]) && !changer;
   const [libre, setLibre] = useState<number | null>(null);
   const [deco, setDeco] = useState(decorations.length > 0);
   const nomsDeco = ferme
@@ -2408,7 +2415,21 @@ function BlocGouts({
 
   return (
     <div className="mt-2 grid gap-2 rounded-lg border-l-4 border-accent bg-surface-2 px-2.5 py-2">
-      {Array.from({ length: attendus }, (_, etage) => {
+      {replie ? (
+        <p className="flex flex-wrap items-center gap-x-2 text-sm font-semibold text-ink">
+          <span>
+            Goût&nbsp;: <span className="font-bold text-accent">{gouts[0]}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setChanger(true)}
+            className="min-h-11 rounded-lg px-1 text-sm font-normal text-ink-2 underline underline-offset-2"
+          >
+            Changer le goût
+          </button>
+        </p>
+      ) : null}
+      {(replie ? [] : Array.from({ length: attendus }, (_, k) => k)).map((etage) => {
         const choisi = gouts[etage] ?? '';
         const visibles = tout ? noms : noms.slice(0, GOUTS_VISIBLES);
         // Un goût choisi hors des premiers (ou libre) reste visible et coché.
@@ -2919,6 +2940,7 @@ function LigneDuBon({
           choix={choixGout}
           attendus={goutsAttendus(choixGout, ficheGateau)}
           gouts={ligne.gouts}
+          goutPose={goutDitParLaTuile(ligne)}
           decorations={ligne.decorations}
           options={options}
           onGouts={(gouts) => onChange({ gouts })}

@@ -18,6 +18,7 @@ import { DELAIS_PAR_DEFAUT, FAMILLES_GATEAU, REGLEMENT_COMMANDE, TAILLES_INTERDI
 import {
   choisirTaille,
   ficheDe,
+  goutDitParLaTuile,
   ligneVide,
   resoudreLocal,
   suivreGout,
@@ -235,4 +236,20 @@ test('auBon : compte les gâteaux de la tuile, pas ceux d’un autre goût', () 
   assert.equal(compte['Croûte Fraises'], 1);
   assert.equal(compte['Croûte Fruits'], 0);
   assert.ok(sc(RACCOURCIS_GATEAUX[0]), 'la première tuile est un gâteau sur commande');
+});
+
+test('goût déjà dit par la tuile : la liste des goûts n’a pas à rester ouverte (propriétaire, 19/11/2026)', () => {
+  const fraisier = toucher('Fraisier').lignes[0];
+  assert.equal(goutDitParLaTuile(fraisier), true, 'dès le toucher, avant la taille');
+  assert.equal(goutDitParLaTuile(choisirTaille(fraisier, 6, catalogue, T)), true, 'Fraisier 6P du comptoir');
+  assert.equal(goutDitParLaTuile(choisirTaille(fraisier, 15, catalogue, T)), true, '15 parts, prix par personne');
+  // Bavarois touché sans tuile : le goût reste à choisir, la liste reste ouverte.
+  const bavarois = toucherProduit([], fiche(BAV)).lignes[0];
+  assert.equal(goutDitParLaTuile(bavarois), false);
+  assert.equal(goutDitParLaTuile({ ...bavarois, gouts: ['Vanille'] }), false, 'goût qui n’est pas une tuile');
+  assert.equal(goutDitParLaTuile({ ...bavarois, gouts: ['Au choix du pâtissier'] }), false);
+  // Croûte, Layer Cake, ligne libre : pas de goût posé par une tuile.
+  assert.equal(goutDitParLaTuile(toucherProduit([], fiche('gateaux-et-tartes/croute/fraises-8p')).lignes[0]), false);
+  assert.equal(goutDitParLaTuile({ ...ligneVide('gateaux-sur-commande/layer-cake'), gouts: ['Fraisier'] }), false);
+  assert.equal(goutDitParLaTuile(ligneVide(null)), false);
 });
