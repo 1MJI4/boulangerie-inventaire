@@ -136,12 +136,15 @@ import {
   SUPPLEMENT_ECRITURE,
   SUPPLEMENT_PHOTO,
   toucherProduit,
+  toucherRaccourci,
+  tuilesRaccourcis,
   versCommandeSaisie,
   type CatalogueCommande,
   type ContexteCalendrier,
   type EtatFormulaire,
   type FicheCatalogue,
   type LigneEcran,
+  type TuileRaccourci,
 } from '@/components/commande/modele';
 import { sortieDe } from '@/components/commande/sorties';
 import { CHAMPS_A_PHRASE, estManqueSimple, libelleManque, MANQUE_SIMPLE, texteChampVide } from '@/components/commande/manques';
@@ -688,6 +691,25 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
           ? `${libelleProduit(f)}\u00a0: ${ligne.quantite} ${uniteDe(fiche)} au bon`
           : `${libelleProduit(f)} ajouté au bon\u00a0: saisissez le poids`),
     );
+  };
+
+  /**
+   * Toucher d'une tuile « gâteau du comptoir » (Fraisier, Matadi chocolat… —
+   * propriétaire, 19/11/2026) : le gâteau sur commande est ajouté avec son goût
+   * déjà choisi, boutons de taille ouverts. Le prix reste jugé par le domaine
+   * (comptoir jusqu'à 8 parts, par personne au-dessus). Une photo en attente
+   * est posée sur le gâteau créé, comme pour un produit touché.
+   */
+  const toucherTuile = (tuile: TuileRaccourci) => {
+    const t = toucherRaccourci(lignes, tuile);
+    if (!t) return;
+    const cree = t.lignes.length > lignes.length;
+    const photo = cree ? photoEnAttente : null;
+    if (photo) setPhotoEnAttente(null);
+    setLignes(photo ? t.lignes.map((l) => (l.cle === t.cle ? { ...l, photoModele: photo.id } : l)) : t.lignes);
+    setActif(`${t.cle}.${t.champ}`);
+    setEclair((e) => ({ cle: t.cle, produitId: tuile.raccourci.cle, n: (e?.n ?? 0) + 1 }));
+    setAnnonce(`${photo ? `Photo ${photo.id} — ` : ''}${tuile.raccourci.libelle} au bon\u00a0: choisissez la taille`);
   };
 
   /**
@@ -1679,6 +1701,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
         eclair={eclair}
         sansGateau={sansGateau}
         onToucher={(f) => toucher(f)}
+        onRaccourci={toucherTuile}
         onAutreDemande={ajouterLigneLibre}
         onPhotos={() => setGalerieOuverte(true)}
       />
@@ -3022,6 +3045,7 @@ function GrilleProduits({
   eclair,
   sansGateau,
   onToucher,
+  onRaccourci,
   onAutreDemande,
   onPhotos,
 }: {
@@ -3042,6 +3066,8 @@ function GrilleProduits({
   eclair: Eclair | null;
   sansGateau: boolean;
   onToucher: (f: FicheCatalogue) => void;
+  /** Toucher d'une tuile « gâteau du comptoir » sur commande (goût déjà choisi, taille à choisir). */
+  onRaccourci: (t: TuileRaccourci) => void;
   onAutreDemande: () => void;
   /** Ouvre la galerie des photos de modèles. */
   onPhotos: () => void;
@@ -3052,6 +3078,30 @@ function GrilleProduits({
   const enAvant = familles.filter((b) => b.enAvant);
   const autres = familles.filter((b) => !b.enAvant);
   const fiches = fichesVisibles(catalogue, recherche, rayon);
+  // Gâteaux du comptoir en accès direct (19/11/2026) : en tête de la famille « Gâteau ».
+  const tuiles = tuilesRaccourcis(catalogue, lignes, recherche, rayon);
+  const carte = tablette ? 'h-full min-h-16 gap-0.5 px-2.5 py-1.5' : 'h-full min-h-20 gap-1 px-3 py-2';
+  const nomCarte = (libelle: string) =>
+    `break-words pr-6 font-medium text-ink ${
+      libelle.length > LONGUEUR_LIBELLE_LONG
+        ? tablette
+          ? 'text-[13px] leading-tight'
+          : 'text-sm leading-snug'
+        : tablette
+          ? 'text-[15px] leading-tight'
+          : 'text-base leading-snug'
+    }`;
+  const pastilleCarte = (n: number, eclaire: boolean) =>
+    n > 0 ? (
+      <span
+        className={`chiffres absolute -right-2 -top-2 flex h-8 min-w-8 items-center justify-center rounded-full bg-accent px-2 text-base font-bold text-white shadow transition-transform duration-300 ${
+          eclaire ? 'scale-125' : 'scale-100'
+        }`}
+        aria-hidden
+      >
+        {n}
+      </span>
+    ) : null;
   const libre = recherche.trim() === '' && rayon === null;
   const pucesVisibles = tablette || rayonsOuverts;
   const autreChoisie = autres.find((b) => b.rayon === rayon) ?? null;
@@ -3129,7 +3179,7 @@ function GrilleProduits({
   );
 
   const liste =
-    fiches.length === 0 ? (
+    fiches.length === 0 && tuiles.length === 0 ? (
       <p className={`text-sm text-ink-2 ${tablette ? '' : 'mt-3'}`}>
         Aucun produit trouvé. Une demande hors liste se prend avec « Autre demande »
         {recherche.trim() ? ` (« ${recherche.trim()} » sera repris comme libellé)` : ''}.
@@ -3142,6 +3192,60 @@ function GrilleProduits({
             : 'mt-3 grid grid-cols-2 gap-2 lg:grid-cols-3'
         }
       >
+        {tuiles.map((t) => {
+          const r = t.raccourci;
+          const eclaire = eclair?.produitId === r.cle || t.tailles.some((x) => eclair?.produitId === x.fiche.produit.id);
+          const cadre = eclaire
+            ? 'border-accent bg-accent-doux ring-4 ring-accent/40'
+            : t.auBon > 0
+              ? 'border-accent bg-surface'
+              : 'border-line bg-surface';
+          if (t.fiche) {
+            return (
+              <li key={`raccourci-${r.cle}`}>
+                <button
+                  type="button"
+                  onClick={() => onRaccourci(t)}
+                  aria-label={`${r.libelle}, choisir la taille${t.auBon > 0 ? `, ${t.auBon} au bon` : ''}`}
+                  className={`relative flex w-full flex-col justify-between rounded-xl border-2 text-left transition duration-300 hover:bg-surface-2 active:scale-[0.97] ${carte} ${cadre}`}
+                >
+                  <span className={nomCarte(r.libelle)}>{r.libelle}</span>
+                  <span className="chiffres text-sm leading-tight text-ink-2">
+                    Choisir la taille
+                  </span>
+                  {pastilleCarte(t.auBon, eclaire)}
+                </button>
+              </li>
+            );
+          }
+          // Gâteau sans prix par personne (croûtes) : ses tailles du comptoir, chacune à son prix.
+          return (
+            <li key={`raccourci-${r.cle}`}>
+              <div
+                role="group"
+                aria-label={r.libelle}
+                className={`relative flex w-full flex-col justify-between rounded-xl border-2 transition duration-300 ${carte} ${cadre}`}
+              >
+                <span className={nomCarte(r.libelle)}>{r.libelle}</span>
+                <span className="mt-1 flex gap-1.5">
+                  {t.tailles.map((x) => (
+                    <button
+                      key={x.fiche.produit.id}
+                      type="button"
+                      onClick={() => onToucher(x.fiche)}
+                      aria-label={`${libelleProduit(x.fiche)}, ${formaterEuros(x.fiche.prix.prixCentimes)}`}
+                      className="chiffres min-h-11 flex-1 rounded-lg border-2 border-line-fort bg-surface px-1 text-sm leading-tight text-ink hover:bg-surface-2 active:scale-[0.97]"
+                    >
+                      <span className="block font-bold">{x.parts}P</span>
+                      <span className="block text-ink-2">{formaterEuros(x.fiche.prix.prixCentimes)}</span>
+                    </button>
+                  ))}
+                </span>
+                {pastilleCarte(t.auBon, eclaire)}
+              </div>
+            </li>
+          );
+        })}
         {fiches.slice(0, MAX_CARTES).map((f) => {
           const q = quantiteAuBon(lignes, f.produit.id);
           const auKilo = f.produit.unite === 'kg';
