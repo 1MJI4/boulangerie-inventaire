@@ -23,7 +23,7 @@
 //
 // HYPOTHÈSES À VALIDER (QUESTIONS-GERANT) :
 //   - pains du rayon Boulangerie au boulanger (non dit, supposé) ;
-//   - reste du rayon Oriental (harcha, baghrir, makla, pâtisseries au kilo) au
+//   - reste du rayon Oriental (pâtisseries au kilo) au
 //     pâtissier, comme dans la liste d'inventaire ;
 //   - Grand pain surprise et mini-sandwichs garnis : atelier seul pour
 //     l'instant (qui fait le pain ?).
@@ -35,12 +35,26 @@ const ATELIER: readonly TachePoste[] = [{ poste: 'atelier' }];
 const BOULANGER: readonly TachePoste[] = [{ poste: 'boulanger' }];
 const AUCUN: readonly TachePoste[] = [];
 
-/** L'atelier monte, le boulanger fait le pain (burgers, batbout farci). */
+/** L'atelier monte, le boulanger fait le pain (burgers). */
 const ATELIER_ET_PAIN: readonly TachePoste[] = [{ poste: 'atelier' }, { poste: 'boulanger', role: 'le pain' }];
-/** Msemen, Meloui : le boulanger fait la pâte, et ils sortent cuits. */
-const PATE_CUITE: readonly TachePoste[] = [{ poste: 'boulanger', role: 'la pâte, cuits' }];
-/** Batbout nature : c'est un pain. */
-const PAIN: readonly TachePoste[] = [{ poste: 'boulanger', role: 'le pain' }];
+/**
+ * Batbout, msemen, meloui, makla (propriétaire, 20/11/2026) : le boulanger fait la PÂTE, l'atelier la CUIT
+ * (et la garnit quand il est farci ou healthy).
+ */
+const PATE_ET_CUISSON: readonly TachePoste[] = [
+  { poste: 'atelier', role: 'la cuisson' },
+  { poste: 'boulanger', role: 'la pâte' },
+];
+/** Même chose, garni : l'atelier cuit puis garnit (batbout farci / healthy). */
+const PATE_CUISSON_GARNIE: readonly TachePoste[] = [
+  { poste: 'atelier', role: 'la cuisson et la garniture' },
+  { poste: 'boulanger', role: 'la pâte' },
+];
+/** Avec confiture (msemen, meloui, baghrir…) : l'atelier cuit puis tartine. */
+const PATE_CUISSON_CONFITURE: readonly TachePoste[] = [
+  { poste: 'atelier', role: 'la cuisson et la confiture' },
+  { poste: 'boulanger', role: 'la pâte' },
+];
 /** Crêpes farcies : atelier ; le boulanger est prévenu au-delà de 5 sur la commande. */
 const CREPES: readonly TachePoste[] = [
   { poste: 'atelier' },
@@ -70,18 +84,30 @@ export const POSTES_PRODUCTION: DonneesPostes = {
     'sales/burger': ATELIER_ET_PAIN,
     'sales/mini-burger': ATELIER_ET_PAIN,
     'sur-commande/mini-burger': ATELIER_ET_PAIN,
-    // Batbout : un pain ; farci, l'atelier le garnit.
-    'oriental/petit-batbout': PAIN,
-    'sales/batbout-farci': ATELIER_ET_PAIN,
-    'sales/batbout-healthy': ATELIER_ET_PAIN,
-    'sur-commande/mini-batbout-farci': ATELIER_ET_PAIN,
-    // Msemen, Meloui : pâte du boulanger, cuits.
-    'oriental/msemen/semoule': PATE_CUITE,
-    'oriental/msemen/grise': PATE_CUITE,
-    'oriental/meloui': PATE_CUITE,
-    'oriental/msemen-semoule-confiture': PATE_CUITE,
-    'oriental/msemen-grise-confiture': PATE_CUITE,
-    'oriental/meloui-confiture': PATE_CUITE,
+    // Batbout : pâte du boulanger, cuisson à l'atelier (garniture comprise s'il est garni).
+    // HYPOTHÈSE À VALIDER : le Healthy se prépare comme le farci.
+    'oriental/petit-batbout': PATE_ET_CUISSON,
+    'sales/batbout-farci': PATE_CUISSON_GARNIE,
+    'sales/batbout-healthy': PATE_CUISSON_GARNIE,
+    'sur-commande/mini-batbout-farci': PATE_CUISSON_GARNIE,
+    // Msemen, Meloui, Makla : pâte du boulanger, cuisson à l'atelier (propriétaire, 20/11/2026).
+    'oriental/msemen/semoule': PATE_ET_CUISSON,
+    'oriental/msemen/grise': PATE_ET_CUISSON,
+    'oriental/meloui': PATE_ET_CUISSON,
+    'oriental/grand-makla': PATE_ET_CUISSON,
+    'oriental/petit-makla': PATE_ET_CUISSON,
+    'oriental/msemen-semoule-confiture': PATE_CUISSON_CONFITURE,
+    'oriental/msemen-grise-confiture': PATE_CUISSON_CONFITURE,
+    'oriental/meloui-confiture': PATE_CUISSON_CONFITURE,
+    // Harcha, Baghrir (avec ou sans confiture) : l'atelier fait tout (propriétaire, 20/11/2026).
+    'oriental/harcha/cereales': ATELIER,
+    'oriental/harcha/semoule': ATELIER,
+    'oriental/harcha/grise': ATELIER,
+    'oriental/baghrer': ATELIER,
+    'oriental/harcha-cereales-confiture': ATELIER,
+    'oriental/harcha-semoule-confiture': ATELIER,
+    'oriental/harcha-grise-confiture': ATELIER,
+    'oriental/baghrer-confiture': ATELIER,
     // Crêpes farcies : boulanger prévenu au-delà de 5.
     'sales/crepe-facie/fromage': CREPES,
     'sales/crepe-facie/poulet': CREPES,

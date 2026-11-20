@@ -50,11 +50,15 @@ test('qui fait quoi (réponses du propriétaire, 19/11/2026)', () => {
   assert.deepEqual(postesDe('sur-commande/mini-wrap'), ['atelier']);
   // Burger : l'atelier monte, le boulanger fait le pain.
   for (const id of ['sales/burger', 'sales/mini-burger', 'sur-commande/mini-burger']) assert.deepEqual(postesDe(id), ['atelier', 'boulanger'], id);
-  // Msemen, Meloui : le boulanger (pâte, cuits). Batbout : c'est un pain.
-  for (const p of produits.filter((x) => x.categorie === 'Oriental' && /^(Msemen|Meloui)/.test(x.produit))) assert.deepEqual(postesDe(p.id), ['boulanger'], p.id);
-  assert.deepEqual(postesDe(produits.find((p) => p.produit === 'Petit Batbout')!.id), ['boulanger']);
+  // Msemen, Meloui : le boulanger (pâte, cuits). Batbout : pâte du boulanger, cuisson à l'atelier (20/11/2026).
+  for (const p of produits.filter((x) => x.categorie === 'Oriental' && /^(Msemen|Meloui)/.test(x.produit))) assert.deepEqual(postesDe(p.id), ['atelier', 'boulanger'], p.id);
+  for (const id of ['oriental/grand-makla', 'oriental/petit-makla']) assert.deepEqual(postesDe(id), ['atelier', 'boulanger'], id);
+  assert.deepEqual(postesDe(produits.find((p) => p.produit === 'Petit Batbout')!.id), ['atelier', 'boulanger']);
+  assert.deepEqual(postesDe('sales/batbout-healthy'), ['atelier', 'boulanger']);
   assert.deepEqual(postesDe('sales/batbout-farci'), ['atelier', 'boulanger']);
   assert.deepEqual(postesDe('sur-commande/mini-batbout-farci'), ['atelier', 'boulanger']);
+  // Harcha, Baghrir (avec ou sans confiture) : l'atelier seul (20/11/2026).
+  for (const p of produits.filter((x) => x.categorie === 'Oriental' && /^(Harcha|Baghrer)/.test(x.produit))) assert.deepEqual(postesDe(p.id), ['atelier'], p.id);
   // Pains : le boulanger.
   assert.deepEqual(postesDe(produits.find((p) => p.categorie === 'Boulangerie')!.id), ['boulanger']);
 });
@@ -65,8 +69,11 @@ test('rôle imprimé : le boulanger sait ce qu’il doit faire pour un burger, u
     return tachesDuProduit(p.id, p.categorie, POSTES_PRODUCTION)!.find((t) => t.poste === poste)?.role ?? null;
   };
   assert.equal(role('sur-commande/mini-burger', 'boulanger'), 'le pain');
-  assert.equal(role('sales/batbout-farci', 'boulanger'), 'le pain');
-  assert.equal(role(produits.find((p) => p.produit === 'Meloui')!.id, 'boulanger'), 'la pâte, cuits');
+  assert.equal(role('sales/batbout-farci', 'boulanger'), 'la pâte');
+  assert.equal(role('sales/batbout-farci', 'atelier'), 'la cuisson et la garniture');
+  assert.equal(role('oriental/petit-batbout', 'atelier'), 'la cuisson');
+  assert.equal(role(produits.find((p) => p.produit === 'Meloui')!.id, 'boulanger'), 'la pâte');
+  assert.equal(role('oriental/petit-makla', 'atelier'), 'la cuisson');
   assert.equal(role('sur-commande/mini-wrap', 'atelier'), null);
 });
 
