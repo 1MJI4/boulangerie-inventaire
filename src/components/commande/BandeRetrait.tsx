@@ -28,7 +28,7 @@ export type EtatJourRetrait = { ferme: boolean; libelle?: string };
 
 const RANGEE =
   'relative flex min-w-0 snap-x snap-proximity gap-1.5 overflow-x-auto overscroll-x-contain scroll-px-1 px-1 py-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
-const PASTILLE = 'flex h-12 shrink-0 snap-start flex-col items-center justify-center rounded-xl border-2 px-2 text-center leading-none';
+const PASTILLE = 'flex h-12 shrink-0 snap-start flex-col items-center justify-center rounded-2xl border-2 px-2 text-center leading-none';
 
 /** Amène la pastille choisie au milieu de sa rangée (défilement de la rangée seule, jamais de la page). */
 function useCentrer(cle: string | null) {
@@ -104,12 +104,12 @@ export function BandeRetrait({
     <div
       role="group"
       aria-label="Jour et heure de retrait"
-      className={`grid min-w-0 gap-1.5 rounded-xl border-2 p-1.5 ${
-        enErreur ? 'border-bloquant' : aFaire ? 'border-accent bg-accent-doux/40' : 'border-line'
+      className={`grid min-w-0 gap-1.5 rounded-2xl border-2 p-1.5 ${
+        enErreur ? 'border-bloquant' : aFaire ? 'border-transparent bg-accent-doux/40' : 'border-line'
       }`}
     >
       {/* ------------------------------------------------------------ Jours */}
-      <div className={`flex min-w-0 items-center gap-1.5 rounded-xl border-2 ${messageJour ? 'border-alerte' : 'border-transparent'}`}>
+      <div className={`flex min-w-0 items-center gap-1.5 rounded-2xl border-2 ${messageJour ? 'border-alerte' : 'border-transparent'}`}>
         <span className="w-12 shrink-0 text-xs font-semibold leading-tight text-ink-2">
           {aFaire ? <span className="text-accent">Jour ?</span> : 'Jour'}
         </span>
@@ -130,10 +130,10 @@ export function BandeRetrait({
             const classes = etat.ferme
               ? 'jour-ferme border-line text-ink-3 cursor-not-allowed'
               : tropTot
-                ? 'border-dashed border-line-fort bg-surface-2 text-ink-3 cursor-not-allowed'
+                ? 'border-dashed border-transparent bg-segment-fond text-ink-3 cursor-not-allowed'
                 : choisi
                   ? 'border-sortie bg-sortie text-sortie-texte shadow'
-                  : 'border-line-fort bg-surface text-ink active:bg-surface-2';
+                  : 'border-transparent bg-segment-fond text-ink active:bg-surface-2';
             return (
               <button
                 key={iso}
@@ -169,7 +169,7 @@ export function BandeRetrait({
           onClick={() => setCalendrier(true)}
           aria-label="Autre date : ouvrir le calendrier (jusqu’à un an)"
           title="Autre date"
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border-2 border-line-fort bg-surface text-ink-2 active:bg-surface-2"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border-2 border-transparent bg-segment-fond text-ink-2 active:bg-surface-2"
         >
           <svg aria-hidden viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="5" width="18" height="16" rx="2" />
@@ -193,7 +193,7 @@ export function BandeRetrait({
       {messageJour ? <div className="-mt-1 pl-14">{messageJour}</div> : null}
 
       {/* ----------------------------------------------------------- Heures */}
-      <div className={`flex min-w-0 items-center gap-1.5 rounded-xl border-2 ${messageHeure ? 'border-alerte' : 'border-transparent'}`}>
+      <div className={`flex min-w-0 items-center gap-1.5 rounded-2xl border-2 ${messageHeure ? 'border-alerte' : 'border-transparent'}`}>
         <span className="w-12 shrink-0 text-xs font-semibold leading-tight text-ink-2">Heure</span>
         {date === null ? (
           <p className="flex h-12 min-w-0 flex-1 items-center px-1 text-sm text-ink-2">Choisissez d’abord le jour.</p>
@@ -210,7 +210,7 @@ export function BandeRetrait({
               aria-pressed={heure === ''}
               onClick={() => onHeure('')}
               className={`${PASTILLE} text-sm font-medium ${
-                heure === '' ? 'border-sortie bg-sortie text-sortie-texte shadow' : 'border-line-fort bg-surface text-ink-2'
+                heure === '' ? 'border-sortie bg-sortie text-sortie-texte shadow' : 'border-transparent bg-segment-fond text-ink-2'
               }`}
             >
               sans heure
@@ -237,7 +237,7 @@ export function BandeRetrait({
                         ? 'border-bloquant bg-bloquant-doux text-ink'
                         : 'border-sortie bg-sortie text-sortie-texte shadow'
                       : pleine
-                        ? 'border-line-fort bg-surface text-ink'
+                        ? 'border-transparent bg-segment-fond text-ink'
                         : 'border-line bg-surface text-ink-2'
                   }`}
                 >
@@ -310,7 +310,7 @@ function CalendrierLarge({
         <button
           type="button"
           onClick={() => fenetre.current?.close()}
-          className="mt-3 min-h-12 w-full rounded-xl bg-segment-fond text-base font-semibold text-ink"
+          className="mt-3 min-h-12 w-full rounded-2xl bg-segment-fond text-base font-semibold text-ink"
         >
           Fermer
         </button>

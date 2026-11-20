@@ -39,10 +39,10 @@ type Galerie = { photos: PhotoModele[]; rayons: string[] };
 type Edition = { mode: 'ajout' } | { mode: 'modif'; photo: PhotoModele };
 
 const URL_GESTION = '/api/photos-modeles/gestion';
-const CHAMP = 'min-h-14 w-full rounded-xl border-2 border-line-fort bg-surface px-3 text-lg text-ink placeholder:text-ink-3';
-const GROS = 'min-h-14 rounded-xl border-2 px-4 text-lg font-semibold';
-const CHOIX_ACTIF = 'border-accent bg-accent text-white shadow';
-const CHOIX = 'border-line-fort bg-surface text-ink';
+const CHAMP = 'min-h-14 w-full rounded-2xl border-2 border-transparent bg-segment-fond px-3 text-lg text-ink placeholder:text-ink-3';
+const GROS = 'min-h-14 rounded-2xl border-2 px-4 text-lg font-semibold';
+const CHOIX_ACTIF = 'border-transparent bg-accent text-white shadow';
+const CHOIX = 'border-transparent bg-segment-fond text-ink';
 /** Produits montrés à la fois (la recherche affine). */
 const PRODUITS_MAX = 18;
 
@@ -235,7 +235,7 @@ export default function PhotosModeles() {
                   type="button"
                   aria-pressed={r === rayon}
                   onClick={() => setChoix(r)}
-                  className={`min-h-12 rounded-xl border-2 px-4 text-base font-semibold ${r === rayon ? CHOIX_ACTIF : CHOIX}`}
+                  className={`min-h-12 rounded-2xl border-2 px-4 text-base font-semibold ${r === rayon ? CHOIX_ACTIF : CHOIX}`}
                 >
                   {r} <span className="chiffres font-normal opacity-80">({n})</span>
                 </button>
@@ -328,10 +328,10 @@ function TuilePhoto({
   onMasquer: () => void;
   onModifier: () => void;
 }) {
-  const fleche = 'min-h-12 min-w-12 rounded-xl border-2 border-line-fort bg-surface text-xl font-semibold text-ink disabled:opacity-30';
+  const fleche = 'min-h-12 min-w-12 rounded-2xl border-2 border-transparent bg-segment-fond text-xl font-semibold text-ink disabled:opacity-30';
   return (
     <li
-      className={`flex flex-col overflow-hidden rounded-xl border-2 bg-surface ${allumee ? 'border-accent ring-4 ring-accent/30' : 'border-line'}`}
+      className={`flex flex-col overflow-hidden rounded-2xl border-2 bg-surface ${allumee ? 'border-accent ring-4 ring-accent/30' : 'border-line'}`}
     >
       <div className={`relative ${photo.masquee ? 'opacity-40 grayscale' : ''}`}>
         {/* Images déjà allégées (640 px) : servies telles quelles, sans passage par l'optimiseur. */}
@@ -353,7 +353,7 @@ function TuilePhoto({
         <button
           type="button"
           onClick={onModifier}
-          className="min-h-12 flex-1 rounded-xl border-2 border-line-fort bg-surface px-2 text-base font-semibold text-ink"
+          className="min-h-12 flex-1 rounded-2xl border-2 border-transparent bg-segment-fond px-2 text-base font-semibold text-ink"
         >
           Modifier
         </button>
@@ -365,8 +365,8 @@ function TuilePhoto({
         <button
           type="button"
           onClick={onMasquer}
-          className={`min-h-12 w-full rounded-xl border-2 px-2 text-base font-semibold ${
-            photo.masquee ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink-2'
+          className={`min-h-12 w-full rounded-2xl border-2 px-2 text-base font-semibold ${
+            photo.masquee ? 'border-transparent bg-accent-doux text-accent' : 'border-transparent bg-segment-fond text-ink-2'
           }`}
         >
           {photo.masquee ? 'Réafficher' : 'Masquer'}
@@ -584,14 +584,14 @@ function FichePhoto({
         <h2 id="fiche-photo-titre" className="min-w-0 flex-1 text-xl font-bold text-ink">
           {avant ? `Photo ${avant.id}` : 'Ajouter une photo'}
         </h2>
-        <button type="button" onClick={onFermer} className="min-h-14 shrink-0 rounded-xl border-2 border-line-fort bg-surface px-5 text-lg font-semibold text-ink">
+        <button type="button" onClick={onFermer} className="min-h-14 shrink-0 rounded-2xl border-2 border-transparent bg-segment-fond px-5 text-lg font-semibold text-ink">
           Annuler
         </button>
         <button
           type="button"
           onClick={() => void enregistrer()}
           disabled={envoi || reduction}
-          className="min-h-14 shrink-0 rounded-xl bg-accent px-6 text-lg font-semibold text-white shadow disabled:opacity-60"
+          className="min-h-14 shrink-0 rounded-2xl bg-accent px-6 text-lg font-semibold text-white shadow disabled:opacity-60"
         >
           {envoi ? 'Enregistrement…' : 'Enregistrer'}
         </button>
@@ -627,12 +627,12 @@ function FichePhoto({
             {avant ? (
               <div className={avant.masquee ? 'opacity-40 grayscale' : ''}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={avant.url} alt="" className="aspect-square w-full rounded-xl border border-line object-cover" />
+                <img src={avant.url} alt="" className="aspect-square w-full rounded-2xl border border-line object-cover" />
               </div>
             ) : apercu ? (
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={apercu} alt="Aperçu de la photo" className="aspect-square w-full rounded-xl border border-line object-cover" />
+                <img src={apercu} alt="Aperçu de la photo" className="aspect-square w-full rounded-2xl border border-line object-cover" />
                 <button type="button" onClick={() => entreeFichier.current?.click()} className={`${GROS} ${CHOIX}`}>
                   Reprendre la photo
                 </button>
@@ -642,7 +642,7 @@ function FichePhoto({
                 type="button"
                 onClick={() => entreeFichier.current?.click()}
                 disabled={reduction}
-                className="flex aspect-square w-full flex-col items-center justify-center gap-2 rounded-xl border-4 border-dashed border-accent bg-accent-doux text-xl font-semibold text-accent"
+                className="flex aspect-square w-full flex-col items-center justify-center gap-2 rounded-2xl border-4 border-dashed border-transparent bg-accent-doux text-xl font-semibold text-accent"
               >
                 {reduction ? 'Préparation de la photo…' : 'Prendre ou choisir une photo'}
               </button>
@@ -664,7 +664,7 @@ function FichePhoto({
                       setNouveauRayon(false);
                       setCategorie(r);
                     }}
-                    className={`min-h-12 rounded-xl border-2 px-4 text-base font-semibold ${!nouveauRayon && categorie === r ? CHOIX_ACTIF : CHOIX}`}
+                    className={`min-h-12 rounded-2xl border-2 px-4 text-base font-semibold ${!nouveauRayon && categorie === r ? CHOIX_ACTIF : CHOIX}`}
                   >
                     {r}
                   </button>
@@ -676,7 +676,7 @@ function FichePhoto({
                     setNouveauRayon(true);
                     setCategorie('');
                   }}
-                  className={`min-h-12 rounded-xl border-2 border-dashed px-4 text-base font-semibold ${nouveauRayon ? CHOIX_ACTIF : CHOIX}`}
+                  className={`min-h-12 rounded-2xl border-2 border-dashed px-4 text-base font-semibold ${nouveauRayon ? CHOIX_ACTIF : CHOIX}`}
                 >
                   + Nouveau rayon
                 </button>
@@ -723,7 +723,7 @@ function FichePhoto({
                   type="button"
                   aria-pressed={sansProduit}
                   onClick={() => changerProduit(null)}
-                  className={`min-h-12 rounded-xl border-2 px-3 text-base ${sansProduit ? CHOIX_ACTIF : CHOIX}`}
+                  className={`min-h-12 rounded-2xl border-2 px-3 text-base ${sansProduit ? CHOIX_ACTIF : CHOIX}`}
                 >
                   Au choix de la vendeuse
                 </button>
@@ -733,7 +733,7 @@ function FichePhoto({
                     type="button"
                     aria-pressed={produit === f.produit.id}
                     onClick={() => changerProduit(f.produit.id)}
-                    className={`min-h-12 rounded-xl border-2 px-3 text-base ${produit === f.produit.id ? CHOIX_ACTIF : CHOIX}`}
+                    className={`min-h-12 rounded-2xl border-2 px-3 text-base ${produit === f.produit.id ? CHOIX_ACTIF : CHOIX}`}
                   >
                     {libelleProduitFiche(f)}
                   </button>
@@ -749,7 +749,7 @@ function FichePhoto({
             </div>
 
             {sucrePossible && ficheSucre ? (
-              <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border-2 border-line-fort px-3">
+              <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-2xl border-2 border-transparent bg-segment-fond px-3">
                 <input
                   type="checkbox"
                   className="h-7 w-7 accent-accent"
@@ -801,13 +801,13 @@ function FichePhoto({
                       type="button"
                       aria-pressed={prenom === nom}
                       onClick={() => definirVendeur(nom)}
-                      className={`min-h-12 rounded-xl border-2 px-4 text-base font-semibold ${prenom === nom ? CHOIX_ACTIF : CHOIX}`}
+                      className={`min-h-12 rounded-2xl border-2 px-4 text-base font-semibold ${prenom === nom ? CHOIX_ACTIF : CHOIX}`}
                     >
                       {nom}
                     </button>
                   ))}
                   {prenom && !equipe.includes(prenom) ? (
-                    <span className={`inline-flex min-h-12 items-center rounded-xl border-2 px-4 text-base font-semibold ${CHOIX_ACTIF}`}>{prenom}</span>
+                    <span className={`inline-flex min-h-12 items-center rounded-2xl border-2 px-4 text-base font-semibold ${CHOIX_ACTIF}`}>{prenom}</span>
                   ) : null}
                 </div>
                 {!prenom ? (

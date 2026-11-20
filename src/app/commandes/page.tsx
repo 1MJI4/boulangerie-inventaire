@@ -6,6 +6,7 @@
 // les retraits du jour. Il s'ouvre sur « Qui prend la commande ? » parce que
 // la tablette du comptoir est partagée.
 
+import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide, LienBouton } from '@/components/ui';
@@ -16,7 +17,7 @@ import { decalerJours } from '@/domaine/calendrier';
 import { RappelChargement } from '@/components/rappels';
 import { echecReseau, lireReponse } from '@/components/commande/modele';
 import { FicheCommande } from '@/components/FicheCommande';
-import { CelluleCommande, ListeGroupee } from '@/components/fiche/ElementsCommande';
+import { CelluleCommande, ListeGroupee, Segmente } from '@/components/fiche/ElementsCommande';
 import { useMaintenant } from '@/components/fiche/useMaintenant';
 import { chercherCommandes, GROUPES, grouperCommandes, type CleGroupe } from '@/components/fiche/presentationCommande';
 
@@ -25,6 +26,14 @@ import { chercherCommandes, GROUPES, grouperCommandes, type CleGroupe } from '@/
  * (et celles à venir). Réglage d'affichage, pour que la liste reste courte.
  */
 const JOURS_ANNULEES_VISIBLES = 60;
+
+/** Libellés courts du contrôle segmenté (« Retraits en retard » ne tient pas sur cinq segments). */
+const LIBELLE_FILTRE: Record<CleGroupe, string> = {
+  aImprimer: 'À imprimer',
+  enRetard: 'En retard',
+  duJour: 'Aujourd’hui',
+  aVenir: 'À venir',
+};
 
 /** `useSearchParams` impose une frontière Suspense : l'écran attend l'adresse lue. */
 export default function PageCommandes() {
@@ -201,7 +210,7 @@ function EcranCommandes() {
               value={nouveauNom}
               onChange={(e) => setNouveauNom(e.target.value)}
               placeholder="Prénom"
-              className="min-h-11 rounded-lg border border-line-fort bg-surface px-3 text-sm text-ink"
+              className="min-h-11 rounded-xl border border-transparent bg-segment-fond px-3 text-sm text-ink"
             />
             <Bouton type="submit" variante="secondaire">
               Ajouter
@@ -233,7 +242,17 @@ function EcranCommandes() {
         }
         actions={
           <>
-            <LienBouton href="/commandes/reglages">Réglages</LienBouton>
+            {/* Barre d'outils façon iOS : réglages en bouton rond, l'action principale à côté. */}
+            <Link
+              href="/commandes/reglages"
+              aria-label="Réglages des commandes"
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-segment-fond text-ink-2 transition active:scale-95 active:opacity-80"
+            >
+              <svg aria-hidden viewBox="0 0 24 24" className="h-[22px] w-[22px]" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3.2" />
+                <path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l1.9-1.5-2-3.4-2.3.9a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5a7.6 7.6 0 0 0-2.6 1.5l-2.3-.9-2 3.4 1.9 1.5a7.6 7.6 0 0 0 0 3l-1.9 1.5 2 3.4 2.3-.9a7.6 7.6 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 2.6-1.5l2.3.9 2-3.4z" />
+              </svg>
+            </Link>
             <LienBouton href="/commandes/nouvelle" variante="principal">
               Nouvelle commande
             </LienBouton>
@@ -244,28 +263,34 @@ function EcranCommandes() {
       {erreur ? <Alerte>{erreur}</Alerte> : null}
 
       <div className="mb-5">
-        <input
-          type="search"
-          value={recherche}
-          onChange={(e) => setRecherche(e.target.value)}
-          aria-label="Chercher une commande"
-          placeholder="Nom, téléphone ou numéro"
-          className="min-h-11 w-full rounded-xl bg-segment-fond px-4 text-base text-ink placeholder:text-ink-2"
-        />
+        {/* Champ de recherche d'iOS : piste grise, loupe, texte de 17 points. */}
+        <label className="relative block">
+          <svg aria-hidden viewBox="0 0 24 24" className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-ink-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <circle cx="11" cy="11" r="6.5" />
+            <path d="m16 16 4.5 4.5" />
+          </svg>
+          <input
+            type="search"
+            value={recherche}
+            onChange={(e) => setRecherche(e.target.value)}
+            aria-label="Chercher une commande"
+            placeholder="Nom, téléphone ou numéro"
+            className="min-h-11 w-full rounded-2xl bg-segment-fond pl-10 pr-4 text-[17px] text-ink placeholder:text-ink-3 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-accent/40"
+          />
+        </label>
         {vue === 'enCours' && commandes && commandes.length > 0 ? (
-          // Sur deux lignes si besoin : tous les filtres visibles, sans barre de défilement.
-          <div role="group" aria-label="Filtrer les commandes" className="mt-2 flex flex-wrap gap-1.5">
-            <Filtre actif={filtre === null} onClick={() => setFiltre(null)} libelle="Toutes" />
-            {GROUPES.map((g) => (
-              <Filtre
-                key={g.cle}
-                actif={filtre === g.cle}
-                onClick={() => setFiltre(filtre === g.cle ? null : g.cle)}
-                libelle={g.titre}
-                nombre={groupes[g.cle].length}
-                ton={g.ton}
-              />
-            ))}
+          <div className="mt-3">
+            {/* Même contrôle segmenté que l'accueil vendeur (Tout / Pâtisserie / Salé…). */}
+            <Segmente<CleGroupe | 'toutes'>
+              libelle="Filtrer les commandes"
+              valeur={filtre ?? 'toutes'}
+              onChange={(v) => setFiltre(v === 'toutes' ? null : v)}
+              nombreDessous
+              options={[
+                { valeur: 'toutes', libelle: 'Toutes' },
+                ...GROUPES.map((g) => ({ valeur: g.cle, libelle: LIBELLE_FILTRE[g.cle], nombre: groupes[g.cle].length })),
+              ]}
+            />
           </div>
         ) : null}
       </div>
@@ -357,50 +382,6 @@ function EcranCommandes() {
 }
 
 /* ------------------------------------------------------------- Les groupes */
-
-const BULLE: Record<'accent' | 'attention' | 'alerte' | 'neutre', string> = {
-  accent: 'bg-accent text-accent-texte',
-  attention: 'bg-avertissement text-surface',
-  alerte: 'bg-bloquant text-surface',
-  neutre: 'bg-segment-fond text-ink-2',
-};
-
-/** Un filtre en pastille ; la bulle porte le nombre (colorée seulement s'il y a quelque chose). */
-function Filtre({
-  libelle,
-  nombre,
-  ton,
-  actif,
-  onClick,
-}: {
-  libelle: string;
-  nombre?: number;
-  ton?: 'accent' | 'attention' | 'alerte';
-  actif: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={actif}
-      onClick={onClick}
-      className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-medium ${
-        actif ? 'border-ink bg-ink text-surface' : 'border-transparent bg-surface text-ink'
-      }`}
-    >
-      {libelle}
-      {nombre !== undefined ? (
-        <span
-          className={`chiffres min-w-5 rounded-full px-1.5 text-center text-xs leading-5 ${
-            nombre > 0 ? BULLE[ton ?? 'neutre'] : 'bg-segment-fond text-ink-2'
-          }`}
-        >
-          {nombre}
-        </span>
-      ) : null}
-    </button>
-  );
-}
 
 /* ------------------------------------------------------------- Un groupe */
 

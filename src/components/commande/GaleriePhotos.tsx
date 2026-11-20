@@ -81,7 +81,7 @@ export function GaleriePhotos({ onChoisir, onFermer }: { onChoisir: (p: PhotoMod
         <button
           type="button"
           onClick={onFermer}
-          className="min-h-14 shrink-0 rounded-xl border-2 border-line-fort bg-surface px-6 text-lg font-semibold text-ink"
+          className="min-h-14 shrink-0 rounded-2xl border-2 border-transparent bg-segment-fond px-6 text-lg font-semibold text-ink"
         >
           ✕ Fermer
         </button>
@@ -96,8 +96,8 @@ export function GaleriePhotos({ onChoisir, onFermer }: { onChoisir: (p: PhotoMod
               type="button"
               aria-pressed={actif}
               onClick={() => setChoix(r)}
-              className={`min-h-12 rounded-xl border-2 px-4 text-base font-semibold ${
-                actif ? 'border-accent bg-accent text-white shadow' : 'border-line-fort bg-surface text-ink'
+              className={`min-h-12 rounded-2xl border-2 px-4 text-base font-semibold ${
+                actif ? 'border-transparent bg-accent text-white shadow' : 'border-transparent bg-segment-fond text-ink'
               }`}
             >
               {r}
@@ -117,7 +117,7 @@ export function GaleriePhotos({ onChoisir, onFermer }: { onChoisir: (p: PhotoMod
                   setRefus(null);
                   charger();
                 }}
-                className="min-h-12 rounded-xl border-2 border-line-fort bg-surface px-4 text-base font-semibold text-ink"
+                className="min-h-12 rounded-2xl border-2 border-transparent bg-segment-fond px-4 text-base font-semibold text-ink"
               >
                 Réessayer
               </button>
@@ -135,7 +135,7 @@ export function GaleriePhotos({ onChoisir, onFermer }: { onChoisir: (p: PhotoMod
                 type="button"
                 onClick={() => onChoisir(p)}
                 aria-label={`Photo ${p.id}${p.note ? ` — ${p.note}` : ''}`}
-                className="block w-full overflow-hidden rounded-xl border-2 border-line bg-surface-2 text-left active:scale-[0.98] active:border-accent"
+                className="block w-full overflow-hidden rounded-2xl border-2 border-transparent bg-surface-2 text-left active:scale-[0.98] active:border-accent"
               >
                 {/* Images déjà allégées (640 px) : servies telles quelles, sans passage par l'optimiseur. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}

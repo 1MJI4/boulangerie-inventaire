@@ -20,12 +20,12 @@ export function SelecteurJournee({
   const complet = formatDateLong(date);
 
   return (
-    <div className="flex items-center gap-1 rounded-lg border border-line bg-surface p-1">
+    <div className="flex items-center gap-1 rounded-xl border border-transparent bg-surface p-1">
       <button
         type="button"
         onClick={() => onChange(decalerJours(date, -1))}
         aria-label="Journée précédente"
-        className="flex h-11 w-11 items-center justify-center rounded-md text-lg text-ink-2 hover:bg-surface-2 hover:text-ink"
+        className="flex h-11 w-11 items-center justify-center rounded-lg text-lg text-ink-2 hover:bg-surface-2 hover:text-ink"
       >
         <span aria-hidden>‹</span>
       </button>
@@ -41,7 +41,7 @@ export function SelecteurJournee({
         type="button"
         onClick={() => onChange(decalerJours(date, 1))}
         aria-label="Journée suivante"
-        className="flex h-11 w-11 items-center justify-center rounded-md text-lg text-ink-2 hover:bg-surface-2 hover:text-ink"
+        className="flex h-11 w-11 items-center justify-center rounded-lg text-lg text-ink-2 hover:bg-surface-2 hover:text-ink"
       >
         <span aria-hidden>›</span>
       </button>

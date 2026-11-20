@@ -18,12 +18,12 @@ export function Entete({
   return (
     <div className="mb-4 flex flex-wrap items-start justify-between gap-3 sm:mb-6 sm:gap-4">
       <div className="min-w-0">
-        <h1 className="text-xl font-semibold tracking-tight text-ink text-balance sm:text-3xl">
+        <h1 className="text-[28px] font-bold leading-tight tracking-tight text-ink text-balance sm:text-4xl">
           {titre}
         </h1>
-        {sousTitre ? <div className="mt-1 text-[13px] text-ink-2 sm:mt-1.5 sm:text-sm">{sousTitre}</div> : null}
+        {sousTitre ? <div className="mt-1 text-[13px] text-ink-2 sm:mt-1.5 sm:text-[15px]">{sousTitre}</div> : null}
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      {actions ? <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
   );
 }
@@ -39,7 +39,7 @@ export function Carte({
 }) {
   return (
     <section
-      className={`rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(0,0,0,0.04)] ${className}`}
+      className={`rounded-2xl bg-surface ${className}`}
     >
       {children}
     </section>
@@ -51,14 +51,15 @@ export function Carte({
 type VarianteBouton = 'principal' | 'secondaire' | 'discret' | 'danger';
 
 const STYLES_BOUTON: Record<VarianteBouton, string> = {
-  principal: 'bg-accent text-white hover:bg-accent-fort disabled:bg-ink-3',
-  secondaire: 'border border-line-fort bg-surface text-ink hover:bg-surface-2',
-  discret: 'text-ink-2 hover:bg-surface-2 hover:text-ink',
-  danger: 'border border-alerte/40 bg-alerte-doux text-alerte hover:border-alerte',
+  principal: 'bg-accent text-accent-texte hover:bg-accent-fort disabled:bg-ink-3',
+  // « Gris » d'iOS : fond de piste, texte d'encre — jamais de contour.
+  secondaire: 'bg-segment-fond text-ink hover:bg-line-fort/40',
+  discret: 'text-accent hover:bg-accent-doux',
+  danger: 'bg-alerte-doux text-alerte hover:bg-alerte/15',
 };
 
 const BASE_BOUTON =
-  'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60';
+  'inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl px-4 text-[15px] font-semibold transition-[background-color,transform,opacity] duration-150 active:scale-[0.98] active:opacity-80 disabled:cursor-not-allowed disabled:opacity-60';
 
 export function Bouton({
   variante = 'secondaire',
@@ -91,11 +92,11 @@ export function LienBouton({
 type TonPuce = 'neutre' | 'accent' | 'ok' | 'attention' | 'alerte';
 
 const STYLES_PUCE: Record<TonPuce, string> = {
-  neutre: 'bg-surface-2 text-ink-2 border-line',
-  accent: 'bg-accent-doux text-accent border-accent/25',
-  ok: 'bg-ok-doux text-ok border-ok/25',
-  attention: 'bg-attention-doux text-attention border-attention/25',
-  alerte: 'bg-alerte-doux text-alerte border-alerte/25',
+  neutre: 'bg-segment-fond text-ink-2',
+  accent: 'bg-accent-doux text-accent',
+  ok: 'bg-ok-doux text-ok',
+  attention: 'bg-attention-doux text-attention',
+  alerte: 'bg-alerte-doux text-alerte',
 };
 
 export function Puce({
@@ -109,7 +110,7 @@ export function Puce({
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${STYLES_PUCE[ton]} ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${STYLES_PUCE[ton]} ${className}`}
     >
       {children}
     </span>

@@ -29,7 +29,7 @@ export function SignalementsLigne({
           <button
             type="button"
             onClick={onEffacer}
-            className="min-h-11 rounded-lg border border-line-fort bg-surface px-3 text-sm font-medium text-ink"
+            className="min-h-11 rounded-xl border border-transparent bg-segment-fond px-3 text-sm font-medium text-ink"
           >
             Effacer et recompter
           </button>

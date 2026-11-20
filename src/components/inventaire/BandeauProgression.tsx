@@ -116,7 +116,7 @@ export function BandeauProgression({
 
       {/* « Terminer quand même » : ce qui manque, puis confirmation. Avertissement, jamais blocage. */}
       {enCours && panneauOuvert ? (
-        <div role="status" className={`mt-2 rounded-xl p-3 ${NIVEAUX.avertissement.cadre}`}>
+        <div role="status" className={`mt-2 rounded-2xl p-3 ${NIVEAUX.avertissement.cadre}`}>
           <p className="flex items-start gap-2 text-sm font-medium text-ink">
             <IconeNiveau niveau="avertissement" className={`mt-0.5 h-5 w-5 shrink-0 ${NIVEAUX.avertissement.icone}`} />
             <span>
@@ -130,7 +130,7 @@ export function BandeauProgression({
                 <button
                   type="button"
                   onClick={() => onAllerA(p.id)}
-                  className="min-h-9 rounded-md border border-line bg-surface px-2 text-left text-xs text-ink hover:border-line-fort"
+                  className="min-h-9 rounded-lg border border-transparent bg-surface px-2 text-left text-xs text-ink hover:bg-line-fort/20"
                 >
                   {p.nom}
                 </button>
@@ -151,7 +151,7 @@ export function BandeauProgression({
       {bilan.etat === 'termine' ? (
         <div
           role="status"
-          className={`mt-2 rounded-xl p-3 ${
+          className={`mt-2 rounded-2xl p-3 ${
             bilan.incomplet ? NIVEAUX.avertissement.cadre : 'bg-ok-doux'
           }`}
         >
@@ -197,7 +197,7 @@ export function BandeauProgression({
       ) : null}
 
       {bilan.etat === 'attente_envoi' ? (
-        <div role="status" className={`mt-2 rounded-xl p-3 ${NIVEAUX.avertissement.cadre}`}>
+        <div role="status" className={`mt-2 rounded-2xl p-3 ${NIVEAUX.avertissement.cadre}`}>
           <p className="text-base font-semibold text-ink">
             {bilan.incomplet ? 'Comptage arrêté' : 'Tout est compté'} — {texteEnAttente(bilan.enAttente || 1)}.
             Gardez l&apos;écran ouvert.
@@ -216,7 +216,7 @@ export function BandeauProgression({
       ) : null}
 
       {bilan.etat === 'a_corriger' ? (
-        <div role="alert" className={`mt-2 rounded-xl p-3 ${NIVEAUX.bloquant.cadre}`}>
+        <div role="alert" className={`mt-2 rounded-2xl p-3 ${NIVEAUX.bloquant.cadre}`}>
           <p className="flex items-start gap-2 text-base font-semibold text-ink">
             <IconeNiveau niveau="bloquant" className={`mt-0.5 h-5 w-5 shrink-0 ${NIVEAUX.bloquant.icone}`} />
             <span>

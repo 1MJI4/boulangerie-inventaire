@@ -66,7 +66,7 @@ export function ReglagesSaisie({
         type="button"
         onClick={() => setOuvert((o) => !o)}
         aria-expanded={ouvert}
-        className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-line-fort bg-surface px-3 text-sm text-ink hover:bg-surface-2"
+        className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-transparent bg-segment-fond px-3 text-sm text-ink hover:bg-surface-2"
       >
         Affichage
         <span aria-hidden className="text-ink-3">
@@ -88,7 +88,7 @@ export function ReglagesSaisie({
           <div
             role="dialog"
             aria-label="Réglages d’affichage"
-            className="fixed inset-x-0 bottom-0 z-50 max-h-[85svh] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-line bg-surface p-4 pb-8 shadow-lg sm:absolute sm:inset-x-auto sm:right-0 sm:bottom-auto sm:mt-2 sm:max-h-[70vh] sm:w-80 sm:rounded-xl sm:border sm:p-4 sm:pb-4"
+            className="fixed inset-x-0 bottom-0 z-50 max-h-[85svh] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-line bg-surface p-4 pb-8 shadow-lg sm:absolute sm:inset-x-auto sm:right-0 sm:bottom-auto sm:mt-2 sm:max-h-[70vh] sm:w-80 sm:rounded-2xl sm:border sm:p-4 sm:pb-4"
           >
             <div className="mb-3 flex items-start justify-between gap-3">
               <p className="text-xs text-ink-3 text-pretty">
@@ -98,7 +98,7 @@ export function ReglagesSaisie({
                 type="button"
                 onClick={() => setOuvert(false)}
                 aria-label="Fermer les réglages"
-                className="-mr-1 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-ink-3 hover:bg-surface-2 hover:text-ink sm:hidden"
+                className="-mr-1 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-3 hover:bg-surface-2 hover:text-ink sm:hidden"
               >
                 <span aria-hidden>✕</span>
               </button>
@@ -123,10 +123,10 @@ export function ReglagesSaisie({
                             type="button"
                             onClick={() => onChanger(r.cle, valeur)}
                             aria-pressed={actif}
-                            className={`min-h-10 rounded-lg border px-3 text-xs font-medium transition-colors ${
+                            className={`min-h-10 rounded-xl border px-3 text-xs font-medium transition-colors ${
                               actif
-                                ? 'border-accent bg-accent-doux text-accent'
-                                : 'border-line text-ink-2 hover:border-line-fort hover:text-ink'
+                                ? 'border-transparent bg-accent-doux text-accent'
+                                : 'border-line text-ink-2 hover:bg-line-fort/20 hover:text-ink'
                             }`}
                           >
                             {libelle}

@@ -29,12 +29,12 @@ export function FormulaireConnexion({ suite }: { suite: string }) {
           required
           maxLength={256}
           autoFocus
-          className="mt-1 block min-h-12 w-full rounded-lg border border-line-fort bg-surface px-3 text-base tracking-widest text-ink"
+          className="mt-1 block min-h-12 w-full rounded-xl border border-transparent bg-segment-fond px-3 text-base tracking-widest text-ink"
         />
       </label>
 
       {etat.message ? (
-        <p role="alert" className="rounded-lg border border-line-fort bg-surface-2 p-3 text-sm text-ink">
+        <p role="alert" className="rounded-xl border border-transparent bg-segment-fond p-3 text-sm text-ink">
           {typographier(etat.message)}
         </p>
       ) : null}
@@ -42,7 +42,7 @@ export function FormulaireConnexion({ suite }: { suite: string }) {
       <button
         type="submit"
         disabled={enCours}
-        className="inline-flex min-h-12 w-full items-center justify-center rounded-lg bg-accent px-4 text-base font-medium text-white hover:bg-accent-fort disabled:opacity-60"
+        className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-accent px-4 text-base font-medium text-white hover:bg-accent-fort disabled:opacity-60"
       >
         {enCours ? 'Vérification…' : 'Installer la tablette'}
       </button>

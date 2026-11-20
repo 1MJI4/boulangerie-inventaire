@@ -13,7 +13,7 @@ export function RappelsService({ comptageTermine }: { comptageTermine: boolean }
   const ouvert = ouvertManuellement ?? comptageTermine;
 
   return (
-    <section className="sans-impression mt-6 rounded-xl border border-line bg-surface-2">
+    <section className="sans-impression mt-6 rounded-2xl border border-transparent bg-surface-2">
       <button
         type="button"
         onClick={() => setOuvertManuellement(!ouvert)}

@@ -125,14 +125,14 @@ export default function SaisieProduction() {
       <DispositionAvecPave pave={pave}>
         <div className="mb-4 flex flex-wrap items-center gap-2">
           {posteImpose ? null : (
-            <div role="tablist" aria-label="Poste" className="flex gap-1 rounded-lg border border-line bg-surface p-1">
+            <div role="tablist" aria-label="Poste" className="flex gap-1 rounded-xl border border-transparent bg-surface p-1">
               {POSTES.map((p) => (
                 <button
                   key={p}
                   role="tab"
                   aria-selected={poste === p}
                   onClick={() => setPoste(p)}
-                  className={`min-h-9 rounded-md px-3 text-sm font-medium transition-colors ${
+                  className={`min-h-9 rounded-lg px-3 text-sm font-medium transition-colors ${
                     poste === p ? 'bg-accent-doux text-accent' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
                   }`}
                 >
@@ -148,7 +148,7 @@ export default function SaisieProduction() {
             onChange={(e) => setRecherche(e.target.value)}
             placeholder="Chercher un produit…"
             aria-label="Chercher un produit"
-            className="h-11 min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 text-sm text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none sm:max-w-64"
+            className="h-11 min-w-0 flex-1 rounded-xl border border-transparent bg-surface px-3 text-sm text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none sm:max-w-64"
           />
         </div>
 

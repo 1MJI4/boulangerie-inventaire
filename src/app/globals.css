@@ -1,25 +1,27 @@
 @import "tailwindcss";
 
 /* ============================================================
-   Palette
-   Un fond neutre légèrement chaud, une seule couleur d'accent,
-   et trois couleurs de statut. Rien d'autre.
+   Palette — habillage « application Apple » (propriétaire, 20/11/2026 :
+   « ils sont habitués à Apple »). Fond gris groupé d'iOS, cartes blanches
+   sans bordure, police du système (SF Pro sur iPhone et iPad), rayons
+   généreux. La couleur de la marque reste l'accent ; les couleurs de
+   signalement (LOI 8) ne bougent pas.
    ============================================================ */
 
 :root {
-  --ground: #f5f4f2;
+  --ground: #f2f2f7;                    /* systemGroupedBackground */
   --surface: #ffffff;
-  --surface-2: #f9f8f7;                 /* pierre claire, peu saturée (inspecteur de design, 19/11/2026) */
-  --line: #e3e0dc;
-  --line-fort: #cdc8c1;
+  --surface-2: #f5f5f8;                 /* survol et fonds discrets sur une carte blanche */
+  --line: #e5e5ea;                      /* séparateur léger */
+  --line-fort: #c7c7cc;
 
-  --ink: #1a1917;
-  --ink-2: #5c5852;
-  --ink-3: #706a62;                     /* ≥ 4,5:1 sur fond, surfaces et accent doux (était 3,7:1) */
+  --ink: #1c1c1e;
+  --ink-2: #48484a;                     /* 8,6:1 sur blanc */
+  --ink-3: #6c6c70;                     /* ≥ 4,5:1 sur fond gris, blanc et accent doux */
 
   --accent: #a04f22;
   --accent-fort: #83401b;
-  --accent-doux: #eeeae8;               /* pierre chaude, plus un crème jaune (inspecteur, 19/11/2026) ; --accent dessus : 4,7:1 */
+  --accent-doux: #f7ebe3;               /* teinte de l'accent (bouton « teinté » d'iOS) ; --accent dessus : 4,8:1 */
 
   --ok: #2c6a4a;
   --ok-doux: #e6f0e9;
@@ -56,8 +58,8 @@
   --sortie-doux: #e3f1e9;
 
   /* Jour fermé dans le sélecteur de date : hachures neutres. */
-  --ferme-fond: #ebe8e3;
-  --ferme-hachure: #d9d4cc;
+  --ferme-fond: #e9e9ee;
+  --ferme-hachure: #d4d4d9;
 
   /* --- Accueil vendeur et liste des commandes (design-ux, 28/10/2026) ---
      Texte posé sur l'accent : blanc en clair, encre en sombre (le blanc sur
@@ -72,23 +74,26 @@
   --type-boulangerie: #8a5300;
   --type-boulangerie-doux: #fcf1de;     /* 5,7:1 */
   /* Contrôle segmenté façon iOS : piste grise, segment choisi blanc. */
-  --segment-fond: #e9e7e3;              /* --ink-2 dessus : 5,7:1 */
+  --segment-fond: #e3e3e8;              /* --ink-2 dessus : 7,1:1 */
   --segment-actif: #ffffff;
   /* Voile derrière la fiche d'une commande. */
-  --voile: rgb(0 0 0 / 0.32);
+  --voile: rgb(0 0 0 / 0.4);
+  /* Rayons : cartes 16, contrôles 12 — comme les groupes de listes d'iOS. */
+  --rayon-carte: 1rem;
+  --rayon-controle: 0.75rem;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --ground: #14130f;
-    --surface: #1c1b18;
-    --surface-2: #232220;
-    --line: #322f2b;
-    --line-fort: #494540;
+    --ground: #000000;
+    --surface: #1c1c1e;
+    --surface-2: #2c2c2e;
+    --line: #38383a;
+    --line-fort: #545458;
 
-    --ink: #ecebe7;
-    --ink-2: #adaaa3;
-    --ink-3: #948f88;                   /* ≥ 4,5:1 sur les surfaces sombres (était 4,0:1) */
+    --ink: #f5f5f7;
+    --ink-2: #aeaeb2;
+    --ink-3: #98989d;                   /* ≥ 4,5:1 sur les surfaces sombres */
 
     --accent: #d98b57;
     --accent-fort: #e8a074;
@@ -116,17 +121,17 @@
     --sortie-texte: #0f1f17;
     --sortie-fort: #9fe0bc;
     --sortie-doux: #16281f;
-    --ferme-fond: #26241f;
-    --ferme-hachure: #322f2b;
-    --accent-texte: #14130f;            /* 6,9:1 sur --accent sombre */
+    --ferme-fond: #2c2c2e;
+    --ferme-hachure: #3a3a3c;
+    --accent-texte: #000000;            /* 6,9:1 sur --accent sombre */
     --type-patisserie: #ff8ab4;
     --type-patisserie-doux: #33151f;    /* 7,5:1 */
     --type-sale: #6fd39e;
     --type-sale-doux: #12291c;          /* 8,5:1 */
     --type-boulangerie: #f2bb5c;
     --type-boulangerie-doux: #2e2310;   /* 8,8:1 */
-    --segment-fond: #2c2a27;            /* --ink-2 dessus : 6,2:1 */
-    --segment-actif: #4a4741;           /* --ink dessus : 7,8:1 */
+    --segment-fond: #2c2c2e;            /* --ink-2 dessus : 6,9:1 */
+    --segment-actif: #636366;           /* --ink dessus : 5,3:1 */
     --voile: rgb(0 0 0 / 0.55);
   }
 }
@@ -176,8 +181,8 @@
   --color-segment-actif: var(--segment-actif);
   --color-voile: var(--voile);
 
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
 /* ============================================================
@@ -191,8 +196,10 @@ html {
 body {
   background: var(--ground);
   color: var(--ink);
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  letter-spacing: -0.01em;             /* le resserrement de SF Pro à taille de texte */
 }
 
 /* Les chiffres s'alignent en colonne dans toutes les listes de quantités. */
@@ -202,9 +209,9 @@ body {
 }
 
 :where(a, button, input, select, textarea):focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 4px;
+  outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 1px;
+  border-radius: 8px;
 }
 
 /* Les flèches des champs numériques sont inutilisables au doigt. */
@@ -234,6 +241,25 @@ input[type="number"] {
    marges — seuls les onglets de pages, la grille et le pavé restent. */
 html[data-plein-ecran] [data-barre-navigation] {
   display: none;
+}
+/* Sans barre d'onglets (plein écran), les pastilles de suivi redescendent. */
+html[data-plein-ecran] .suivi-impression {
+  bottom: 1rem;
+}
+/* Pavé de saisie ouvert : la barre d'onglets du bas s'efface, les pastilles de suivi descendent. */
+html[data-pave-ouvert] .barre-onglets {
+  display: none;
+}
+html[data-pave-ouvert] .suivi-impression {
+  bottom: 1rem;
+}
+/* Prise de commande : pas de barre d'onglets, donc pas de marge réservée en bas. */
+html[data-sans-onglets] main {
+  padding-top: 0.75rem;
+  padding-bottom: 1rem;
+}
+html[data-sans-onglets] .suivi-impression {
+  bottom: 1rem;
 }
 html[data-plein-ecran] main {
   max-width: none;
@@ -303,5 +329,23 @@ html[data-plein-ecran] body {
   .ligne-impression {
     border-bottom: 1px solid #999;
     break-inside: avoid;
+  }
+
+  /* Feuille de prévisions sur papier (secours du ticket) : une ligne sur deux
+     noire à texte blanc, comme sur le ticket Star (propriétaire, 20/11/2026). */
+  .feuille-previsions li.ligne-impression {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .feuille-previsions li.ligne-impression:nth-child(even) {
+    background: #000 !important;
+    color: #fff !important;
+  }
+  .feuille-previsions li.ligne-impression:nth-child(even) * {
+    color: #fff !important;
+    text-decoration: none !important;
+  }
+  .feuille-previsions li.ligne-impression:nth-child(even) span.ligne-impression {
+    border-color: #fff !important;
   }
 }

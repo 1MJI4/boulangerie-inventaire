@@ -29,13 +29,13 @@ export default function Erreur({
       <div className="mt-6 flex justify-center gap-2">
         <button
           onClick={reset}
-          className="inline-flex min-h-11 items-center rounded-lg bg-accent px-4 text-sm font-medium text-white hover:bg-accent-fort"
+          className="inline-flex min-h-11 items-center rounded-xl bg-accent px-4 text-sm font-medium text-white hover:bg-accent-fort"
         >
           Réessayer
         </button>
         <Link
           href="/"
-          className="inline-flex min-h-11 items-center rounded-lg border border-line-fort px-4 text-sm font-medium text-ink hover:bg-surface-2"
+          className="inline-flex min-h-11 items-center rounded-xl border border-transparent bg-segment-fond px-4 text-sm font-medium text-ink hover:bg-surface-2"
         >
           Accueil
         </Link>

@@ -9,7 +9,7 @@ export default function Introuvable() {
       </p>
       <Link
         href="/"
-        className="mt-6 inline-flex min-h-11 items-center rounded-lg bg-accent px-4 text-sm font-medium text-white hover:bg-accent-fort"
+        className="mt-6 inline-flex min-h-11 items-center rounded-xl bg-accent px-4 text-sm font-medium text-white hover:bg-accent-fort"
       >
         Retour à l&apos;accueil
       </Link>

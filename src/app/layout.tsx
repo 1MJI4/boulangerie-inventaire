@@ -1,13 +1,10 @@
 import type { Metadata, Viewport } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
 import { BarreNavigation } from '@/components/BarreNavigation';
+import { BarreOnglets } from '@/components/BarreOnglets';
 import { GardienProfil } from '@/components/GardienProfil';
 import { FournisseurProfil } from '@/components/ProfilAppareil';
 import { SuiviImpression } from '@/components/SuiviImpression';
 import './globals.css';
-
-const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
-const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: 'PAin PAtisserie — Inventaire',
@@ -31,20 +28,21 @@ export const viewport: Viewport = {
   maximumScale: 5,
   // Couleur de la barre système, adaptée au thème de l'appareil.
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f5f4f2' },
-    { media: '(prefers-color-scheme: dark)', color: '#14130f' },
+    { media: '(prefers-color-scheme: light)', color: '#f2f2f7' },
+    { media: '(prefers-color-scheme: dark)', color: '#000000' },
   ],
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="fr">
-      <body className={`${geistSans.variable} ${geistMono.variable} min-h-screen antialiased`}>
+      <body className="min-h-screen antialiased">
         <FournisseurProfil>
           <BarreNavigation />
-          <main className="mx-auto max-w-5xl px-4 py-4 sm:py-8">
+          <main className="mx-auto max-w-5xl px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-4 sm:pt-8">
             <GardienProfil>{children}</GardienProfil>
           </main>
+          <BarreOnglets />
           <SuiviImpression />
         </FournisseurProfil>
       </body>

@@ -82,7 +82,7 @@ export function CadrePave({
     else onTouche(t);
   }
 
-  const cadre = enErreur ? 'border-2 border-bloquant bg-bloquant-doux' : 'border-2 border-line-fort bg-surface-2';
+  const cadre = enErreur ? 'border-2 border-bloquant bg-bloquant-doux' : 'border-2 border-transparent bg-segment-fond';
 
   const afficheur = (
     <div
@@ -92,13 +92,13 @@ export function CadrePave({
       aria-label={libelleAccessible}
       aria-invalid={enErreur || undefined}
       aria-describedby={decritPar}
-      className={`flex min-w-0 items-baseline justify-end gap-2 rounded-xl ${
+      className={`flex min-w-0 items-baseline justify-end gap-2 rounded-2xl ${
         compact ? 'h-12 px-3' : 'mb-3 px-4 py-2'
       } ${cadre}`}
     >
       <span className={`chiffres min-w-0 truncate font-semibold text-ink ${
         compact ? (texte.length > 8 ? 'text-xl' : 'text-3xl') : 'text-5xl'
-      } ${aRemplacer && texte !== '' ? 'rounded-md bg-accent-doux px-1.5 text-accent' : ''}`}>
+      } ${aRemplacer && texte !== '' ? 'rounded-lg bg-accent-doux px-1.5 text-accent' : ''}`}>
         {texte === '' ? '—' : texte}
       </span>
       {suffixe}
@@ -141,7 +141,7 @@ export function CadrePave({
             type="button"
             onClick={valider}
             disabled={desactive || !valeurValide}
-            className="mt-1.5 h-12 w-full rounded-xl bg-accent text-base font-semibold text-white active:bg-accent-fort disabled:bg-ink-3 disabled:opacity-60"
+            className="mt-1.5 h-12 w-full rounded-2xl bg-accent text-base font-semibold text-white active:bg-accent-fort disabled:bg-ink-3 disabled:opacity-60"
           >
             {libelleValider}
           </button>
@@ -177,7 +177,7 @@ export function CadrePave({
           type="button"
           onClick={valider}
           disabled={desactive || !valeurValide}
-          className="mt-2 h-14 w-full rounded-xl bg-accent text-base font-semibold text-white active:bg-accent-fort disabled:bg-ink-3 disabled:opacity-60"
+          className="mt-2 h-14 w-full rounded-2xl bg-accent text-base font-semibold text-white active:bg-accent-fort disabled:bg-ink-3 disabled:opacity-60"
         >
           {libelleValider}
         </button>

@@ -192,7 +192,7 @@ export function AccueilVendeur({ libelleProfil, onChangerProfil }: { libelleProf
                 ferme ? 'fermé' : `${liste.length} retrait${liste.length > 1 ? 's' : ''}${aImprimer ? ', bon à imprimer' : ''}`
               }`}
               onClick={() => setJourChoisi(iso)}
-              className={`relative flex min-h-[4.75rem] flex-col items-center justify-start rounded-xl px-0.5 py-1.5 ${
+              className={`relative flex min-h-[4.75rem] flex-col items-center justify-start rounded-2xl px-0.5 py-1.5 ${
                 actif ? 'bg-accent text-accent-texte' : ferme ? 'jour-ferme text-ink-2' : 'text-ink hover:bg-surface-2'
               }`}
             >

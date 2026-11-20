@@ -18,7 +18,7 @@ import { echecReseau, lireReponse } from './modele';
 import { sortieDe } from './sorties';
 
 const CHAMP =
-  'min-h-12 w-full rounded-xl border-2 border-line-fort bg-surface px-3 text-lg text-ink placeholder:text-ink-3';
+  'min-h-12 w-full rounded-2xl border-2 border-transparent bg-segment-fond px-3 text-lg text-ink placeholder:text-ink-3';
 
 export function AccesGerant({
   raison,
@@ -70,7 +70,7 @@ export function AccesGerant({
   const sortie = refus ? sortieDe(refus) : null;
 
   return (
-    <div className="rounded-xl border-2 border-accent bg-accent-doux/40 p-4" role="group" aria-label="Accord du manager">
+    <div className="rounded-2xl border-2 border-transparent bg-accent-doux/40 p-4" role="group" aria-label="Accord du manager">
       <p className="text-base font-semibold text-ink">Accord du manager</p>
       <p className="mb-3 text-sm text-ink-2">{raison}</p>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -105,7 +105,7 @@ export function AccesGerant({
           signalement={refus}
           autreSortie={
             sortie?.libelle || sortie?.autre ? (
-              <span className="inline-flex min-h-12 items-center rounded-xl border border-line-fort px-4 text-base text-ink">
+              <span className="inline-flex min-h-12 items-center rounded-2xl border border-transparent bg-segment-fond px-4 text-base text-ink">
                 {sortie.libelle ?? sortie.autre}
               </span>
             ) : (
@@ -119,7 +119,7 @@ export function AccesGerant({
           type="button"
           disabled={envoi || code === ''}
           onClick={() => void valider()}
-          className="min-h-12 rounded-xl bg-accent px-5 text-base font-semibold text-white disabled:opacity-60"
+          className="min-h-12 rounded-2xl bg-accent px-5 text-base font-semibold text-white disabled:opacity-60"
         >
           {envoi ? 'Vérification…' : 'Autoriser'}
         </button>
@@ -127,7 +127,7 @@ export function AccesGerant({
           <button
             type="button"
             onClick={onAnnuler}
-            className="min-h-12 rounded-xl border border-line-fort px-5 text-base text-ink-2"
+            className="min-h-12 rounded-2xl border border-transparent bg-segment-fond px-5 text-base text-ink-2"
           >
             Annuler
           </button>

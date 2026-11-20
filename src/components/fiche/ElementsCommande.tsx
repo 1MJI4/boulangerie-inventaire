@@ -27,7 +27,7 @@ const STYLE_TYPE: Record<TypeCommande, string> = {
 
 export function EtiquetteType({ type }: { type: TypeCommande }) {
   return (
-    <span className={`inline-flex items-center rounded-md px-1.5 py-px text-xs font-semibold ${STYLE_TYPE[type]}`}>
+    <span className={`inline-flex items-center rounded-lg px-1.5 py-px text-xs font-semibold ${STYLE_TYPE[type]}`}>
       {LIBELLE_TYPE[type]}
     </span>
   );
@@ -172,14 +172,17 @@ export function Segmente<T extends string>({
   valeur,
   onChange,
   libelle,
+  nombreDessous = false,
 }: {
   options: readonly { valeur: T; libelle: string; nombre?: number }[];
   valeur: T;
   onChange: (v: T) => void;
   libelle: string;
+  /** Le nombre sous le libellé (cinq segments ou plus sur un téléphone). */
+  nombreDessous?: boolean;
 }) {
   return (
-    <div role="radiogroup" aria-label={libelle} className="flex gap-0.5 rounded-xl bg-segment-fond p-0.5">
+    <div role="radiogroup" aria-label={libelle} className="flex gap-0.5 rounded-2xl bg-segment-fond p-0.5">
       {options.map((o) => {
         const actif = o.valeur === valeur;
         return (
@@ -189,12 +192,16 @@ export function Segmente<T extends string>({
             role="radio"
             aria-checked={actif}
             onClick={() => onChange(o.valeur)}
-            className={`flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[10px] px-1.5 text-sm ${
+            className={`flex min-w-0 flex-1 items-center justify-center rounded-[10px] px-1 text-sm ${
+              nombreDessous ? 'min-h-[3.25rem] flex-col gap-0 leading-tight' : 'min-h-11 gap-1.5 px-1.5'
+            } ${
               actif ? 'bg-segment-actif font-semibold text-ink shadow-sm' : 'font-medium text-ink-2'
             }`}
           >
             <span className="truncate">{o.libelle}</span>
-            {o.nombre !== undefined ? <span className="chiffres">{o.nombre}</span> : null}
+            {o.nombre !== undefined ? (
+              <span className={`chiffres ${nombreDessous ? 'text-xs text-ink-3' : ''}`}>{o.nombre}</span>
+            ) : null}
           </button>
         );
       })}

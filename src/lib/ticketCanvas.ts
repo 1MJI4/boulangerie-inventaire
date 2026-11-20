@@ -27,6 +27,11 @@ import { echeancePoste, repartirParPoste, type BonDePoste, type Poste } from '..
 import { GOUTS_SUR_COMMANDE } from '../catalogue/goutsSurCommande.ts';
 import { demandeUneViande } from '../domaine/gouts.ts';
 import { libelleSelonGout } from '../domaine/libelles.ts';
+import { ADRESSE_QR, LIGNES_PIED_CLIENT } from './coordonneesMagasin.ts';
+import { matriceQr } from './qrCode.ts';
+
+/** Points d'imprimante par module du QR : 5 → un code de ~29 modules fait ~145 points, lisible au téléphone. */
+const MODULE_QR = 5;
 
 /**
  * Tous les papiers possibles. CLIENT, MAGASIN : le bon complet (BUREAU : ancien
@@ -777,6 +782,30 @@ class Plume {
   espace(points: number) {
     this.y += points;
   }
+
+  /**
+   * QR code centré, noir sur blanc, avec sa zone de silence (4 modules, la norme).
+   * Taille de module ENTIÈRE : un module à cheval sur deux points d'imprimante
+   * sort gris et le code ne se lit plus.
+   */
+  qr(matrice: boolean[][], module: number) {
+    const silence = 4 * module;
+    const cote = matrice.length * module;
+    const gauche = Math.round((this.largeur - cote) / 2);
+    if (this.ctx) {
+      this.ctx.save();
+      this.ctx.fillStyle = '#fff';
+      this.ctx.fillRect(gauche - silence, this.y, cote + 2 * silence, cote + 2 * silence);
+      this.ctx.fillStyle = '#000';
+      matrice.forEach((ligne, j) =>
+        ligne.forEach((sombre, i) => {
+          if (sombre) this.ctx!.fillRect(gauche + i * module, this.y + silence + j * module, module, module);
+        })
+      );
+      this.ctx.restore();
+    }
+    this.y += cote + 2 * silence;
+  }
 }
 
 /* ------------------------------------------------- Le dessin d'un ticket */
@@ -924,6 +953,13 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
         align: 'centre',
         interligne: 24,
       });
+    }
+    // Site et réseaux : petit, centré, tout en bas (propriétaire, 20/11/2026).
+    plume.espace(10);
+    plume.texte('Scannez pour nous retrouver', { taille: 18, gras: true, align: 'centre', interligne: 24 });
+    plume.qr(matriceQr(ADRESSE_QR), MODULE_QR);
+    for (const ligne of LIGNES_PIED_CLIENT) {
+      plume.texte(ligne, { taille: 18, gras: true, align: 'centre', interligne: 24 });
     }
   } else if (zoneDessinImprimee(commande, destination)) {
     // Demandée sur la commande (client qui veut un dessin, un croquis) :

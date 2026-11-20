@@ -672,7 +672,7 @@ function EntreeHistorique({ ligne }: { ligne: LigneHistorique }) {
 
 /* ------------------------------------------------- Fenêtre « Annuler la commande » */
 
-const CHAMP_FENETRE = 'min-h-12 w-full rounded-xl border-2 border-line-fort bg-surface px-3 text-lg text-ink placeholder:text-ink-3';
+const CHAMP_FENETRE = 'min-h-12 w-full rounded-2xl border-2 border-transparent bg-segment-fond px-3 text-lg text-ink placeholder:text-ink-3';
 
 
 /**
@@ -810,7 +810,7 @@ function FenetreAnnulation({
           type="button"
           disabled={occupe}
           onClick={() => fenetre.current?.close()}
-          className="mt-4 min-h-12 w-full rounded-xl bg-accent text-base font-semibold text-accent-texte disabled:opacity-60"
+          className="mt-4 min-h-12 w-full rounded-2xl bg-accent text-base font-semibold text-accent-texte disabled:opacity-60"
         >
           Garder la commande
         </button>
@@ -864,7 +864,7 @@ function FenetreAnnulation({
                   setRefus(null);
                 }}
                 className={`min-h-11 rounded-full border px-4 text-base font-medium ${
-                  motif === m ? 'border-ink bg-ink text-surface' : 'border-transparent bg-segment-fond text-ink'
+                  motif === m ? 'border-transparent bg-accent text-accent-texte' : 'border-transparent bg-segment-fond text-ink'
                 }`}
               >
                 {m}
@@ -890,7 +890,7 @@ function FenetreAnnulation({
           type="button"
           disabled={occupe}
           onClick={() => void confirmer()}
-          className="mt-4 min-h-12 w-full rounded-xl border-2 border-line-fort bg-surface text-base font-semibold text-bloquant disabled:opacity-60"
+          className="mt-4 min-h-12 w-full rounded-2xl border-2 border-transparent bg-segment-fond text-base font-semibold text-bloquant disabled:opacity-60"
         >
           {occupe ? 'Annulation en cours…' : 'Annuler la commande'}
         </button>

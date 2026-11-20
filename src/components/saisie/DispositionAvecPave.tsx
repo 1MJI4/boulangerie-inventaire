@@ -79,6 +79,16 @@ export function DispositionAvecPave({ pave, children, cote }: PropsDispositionAv
     return () => obs.disconnect();
   }, [avecPave]);
 
+  // Pavé ouvert : la barre d'onglets du bas s'efface (globals.css). Sur tablette elle
+  // flotterait sur la liste, à côté du pavé ; sur téléphone le pavé la recouvre déjà.
+  useEffect(() => {
+    if (!avecPave) return;
+    document.documentElement.dataset.paveOuvert = '';
+    return () => {
+      delete document.documentElement.dataset.paveOuvert;
+    };
+  }, [avecPave]);
+
   const margeBasse = avecPave && etroit ? Math.ceil(hauteurPanneau) : 0;
 
   // La ligne active amenée à l'écran par le navigateur s'arrête au-dessus du panneau.
@@ -113,7 +123,7 @@ export function DispositionAvecPave({ pave, children, cote }: PropsDispositionAv
         aria-label="Pavé de saisie"
         className={[
           // Téléphone : panneau fixé en bas, collé du côté du pouce.
-          'fixed inset-x-0 bottom-0 z-30 flex border-t-2 border-line-fort bg-surface px-3 pt-2',
+          'fixed inset-x-0 bottom-0 z-30 flex border-t-2 border-transparent bg-segment-fond px-3 pt-2',
           'pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-4px_12px_rgb(0_0_0/0.08)]',
           gauche ? 'justify-start' : 'justify-end',
           // Tablette : colonne collante à côté du contenu, toujours visible.

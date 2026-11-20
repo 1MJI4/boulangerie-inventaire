@@ -108,7 +108,7 @@ export function SelecteurDateRetrait({
   }
 
   const classeFleche =
-    'inline-flex h-12 min-w-12 items-center justify-center rounded-xl border border-line-fort bg-surface px-3 text-2xl font-semibold leading-none text-ink hover:bg-surface-2 active:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40';
+    'inline-flex h-12 min-w-12 items-center justify-center rounded-2xl border border-transparent bg-segment-fond px-3 text-2xl font-semibold leading-none text-ink hover:bg-surface-2 active:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40';
 
   return (
     <fieldset aria-describedby={decritPar} aria-invalid={enErreur || undefined} className="min-w-0">
@@ -166,7 +166,7 @@ export function SelecteurDateRetrait({
         // pan-y : le défilement vertical reste au navigateur, l'horizontal change de semaine.
         style={{ touchAction: 'pan-y' }}
         className={`grid select-none grid-cols-7 gap-1 sm:gap-1.5 ${
-          enErreur ? 'rounded-xl outline-2 outline-offset-4 outline-bloquant' : ''
+          enErreur ? 'rounded-2xl outline-2 outline-offset-4 outline-bloquant' : ''
         }`}
       >
         {jours.map((iso, i) => (
@@ -187,7 +187,7 @@ export function SelecteurDateRetrait({
         <button
           type="button"
           onClick={() => allerA(decalagePour(debut, valeur))}
-          className="mt-2 inline-flex min-h-12 items-center justify-center rounded-xl border border-line-fort bg-surface px-4 text-sm font-medium text-ink hover:bg-surface-2"
+          className="mt-2 inline-flex min-h-12 items-center justify-center rounded-2xl border border-transparent bg-segment-fond px-4 text-sm font-medium text-ink hover:bg-surface-2"
         >
           Revoir le jour choisi
         </button>
@@ -195,7 +195,7 @@ export function SelecteurDateRetrait({
         <button
           type="button"
           onClick={() => allerA(0)}
-          className="mt-2 inline-flex min-h-12 items-center justify-center rounded-xl px-2 text-sm font-medium text-ink-2 underline underline-offset-4 hover:text-ink"
+          className="mt-2 inline-flex min-h-12 items-center justify-center rounded-2xl px-2 text-sm font-medium text-ink-2 underline underline-offset-4 hover:text-ink"
         >
           Revenir à aujourd’hui
         </button>
@@ -229,11 +229,11 @@ function JourItem({
   if (etat.ferme) {
     classes = 'jour-ferme border-line text-ink-2 cursor-not-allowed';
   } else if (tropTot) {
-    classes = 'border-dashed border-line-fort bg-surface-2 text-ink-2 cursor-not-allowed';
+    classes = 'border-dashed border-transparent bg-segment-fond text-ink-2 cursor-not-allowed';
   } else if (choisi) {
     classes = 'border-sortie bg-sortie text-sortie-texte';
   } else {
-    classes = 'border-line-fort bg-surface text-ink hover:border-ink-2 active:bg-surface-2';
+    classes = 'border-transparent bg-segment-fond text-ink hover:border-ink-2 active:bg-surface-2';
   }
 
   return (
@@ -248,7 +248,7 @@ function JourItem({
         onClick={() => {
           if (!indisponible) onChoisir(iso);
         }}
-        className={`flex min-h-14 w-full flex-col items-center justify-center rounded-xl border-2 px-0.5 py-1 text-center ${classes}`}
+        className={`flex min-h-14 w-full flex-col items-center justify-center rounded-2xl border-2 px-0.5 py-1 text-center ${classes}`}
       >
         <span className="text-xs font-medium leading-tight">{estAujourdhui ? 'auj.' : jour}</span>
         <span className={`chiffres text-xl font-semibold leading-tight ${indisponible ? 'line-through' : ''}`}>

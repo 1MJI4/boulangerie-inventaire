@@ -21,7 +21,7 @@ export function BasculeCotePave({ className = '' }: PropsBasculeCotePave) {
       type="button"
       onClick={() => definir(autre)}
       aria-label={`Pavé à ${cote} — toucher pour le mettre à ${autre}`}
-      className={`inline-flex min-h-12 items-center gap-2 rounded-xl border border-line-fort bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-2 active:bg-surface-2 ${className}`}
+      className={`inline-flex min-h-12 items-center gap-2 rounded-2xl border border-transparent bg-segment-fond px-3 text-sm font-medium text-ink hover:bg-surface-2 active:bg-surface-2 ${className}`}
     >
       <span aria-hidden className="text-lg leading-none">
         {cote === 'droite' ? '▭▮' : '▮▭'}

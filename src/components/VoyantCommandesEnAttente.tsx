@@ -85,16 +85,16 @@ export function VoyantCommandesEnAttente() {
   return (
     <>
       {ouvert && actives.length ? (
-        <div className="pointer-events-auto w-[min(26rem,calc(100vw-2rem))] rounded-2xl border border-line bg-surface p-3 shadow-lg">
+        <div className="pointer-events-auto w-[min(26rem,calc(100vw-2rem))] rounded-2xl border border-transparent bg-surface p-3 shadow-lg">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-sm font-semibold text-ink">Commandes gardées sur cette tablette</p>
-            <button type="button" className="min-h-10 rounded-lg px-3 text-sm text-accent" onClick={() => setOuvert(false)}>
+            <button type="button" className="min-h-10 rounded-xl px-3 text-sm text-accent" onClick={() => setOuvert(false)}>
               Fermer
             </button>
           </div>
           <ul className="grid max-h-[50vh] gap-2 overflow-y-auto">
             {actives.map((c) => (
-              <li key={c.idClient} className="rounded-xl border border-line p-2">
+              <li key={c.idClient} className="rounded-2xl border border-line p-2">
                 <p className="text-base font-medium text-ink">
                   {c.client || 'Client sans nom'}
                   {c.numero ? <span className="text-ink-2"> · bon n°&nbsp;{c.numero}</span> : null}
@@ -112,13 +112,13 @@ export function VoyantCommandesEnAttente() {
                       <Link
                         href={adresseReprise(c)}
                         onClick={() => setOuvert(false)}
-                        className="inline-flex min-h-12 items-center rounded-xl border-2 border-sortie px-4 text-base font-semibold text-sortie"
+                        className="inline-flex min-h-12 items-center rounded-2xl border-2 border-sortie px-4 text-base font-semibold text-sortie"
                       >
                         {T.rouvrir}
                       </Link>
                       <button
                         type="button"
-                        className="min-h-12 rounded-xl border-2 border-line-fort px-4 text-base text-ink-2"
+                        className="min-h-12 rounded-2xl border-2 border-transparent bg-segment-fond px-4 text-base text-ink-2"
                         onClick={() => {
                           if (aConfirmer !== c.idClient) return setAConfirmer(c.idClient);
                           setAConfirmer(null);
@@ -136,7 +136,7 @@ export function VoyantCommandesEnAttente() {
           {r.enAttente > 0 ? (
             <button
               type="button"
-              className="mt-2 min-h-12 w-full rounded-xl border-2 border-accent text-base font-semibold text-accent"
+              className="mt-2 min-h-12 w-full rounded-2xl border-2 border-accent text-base font-semibold text-accent"
               onClick={() => void envoyerCommandesEnAttente()}
             >
               {T.envoyerMaintenant}

@@ -105,7 +105,7 @@ function SelecteurProfil({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ground/95 p-4 backdrop-blur">
-      <div className="w-full max-w-lg rounded-xl border border-line bg-surface p-6 shadow-lg">
+      <div className="w-full max-w-lg rounded-2xl border border-transparent bg-surface p-6 shadow-lg">
         {codeDemande ? (
           <>
             <h2 className="text-lg font-semibold text-ink">Profil manager</h2>
@@ -125,7 +125,7 @@ function SelecteurProfil({
               placeholder="Code de gestion"
               aria-label="Code de gestion"
               autoFocus
-              className="mt-5 h-12 w-full rounded-lg border border-line bg-surface-2 px-3 text-base text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none"
+              className="mt-5 h-12 w-full rounded-xl border border-transparent bg-surface-2 px-3 text-base text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none"
             />
 
             {erreur ? <p className="mt-2 text-sm text-alerte">{erreur}</p> : null}
@@ -135,14 +135,14 @@ function SelecteurProfil({
                 type="button"
                 onClick={() => void verifier()}
                 disabled={verification || !code.trim()}
-                className="inline-flex min-h-11 flex-1 items-center justify-center rounded-lg bg-accent px-4 text-sm font-medium text-white hover:bg-accent-fort disabled:opacity-60"
+                className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-accent px-4 text-sm font-medium text-white hover:bg-accent-fort disabled:opacity-60"
               >
                 {verification ? 'Vérification…' : 'Valider'}
               </button>
               <button
                 type="button"
                 onClick={() => setCodeDemande(null)}
-                className="inline-flex min-h-11 items-center rounded-lg border border-line-fort px-4 text-sm text-ink hover:bg-surface-2"
+                className="inline-flex min-h-11 items-center rounded-xl border border-transparent bg-segment-fond px-4 text-sm text-ink hover:bg-surface-2"
               >
                 Retour
               </button>
@@ -168,10 +168,10 @@ function SelecteurProfil({
                     <button
                       type="button"
                       onClick={() => choisir(p)}
-                      className={`flex w-full items-center justify-between gap-3 rounded-lg border px-4 py-3 text-left transition-colors ${
+                      className={`flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${
                         actuel
-                          ? 'border-accent bg-accent-doux'
-                          : 'border-line hover:border-line-fort hover:bg-surface-2'
+                          ? 'border-transparent bg-accent-doux'
+                          : 'border-line hover:bg-line-fort/20 hover:bg-surface-2'
                       }`}
                     >
                       <span className="min-w-0">

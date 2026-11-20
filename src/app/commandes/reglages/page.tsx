@@ -47,7 +47,7 @@ type Calendrier = { aujourdhui: string; joursFermes: JourFerme[]; gerant: boolea
 type Onglet = 'heures' | 'tailles' | 'mots' | 'signales';
 type Envoyer = (url: string, methode: 'POST' | 'PATCH' | 'PUT', corps: Record<string, unknown>) => Promise<boolean>;
 
-const CHAMP = 'min-h-12 rounded-xl border-2 border-line-fort bg-surface px-3 text-base text-ink placeholder:text-ink-3';
+const CHAMP = 'min-h-12 rounded-2xl border-2 border-transparent bg-segment-fond px-3 text-base text-ink placeholder:text-ink-3';
 /** Pas du réglage des heures au doigt. */
 const PAS_MINUTES = 30;
 const DERNIERE_MINUTE = 23 * 60 + 30;
@@ -223,8 +223,8 @@ export default function ReglagesCommandes() {
             role="tab"
             aria-selected={onglet === o.id}
             onClick={() => setOnglet(o.id)}
-            className={`min-h-12 rounded-xl border-2 px-4 text-base ${
-              onglet === o.id ? 'border-accent bg-accent-doux font-semibold text-accent' : 'border-line-fort bg-surface text-ink-2'
+            className={`min-h-12 rounded-2xl border-2 px-4 text-base ${
+              onglet === o.id ? 'border-transparent bg-accent-doux font-semibold text-accent' : 'border-transparent bg-segment-fond text-ink-2'
             }`}
           >
             {o.libelle}
@@ -283,7 +283,7 @@ export default function ReglagesCommandes() {
 
 /** − 12:00 + : une heure au doigt, par pas de 30 minutes. */
 function PasHeure({ heure, onChange, libelle }: { heure: string; onChange: (h: string) => void; libelle: string }) {
-  const bouton = 'chiffres min-h-11 min-w-11 rounded-xl border-2 border-line-fort bg-surface text-2xl font-semibold text-ink active:bg-accent-doux';
+  const bouton = 'chiffres min-h-11 min-w-11 rounded-2xl border-2 border-transparent bg-segment-fond text-2xl font-semibold text-ink active:bg-accent-doux';
   return (
     <div className="flex items-center gap-1">
       <button type="button" className={bouton} aria-label={`${libelle} : 30 minutes plus tôt`} onClick={() => { const h = decaler(heure, -1); if (h) onChange(h); }}>
@@ -478,7 +478,7 @@ function TaillesGateau({ tailles, enregistrer }: { tailles: number[]; enregistre
                 disabled={tailles.length <= 1}
                 aria-label={`Retirer la taille ${t} parts`}
                 onClick={() => void enregistrer({ taillesGateau: tailles.filter((x) => x !== t) })}
-                className="chiffres inline-flex min-h-12 items-center gap-2 rounded-full border-2 border-line-fort bg-surface px-4 text-lg font-semibold text-ink disabled:opacity-60"
+                className="chiffres inline-flex min-h-12 items-center gap-2 rounded-full border-2 border-transparent bg-segment-fond px-4 text-lg font-semibold text-ink disabled:opacity-60"
               >
                 {t}
                 <span aria-hidden className="text-xl leading-none text-ink-3">×</span>
@@ -544,7 +544,7 @@ function DelaiEtages({ jours, enregistrer }: { jours: number; enregistrer: (p: P
             setValeur(jours);
             setOuvert(!ouvert);
           }}
-          className={`flex min-h-14 w-full items-center justify-between gap-3 rounded-xl border-2 bg-surface px-4 text-left ${ouvert ? 'border-accent' : 'border-line-fort'}`}
+          className={`flex min-h-14 w-full items-center justify-between gap-3 rounded-2xl border-2 px-4 text-left ${ouvert ? 'border-accent bg-surface' : 'border-transparent bg-segment-fond'}`}
         >
           <span className="text-sm text-ink-2">Délai</span>
           <span className="chiffres text-xl font-semibold text-ink">
@@ -603,7 +603,7 @@ function ListeOptions({
               title="Retirer ou remettre"
               onClick={() => void envoyer('/api/gateaux', 'PATCH', { id: o.id, actif: o.actif === false })}
               className={`min-h-11 rounded-full border px-3 text-sm ${
-                o.actif === false ? 'border-line bg-surface text-ink-3 line-through' : 'border-line-fort bg-surface text-ink'
+                o.actif === false ? 'border-line bg-surface text-ink-3 line-through' : 'border-transparent bg-segment-fond text-ink'
               }`}
             >
               {o.nom}

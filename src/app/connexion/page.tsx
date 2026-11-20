@@ -37,7 +37,7 @@ export default async function PageConnexion({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-ground p-4">
-      <div className="w-full max-w-sm rounded-xl border border-line bg-surface p-6 shadow-lg">
+      <div className="w-full max-w-sm rounded-2xl border border-transparent bg-surface p-6 shadow-lg">
         <h1 className="text-xl font-semibold text-ink">PAin PAtisserie</h1>
 
         {!conf.ok ? (
@@ -50,14 +50,14 @@ export default async function PageConnexion({
             <div className="mt-6 flex flex-col gap-2">
               <a
                 href={suite}
-                className="inline-flex min-h-12 items-center justify-center rounded-lg bg-accent px-4 text-base font-medium text-white hover:bg-accent-fort"
+                className="inline-flex min-h-12 items-center justify-center rounded-xl bg-accent px-4 text-base font-medium text-white hover:bg-accent-fort"
               >
                 Continuer
               </a>
               <form action={retirerTablette}>
                 <button
                   type="submit"
-                  className="inline-flex min-h-12 w-full items-center justify-center rounded-lg border border-line-fort px-4 text-base text-ink hover:bg-surface-2"
+                  className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-transparent bg-segment-fond px-4 text-base text-ink hover:bg-surface-2"
                 >
                   Retirer l’accès de cette tablette
                 </button>

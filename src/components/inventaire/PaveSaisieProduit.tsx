@@ -129,7 +129,7 @@ export function PaveSaisieProduit({
           <button
             type="button"
             onClick={onFermer}
-            className="min-h-11 rounded-lg border border-line px-3 text-sm text-ink-2 hover:border-line-fort hover:text-ink"
+            className="min-h-11 rounded-xl border border-line px-3 text-sm text-ink-2 hover:bg-line-fort/20 hover:text-ink"
           >
             Fermer
           </button>
@@ -141,7 +141,7 @@ export function PaveSaisieProduit({
             type="button"
             onClick={onSuivant}
             disabled={!peutAllerSuivant}
-            className="min-h-11 rounded-lg border border-line px-3 text-sm text-ink-2 hover:border-line-fort hover:text-ink disabled:opacity-40"
+            className="min-h-11 rounded-xl border border-line px-3 text-sm text-ink-2 hover:bg-line-fort/20 hover:text-ink disabled:opacity-40"
           >
             Passer ›
           </button>
@@ -179,7 +179,7 @@ export function PaveSaisieProduit({
             onChange('0');
             avancer();
           }}
-          className="mt-2 min-h-12 w-full rounded-xl border-2 border-line-fort bg-surface text-base font-semibold text-ink active:bg-surface-2"
+          className="mt-2 min-h-12 w-full rounded-2xl border-2 border-transparent bg-segment-fond text-base font-semibold text-ink active:bg-surface-2"
         >
           {libelleZero}
         </button>

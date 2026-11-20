@@ -195,9 +195,9 @@ export function LigneSaisie({
         : 'w-20';
 
   const classesConteneur = carte
-    ? `ligne-impression flex flex-col justify-between rounded-lg border transition-colors ${
+    ? `ligne-impression flex flex-col justify-between rounded-xl border transition-colors ${
         compact ? 'gap-1.5 p-2' : 'gap-2 p-2.5'
-      } ${selectionne ? 'border-accent bg-accent-doux/60 ring-2 ring-accent/40' : 'border-line bg-surface'}`
+      } ${selectionne ? 'border-transparent bg-accent-doux/60 ring-2 ring-accent/40' : 'border-line bg-surface'}`
     : fixe
       ? `relative flex cursor-pointer flex-col justify-center border-b border-line has-[input:focus]:bg-surface-2 ${
           selectionne ? 'z-10 bg-accent-doux shadow-[inset_4px_0_0_var(--color-accent)]' : ''
@@ -261,7 +261,7 @@ export function LigneSaisie({
           <button
             type="button"
             onClick={onAppliquerSuggestion}
-            className="sans-impression chiffres hidden shrink-0 rounded-md border border-dashed border-line-fort px-2.5 py-1 text-xs text-ink-3 hover:border-accent hover:text-accent sm:block"
+            className="sans-impression chiffres hidden shrink-0 rounded-lg border border-dashed border-line-fort px-2.5 py-1 text-xs text-ink-3 hover:bg-accent-doux hover:text-accent sm:block"
             title={`Reprendre ${suggestion}`}
           >
             {suggestion}
@@ -278,10 +278,10 @@ export function LigneSaisie({
             }}
             aria-pressed={zero}
             aria-label={zero ? `Annuler le zéro pour ${nom}` : `${nom} : épuisé`}
-            className={`sans-impression shrink-0 rounded-lg border font-medium transition-colors ${grande ? 'text-base' : 'text-sm'} ${tailleCible} ${
+            className={`sans-impression shrink-0 rounded-xl border font-medium transition-colors ${grande ? 'text-base' : 'text-sm'} ${tailleCible} ${
               zero
-                ? 'border-accent bg-accent-doux text-accent'
-                : 'border-line text-ink-3 hover:border-line-fort hover:text-ink-2'
+                ? 'border-transparent bg-accent-doux text-accent'
+                : 'border-line text-ink-3 hover:bg-line-fort/20 hover:text-ink-2'
             }`}
           >
             0
@@ -311,13 +311,13 @@ export function LigneSaisie({
           onClick={fixe ? undefined : onSelectionner}
           placeholder={auPoids ? '— kg' : '—'}
           aria-label={auPoids ? `${nom}, poids en kg` : suffixe ? `${nom}, en ${suffixe}` : nom}
-          className={`chiffres rounded-lg border text-center transition-colors placeholder:text-ink-3 focus:border-accent focus:outline-none ${hauteurChamp} ${largeurChamp} ${
+          className={`chiffres rounded-xl border text-center transition-colors placeholder:text-ink-3 focus:border-accent focus:outline-none ${hauteurChamp} ${largeurChamp} ${
             compact ? 'text-sm' : grande ? 'text-xl' : 'text-base'
           } ${
             selectionne
-              ? 'border-accent bg-surface font-medium text-ink ring-2 ring-accent/30'
+              ? 'border-transparent bg-surface font-medium text-ink ring-2 ring-accent/30'
               : rempli
-                ? `border-line-fort bg-surface text-ink ${faitQuandRempli ? 'font-semibold' : 'font-medium'}`
+                ? `border-transparent bg-segment-fond text-ink ${faitQuandRempli ? 'font-semibold' : 'font-medium'}`
                 : // Case vide = case à remplir : en pointillés, comme la case blanche de la feuille.
                   `${faitQuandRempli ? 'border-dashed border-line-fort bg-transparent' : 'border-line bg-surface-2'} text-ink-2`
           }`}
@@ -343,11 +343,11 @@ export function LigneSaisie({
               placeholder="0"
               aria-label={complement.titre}
               title={complement.titre}
-              className={`chiffres shrink-0 rounded-lg border text-center transition-colors placeholder:text-ink-3 focus:border-accent focus:outline-none ${hauteurChamp} ${
+              className={`chiffres shrink-0 rounded-xl border text-center transition-colors placeholder:text-ink-3 focus:border-accent focus:outline-none ${hauteurChamp} ${
                 compact ? 'w-12 text-sm' : 'w-14 text-base'
               } ${
                 complement.valeur !== '' && complement.valeur !== '0'
-                  ? 'border-accent bg-accent-doux font-medium text-accent'
+                  ? 'border-transparent bg-accent-doux font-medium text-accent'
                   : 'border-dashed border-line bg-surface-2 text-ink-3'
               }`}
             />
@@ -359,7 +359,7 @@ export function LigneSaisie({
         // Surimpression : n'agrandit jamais la grille. Détail affiché sur la ligne active.
         selectionne ? (
           <div
-            className={`sans-impression absolute inset-x-0 z-20 min-w-64 rounded-xl border border-line-fort bg-surface p-2 shadow-lg ${
+            className={`sans-impression absolute inset-x-0 z-20 min-w-64 rounded-2xl border border-transparent bg-segment-fond p-2 shadow-lg ${
               surimpressionVers === 'haut' ? 'bottom-full mb-1' : 'top-full mt-1'
             }`}
           >

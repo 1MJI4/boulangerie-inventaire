@@ -11,9 +11,9 @@
 import type { JeuTouches } from './mecanique';
 
 export const CLASSE_TOUCHE =
-  'chiffres h-14 rounded-xl border border-line bg-surface text-xl font-medium text-ink active:bg-accent-doux active:text-accent disabled:opacity-40';
+  'chiffres h-14 rounded-2xl border border-transparent bg-surface text-xl font-medium text-ink active:bg-accent-doux active:text-accent disabled:opacity-40';
 export const CLASSE_TOUCHE_SECONDAIRE =
-  'h-14 rounded-xl border border-line text-sm font-medium text-ink-2 active:bg-surface-2 disabled:opacity-40';
+  'h-14 rounded-2xl border border-line text-sm font-medium text-ink-2 active:bg-surface-2 disabled:opacity-40';
 
 /** Variante compacte : 48 px (cible tactile minimale), pour tenir à côté du contenu. */
 const COMPACT = (classe: string) => classe.replace('h-14', 'h-12');
@@ -74,7 +74,7 @@ export function ClavierPave({
         disabled={desactive}
         onClick={onEffacer}
         aria-label="Effacer le dernier caractère"
-        className={`${compact ? 'h-12' : 'h-14'} rounded-xl border border-line text-xl text-ink-2 active:bg-surface-2 disabled:opacity-40`}
+        className={`${compact ? 'h-12' : 'h-14'} rounded-2xl border border-line text-xl text-ink-2 active:bg-surface-2 disabled:opacity-40`}
       >
         <span aria-hidden>⌫</span>
       </button>

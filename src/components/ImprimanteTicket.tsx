@@ -117,8 +117,8 @@ export function ImprimanteTicket({
 
   return (
     <div className="imprimante-ticket mx-auto w-64 select-none" aria-hidden>
-      <div className="corps relative rounded-2xl border border-line bg-surface-2 px-4 pt-3 pb-5 shadow-lg">
-        <div className="flex min-h-9 items-center gap-2 rounded-lg bg-[#1d1c19] px-3 py-1.5 text-xs font-medium text-white">
+      <div className="corps relative rounded-2xl border border-transparent bg-surface-2 px-4 pt-3 pb-5 shadow-lg">
+        <div className="flex min-h-9 items-center gap-2 rounded-xl bg-[#1d1c19] px-3 py-1.5 text-xs font-medium text-white">
           {etat === 'fini' ? (
             <span className="pose grid h-4 w-4 place-items-center rounded-full bg-ok text-[10px] text-white">✓</span>
           ) : etat === 'bloque' ? (

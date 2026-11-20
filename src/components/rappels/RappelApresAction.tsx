@@ -94,7 +94,7 @@ export function RappelApresAction({
                   fermer();
                 }}
                 aria-label="Fermer le rappel"
-                className="-mr-2 -mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-2xl text-ink-2 active:bg-surface-2"
+                className="-mr-2 -mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-2xl text-ink-2 active:bg-surface-2"
               >
                 <span aria-hidden>×</span>
               </button>

@@ -11,7 +11,7 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import { Alerte, Bouton, Chargement, Entete, LienBouton, Puce } from '@/components/ui';
+import { Alerte, Bouton, Chargement, Puce } from '@/components/ui';
 import { useEquipe } from '@/lib/vendeurs';
 import { useMemoireLocale } from '@/lib/memoireLocale';
 import { CSS_TICKET, Ticket, reglesPagesTicket } from '@/components/TicketCommande';
@@ -34,6 +34,7 @@ import {
 } from '@/lib/ticketCanvas';
 import { depuisApi, messageConfirmation, type Commande, type CommandeApi, type ModePaiement } from '@/lib/commandes';
 import { formaterEuros, resteDu } from '@/domaine/argent';
+import { formatDateLong } from '@/lib/dateProduction';
 import { RappelChargement } from '@/components/rappels';
 import { ListeSignalements } from '@/components/signalement';
 import { echecReseau, lireReponse } from '@/components/commande/modele';
@@ -199,80 +200,97 @@ export default function ImprimerCommande() {
       </>
     );
 
+  // En-tête commun à tous les formats : retour, titre, carte de la commande.
+  const nomClient = commande.client?.trim() ? commande.client.trim() : 'Commande sans nom';
+  const entete = (
+    <>
+      <div className="mb-3 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 pt-1">
+        <button
+          type="button"
+          onClick={() => router.push(`/commandes/${params.id}/modifier`)}
+          className="inline-flex min-h-11 items-center whitespace-nowrap text-[17px] text-accent"
+        >
+          ‹&nbsp;Commande
+        </button>
+        <h1 className="truncate text-center text-base font-semibold text-ink sm:text-lg">
+          Imprimer · n°&nbsp;{commande.numero}
+        </h1>
+        <span aria-hidden className="w-6 sm:w-20" />
+      </div>
+
+      <section aria-label="La commande" className="mb-4 rounded-2xl bg-surface p-4">
+        <p className="text-sm font-semibold text-ok">✓ Commande enregistrée</p>
+        <p className="mt-0.5 text-2xl font-bold tracking-tight text-ink">{nomClient}</p>
+        <p className="mt-0.5 text-[15px] text-ink-2">
+          <span className="first-letter:uppercase">{formatDateLong(commande.retraitLe.slice(0, 10))}</span>
+          {mentionHeureRetrait(commande.retraitHeure) ? ` · ${mentionHeureRetrait(commande.retraitHeure)}` : ''}
+        </p>
+        <dl className="mt-3 border-t border-line pt-3 text-[15px]">
+          <div className="flex justify-between">
+            <dt className="text-ink-2">Total</dt>
+            <dd className="chiffres font-semibold text-ink">{formaterEuros(commande.totalCentimes)}</dd>
+          </div>
+          <div className="mt-0.5 flex justify-between">
+            <dt className="text-ink-2">Acompte reçu</dt>
+            <dd className="chiffres font-semibold text-ok">{formaterEuros(commande.acompteCentimes)}</dd>
+          </div>
+          {resteDu(commande.totalCentimes, commande.acompteCentimes) > 0 ? (
+            <div className="mt-0.5 flex justify-between">
+              <dt className="text-ink-2">Reste à payer</dt>
+              <dd className="chiffres font-semibold text-ink">
+                {formaterEuros(resteDu(commande.totalCentimes, commande.acompteCentimes))}
+              </dd>
+            </div>
+          ) : null}
+        </dl>
+      </section>
+
+      {erreur && format !== 'reseau' ? (
+        <div className="mb-4">
+          <Alerte>{erreur}</Alerte>
+        </div>
+      ) : null}
+      {refus ? (
+        <ListeSignalements
+          className="mb-4"
+          signalements={[refus]}
+          autreSortiePour={() => (
+            <Bouton onClick={() => router.push(`/commandes/${params.id}/modifier`)}>Ouvrir la commande</Bouton>
+          )}
+        />
+      ) : null}
+    </>
+  );
+
+  const boutonWhatsapp = (
+    <Bouton onClick={() => void copierConfirmation()}>
+      {copie ? 'Copié ✓' : 'Copier pour WhatsApp'}
+    </Bouton>
+  );
+
+  // Secours : l'imprimante Star est la voie normale ; le papier n'est qu'un lien discret.
+  const secours = (
+    <button type="button" onClick={() => setMenuFormats(true)} className="inline-flex min-h-9 items-center text-accent">
+      Imprimante en panne&nbsp;? Imprimer sur papier
+    </button>
+  );
+
   return (
     <>
       <style>{format === 'a6' ? CSS_IMPRESSION : CSS_TICKET}</style>
       {format === 'ticket' && pagesTicket ? <style>{pagesTicket}</style> : null}
 
-      <div className="ecran-seulement mx-auto max-w-xl">
-        <Entete
-          titre={`Bon n°\u00A0${commande.numero}`}
-          sousTitre={
-            format === 'reseau'
-              ? `Touchez Envoyer\u00A0: les ${destinationsDeCommande(commande).length} bons sortent à l’imprimante.`
-              : format === 'ticket'
-                ? `${destinationsDeCommande(commande).length} bons de 80\u00A0mm à la suite. L’imprimante coupe entre chaque.`
-                : 'Quatre bons A6 par feuille A4. Deux coups de massicot.'
-          }
-          actions={
-            <>
-              {/* « Retour » = revenir à la commande, pour la relire ou la corriger
-                  (propriétaire, 22/10/2026). La liste reste accessible à côté. */}
-              <Bouton onClick={() => router.push(`/commandes/${params.id}/modifier`)}>
-                ← Revenir à la commande
-              </Bouton>
-              <Bouton onClick={() => router.push('/commandes')}>Liste des commandes</Bouton>
-              {format === 'reseau' ? null : (
-                <Bouton variante="principal" onClick={() => void imprimer()}>
-                  Imprimer
-                </Bouton>
-              )}
-              <div className="relative">
-                <Bouton
-                  variante="discret"
-                  aria-label="Autres façons d’imprimer"
-                  aria-haspopup="menu"
-                  aria-expanded={menuFormats}
-                  className="min-w-11 px-2 text-xl leading-none"
-                  onClick={() => setMenuFormats((ouvert) => !ouvert)}
-                >
-                  ⋮
-                </Bouton>
-                {menuFormats ? (
-                  <>
-                    {/* Toucher n'importe où ailleurs referme le menu. */}
-                    <div className="fixed inset-0 z-10" onClick={() => setMenuFormats(false)} />
-                    <div
-                      role="menu"
-                      className="absolute right-0 z-20 mt-1 w-64 rounded-xl border border-line bg-surface p-1 shadow-lg"
-                    >
-                      {OPTIONS_FORMAT.map((option) => (
-                        <button
-                          key={option.valeur}
-                          role="menuitemradio"
-                          aria-checked={format === option.valeur}
-                          className="flex min-h-12 w-full flex-col items-start justify-center rounded-lg px-3 py-2 text-left hover:bg-surface-2"
-                          onClick={() => {
-                            setFormat(option.valeur);
-                            setMenuFormats(false);
-                          }}
-                        >
-                          <span className="text-sm font-medium text-ink">
-                            {format === option.valeur ? '✓ ' : ''}
-                            {option.libelle}
-                          </span>
-                          <span className="text-xs text-ink-2">{option.detail}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                ) : null}
-              </div>
-            </>
-          }
+      {!formatPret ? null : format === 'reseau' ? (
+        <ApercuReseau
+          commande={commande}
+          onImprime={() => void charger()}
+          haut={entete}
+          whatsapp={boutonWhatsapp}
+          secours={secours}
         />
-
-        {format !== 'reseau' ? (
+      ) : (
+        <div className="ecran-seulement mx-auto max-w-xl px-4">
+          {entete}
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <Puce ton="attention">
               Format de secours&nbsp;: {OPTIONS_FORMAT.find((o) => o.valeur === format)?.libelle}
@@ -281,79 +299,64 @@ export default function ImprimerCommande() {
               Revenir à l’imprimante Star
             </Bouton>
           </div>
-        ) : null}
-
-        <div className="mb-5 flex flex-wrap items-center gap-2">
-          <Puce ton={commande.statut === 'a_imprimer' ? 'accent' : 'ok'}>
-            {commande.statut === 'a_imprimer' ? 'Bon à imprimer' : 'Bon imprimé'}
-          </Puce>
-          <Bouton onClick={() => void copierConfirmation()}>
-            {copie ? 'Copié — collez dans WhatsApp' : 'Copier la confirmation'}
-          </Bouton>
-        </div>
-
-        {erreur ? <div className="mb-4"><Alerte>{erreur}</Alerte></div> : null}
-        {refus ? (
-          <ListeSignalements
-            className="mb-4"
-            signalements={[refus]}
-            autreSortiePour={() => (
-              <Bouton onClick={() => router.push(`/commandes/${params.id}/modifier`)}>Ouvrir la commande</Bouton>
-            )}
-          />
-        ) : null}
-
-        {deborde && format === 'a6' ? (
-          <div className="mb-4">
-            <Alerte ton="attention">
-              Ce bon ne tient pas sur un A6&nbsp;: les dernières lignes seraient coupées. Regroupez
-              des lignes ou faites deux commandes, puis imprimez, s’il vous plaît.
-            </Alerte>
-          </div>
-        ) : null}
-
-        {format === 'ticket' ? (
-          <p className="mb-4 max-w-prose text-sm text-ink-2">
-            Pour essayer sans imprimante de caisse&nbsp;: imprimez sur votre A4 habituelle, la
-            bande de 80&nbsp;mm sortira sur le bord de la feuille et vous jugerez la lisibilité. Sur une
-            vraie imprimante de caisse, réglez le format papier sur «&nbsp;rouleau
-            80&nbsp;mm&nbsp;» et les marges sur «&nbsp;aucune&nbsp;». L’application donne à chaque bon sa
-            longueur exacte, l’imprimante coupe juste après le dernier trait.
-          </p>
-        ) : null}
-
-        <p className="mb-4 max-w-prose text-sm text-ink-2">
-          Le message de confirmation ne contient pas vos coordonnées bancaires — ajoutez-les
-          vous-même dans WhatsApp. Le numéro <span className="chiffres">{commande.numero}</span> y
-          figure comme communication du virement, c’est ce qui permet de le rapprocher de la bonne
-          commande.
-        </p>
-      </div>
-
-      {!formatPret ? null : format === 'reseau' ? (
-        <ApercuReseau
-          commande={commande}
-          onImprime={() => void charger()}
-          pendantImpression={
-            <Bouton onClick={() => void copierConfirmation()}>
-              {copie ? 'Copié — collez dans WhatsApp' : 'Copier la confirmation WhatsApp'}
+          <div className="mb-4 flex flex-wrap gap-2">
+            <Bouton variante="principal" className="min-h-14 px-6 text-base" onClick={() => void imprimer()}>
+              Imprimer
             </Bouton>
-          }
-          apresImpression={
-            <>
-              <LienBouton href="/commandes/nouvelle" variante="principal" className="min-h-14 px-6 text-base">
-                + Nouvelle commande
-              </LienBouton>
-              <LienBouton href="/" className="min-h-14 px-6 text-base">
-                Accueil
-              </LienBouton>
-              <LienBouton href="/commandes" className="min-h-14 px-6 text-base">
-                Liste des commandes
-              </LienBouton>
-            </>
-          }
-        />
-      ) : format === 'ticket' ? (
+            {boutonWhatsapp}
+          </div>
+          <p className="mb-4 max-w-prose text-sm text-ink-2">
+            {format === 'ticket'
+              ? `${destinationsDeCommande(commande).length} bons de 80 mm à la suite. L’imprimante coupe entre chaque. Sur une vraie imprimante de caisse, réglez le format papier sur « rouleau 80 mm » et les marges sur « aucune ».`
+              : 'Quatre bons A6 par feuille A4. Deux coups de massicot.'}
+          </p>
+          {deborde && format === 'a6' ? (
+            <div className="mb-4">
+              <Alerte ton="attention">
+                Ce bon ne tient pas sur un A6&nbsp;: les dernières lignes seraient coupées. Regroupez des lignes ou
+                faites deux commandes, puis imprimez, s’il vous plaît.
+              </Alerte>
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {/* Le choix du papier de secours : une feuille qui monte du bas. */}
+      {menuFormats ? (
+        <div className="sans-impression fixed inset-0 z-40 flex items-end justify-center bg-voile sm:items-center" onClick={() => setMenuFormats(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Imprimer sur papier"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-t-3xl bg-surface p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:rounded-3xl"
+          >
+            <h2 className="mb-2 text-center text-lg font-semibold text-ink">Imprimer sur papier</h2>
+            <ul className="overflow-hidden rounded-2xl bg-segment-fond">
+              {OPTIONS_FORMAT.filter((o) => o.valeur !== 'reseau').map((option, rang) => (
+                <li key={option.valeur} className={rang > 0 ? 'border-t border-line' : ''}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormat(option.valeur);
+                      setMenuFormats(false);
+                    }}
+                    className="flex min-h-14 w-full flex-col items-start justify-center px-4 py-2 text-left"
+                  >
+                    <span className="text-base font-medium text-ink">{option.libelle}</span>
+                    <span className="text-sm text-ink-2">{option.detail}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <Bouton className="mt-3 w-full" onClick={() => setMenuFormats(false)}>
+              Annuler
+            </Bouton>
+          </div>
+        </div>
+      ) : null}
+
+      {!formatPret || format === 'reseau' ? null : format === 'ticket' ? (
         <div className="rouleau">
           {destinationsDeCommande(commande).map((destination, rang) => (
             <Ticket

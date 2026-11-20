@@ -49,7 +49,7 @@ export function PaveNumerique({
             </div>
           </div>
 
-          <div className="chiffres min-w-16 rounded-lg border border-line-fort bg-surface-2 px-3 py-1 text-right text-2xl font-semibold text-ink">
+          <div className="chiffres min-w-16 rounded-xl border border-transparent bg-segment-fond px-3 py-1 text-right text-2xl font-semibold text-ink">
             {valeur === '' ? '—' : valeur}
           </div>
 
@@ -57,7 +57,7 @@ export function PaveNumerique({
             type="button"
             onClick={onFermer}
             aria-label="Fermer le pavé"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-ink-3 hover:bg-surface-2 hover:text-ink"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-3 hover:bg-surface-2 hover:text-ink"
           >
             <span aria-hidden>✕</span>
           </button>
@@ -69,7 +69,7 @@ export function PaveNumerique({
               key={touche}
               type="button"
               onClick={() => onTouche(touche)}
-              className="chiffres h-14 rounded-xl border border-line bg-surface text-xl font-medium text-ink active:bg-accent-doux active:text-accent"
+              className="chiffres h-14 rounded-2xl border border-transparent bg-surface text-xl font-medium text-ink active:bg-accent-doux active:text-accent"
             >
               {touche}
             </button>
@@ -78,7 +78,7 @@ export function PaveNumerique({
           <button
             type="button"
             onClick={onVider}
-            className="h-14 rounded-xl border border-line text-sm font-medium text-ink-2 active:bg-surface-2"
+            className="h-14 rounded-2xl border border-line text-sm font-medium text-ink-2 active:bg-surface-2"
           >
             Vider
           </button>
@@ -86,7 +86,7 @@ export function PaveNumerique({
           <button
             type="button"
             onClick={() => onTouche('0')}
-            className="chiffres h-14 rounded-xl border border-line bg-surface text-xl font-medium text-ink active:bg-accent-doux active:text-accent"
+            className="chiffres h-14 rounded-2xl border border-transparent bg-surface text-xl font-medium text-ink active:bg-accent-doux active:text-accent"
           >
             0
           </button>
@@ -95,7 +95,7 @@ export function PaveNumerique({
             type="button"
             onClick={onEffacer}
             aria-label="Effacer le dernier chiffre"
-            className="h-14 rounded-xl border border-line text-xl text-ink-2 active:bg-surface-2"
+            className="h-14 rounded-2xl border border-line text-xl text-ink-2 active:bg-surface-2"
           >
             <span aria-hidden>⌫</span>
           </button>
@@ -105,7 +105,7 @@ export function PaveNumerique({
           type="button"
           onClick={onSuivant}
           disabled={!peutAllerSuivant}
-          className="mt-2 h-12 w-full rounded-xl bg-accent text-sm font-medium text-white active:bg-accent-fort disabled:bg-ink-3 disabled:opacity-60"
+          className="mt-2 h-12 w-full rounded-2xl bg-accent text-sm font-medium text-white active:bg-accent-fort disabled:bg-ink-3 disabled:opacity-60"
         >
           Produit suivant
         </button>

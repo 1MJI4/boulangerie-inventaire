@@ -176,8 +176,8 @@ import type { PhotoModele } from '@/catalogue/photosModeles';
 import { useUrlPhoto } from '@/components/commande/photosClient';
 
 const CHAMP_TEXTE =
-  'min-h-12 w-full rounded-xl border-2 border-line-fort bg-surface px-3 text-base text-ink placeholder:text-ink-3';
-const TITRE = 'mb-3 text-base font-semibold text-ink';
+  'min-h-12 w-full rounded-2xl border-2 border-transparent bg-segment-fond px-3 text-base text-ink placeholder:text-ink-3';
+const TITRE = 'mb-2 text-base font-semibold text-ink';
 
 /** Unité affichée d'une quantité en pièces : parts pour un prix par personne (donnée du catalogue). */
 function uniteDe(fiche: FicheTarifee | null, ligne?: Pick<LigneEcran, 'produitId' | 'gateauLibre'>): string {
@@ -1188,7 +1188,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
           }
           if (so.autre) {
             boutons.push(
-              <span key="autre" className="inline-flex min-h-14 items-center rounded-xl border-2 border-line-fort px-4 text-base text-ink">
+              <span key="autre" className="inline-flex min-h-14 items-center rounded-2xl border-2 border-transparent bg-segment-fond px-4 text-base text-ink">
                 {so.autre}
               </span>,
             );
@@ -1441,7 +1441,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
   const blocPave = pave ? (
     <div key={actif ?? ''} className="grid gap-1">
       {pave}
-      <button type="button" onClick={() => setActif(null)} className="min-h-12 rounded-xl text-sm text-ink-2 underline underline-offset-2">
+      <button type="button" onClick={() => setActif(null)} className="min-h-12 rounded-2xl text-sm text-ink-2 underline underline-offset-2">
         Fermer le pavé
       </button>
     </div>
@@ -1467,7 +1467,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
         style={{ scrollMarginTop: 8 }}
         role="group"
         aria-label="Sur ce gâteau"
-        className="mt-2 rounded-lg border-l-4 border-accent bg-surface-2 px-2.5 pb-1.5 pt-2"
+        className="mt-2 rounded-xl border-l-4 border-accent bg-surface-2 px-2.5 pb-1.5 pt-2"
       >
         <label className="block">
           <span className="mb-1 block text-sm font-semibold text-ink">Écriture sur ce gâteau</span>
@@ -1545,7 +1545,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
           Le bon {lignes.length > 0 ? `(${lignes.length} ligne${lignes.length > 1 ? 's' : ''})` : ''}
         </h2>
         {lignes.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-line-fort p-3 text-sm text-ink-2">
+          <p className="rounded-2xl border border-dashed border-line-fort p-3 text-sm text-ink-2">
             Touchez un produit pour l’ajouter. Chaque toucher ajoute 1.
           </p>
         ) : (
@@ -1583,8 +1583,8 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                 reglagesLigne = (
                   <div
                     id={`reglages-${ligne.cle}`}
-                    className={`rounded-xl border-2 p-2.5 transition-colors duration-500 ${
-                      eclaire ? 'border-accent bg-accent-doux' : 'border-accent bg-surface'
+                    className={`rounded-2xl border-2 p-2.5 transition-colors duration-500 ${
+                      eclaire ? 'border-transparent bg-accent-doux' : 'border-accent bg-surface'
                     }`}
                   >
                   <LigneDuBon
@@ -1633,7 +1633,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                         setLigneChoisie(r.cle);
                         setActif(`${r.cle}.quantite`);
                       }}
-                      className="mt-2 min-h-11 rounded-lg border-2 border-line-fort bg-surface px-3 text-sm font-medium text-ink"
+                      className="mt-2 min-h-11 rounded-xl border-2 border-transparent bg-segment-fond px-3 text-sm font-medium text-ink"
                     >
                       ＋ Autre viande
                     </button>
@@ -1648,8 +1648,8 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                   id={`bon-${ligne.cle}`}
                   style={{ scrollMarginTop: 8 }}
                   aria-current={ouverte ? 'true' : undefined}
-                  className={`max-w-full rounded-lg border-2 transition-colors duration-500 ${
-                    ouverte ? 'border-accent bg-accent-doux' : aCorriger ? 'border-alerte bg-surface' : 'border-line-fort bg-surface'
+                  className={`max-w-full rounded-xl border-2 transition-colors duration-500 ${
+                    ouverte ? 'border-transparent bg-accent-doux' : aCorriger ? 'border-alerte bg-surface' : 'border-transparent bg-segment-fond'
                   }`}
                 >
                   <LigneCarnet
@@ -1696,20 +1696,29 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
           if (actif === 'acompte') setActif(null);
         })
       }
-      className={`mt-2 min-h-12 w-full rounded-xl border-2 px-3 text-base font-medium ${
-        sansAcompteAccorde ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
+      className={`mt-1.5 min-h-10 w-full rounded-2xl border-2 px-3 text-sm font-medium ${
+        sansAcompteAccorde ? 'border-transparent bg-accent-doux text-accent' : 'border-transparent bg-segment-fond text-ink'
       }`}
     >
       {sansAcompteAccorde ? `Sans acompte — accord de ${accordSansAcompte.par}` : 'Sans acompte : code du gérant'}
     </button>
   );
   /* ------------------------------------- Montants : convenu, acompte, reste */
-  const paiement =
+  const choixMode = (
+    <>
+      <Choix compact actif={modePaiement === 'especes'} onClick={() => setModePaiement('especes')}>Espèces</Choix>
+      <Choix compact actif={modePaiement === 'virement'} onClick={() => setModePaiement('virement')}>Virement</Choix>
+    </>
+  );
+  // `avecMode` : « Espèces / Virement » sous l'acompte (téléphone) ; sinon ils sont
+  // posés par l'appelant, sur la ligne du titre (colonne de paiement, écran court).
+  const construirePaiement = (avecMode: boolean) =>
     cal && catalogue ? (
-      <div className="grid gap-3">
+      <div className="grid gap-2">
         <div>
           {remise ? (
             <ChampPave
+              compact
               libelle={`Prix convenu (accord de ${remise.par})`}
               valeur={totalConvenu === null ? null : formaterEuros(totalConvenu)}
               ouvert={actif === 'total'}
@@ -1718,7 +1727,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
           ) : (
             <button
               type="button"
-              className="min-h-12 text-left text-sm text-ink-2 underline underline-offset-2"
+              className="min-h-9 text-left text-xs text-ink-2 underline underline-offset-2"
               onClick={() => avecGerant('Prix convenu sous le tarif (réduction).', (d) => { setRemise(d); setActif('total'); })}
             >
               Prix convenu avec le client (accord du manager)
@@ -1727,20 +1736,20 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
         </div>
         <div>
           <ChampPave
+            compact
             libelle="Acompte"
             valeur={acompte === null ? null : formaterEuros(acompte)}
             ouvert={actif === 'acompte'}
             onBasculer={() => setActif(actif === 'acompte' ? null : 'acompte')}
             enErreur={signauxMontants.some((s) => s.niveau === 'bloquant' && champLocal(s.champ) === 'acompte')}
           />
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Choix actif={modePaiement === 'especes'} onClick={() => setModePaiement('especes')}>Espèces</Choix>
-            <Choix actif={modePaiement === 'virement'} onClick={() => setModePaiement('virement')}>Virement</Choix>
-          </div>
+          {avecMode ? <div className="mt-1.5 flex flex-wrap gap-2">{choixMode}</div> : null}
         </div>
         {rendre(signauxMontants)}
       </div>
     ) : null;
+  const paiement = construirePaiement(true);
+  const paiementColonne = construirePaiement(false);
 
   const libelleValider = envoi ? 'Enregistrement…' : modification ? 'Enregistrer les changements' : 'Valider la commande';
 
@@ -1784,7 +1793,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
     <div className="flex items-baseline justify-between gap-2" aria-live="polite">
       <span className="text-sm text-ink-2">Total à annoncer</span>
       <span
-        className={`chiffres rounded-lg px-1.5 text-4xl font-bold leading-tight transition-colors duration-500 ${
+        className={`chiffres rounded-xl px-1.5 text-4xl font-bold leading-tight transition-colors duration-500 ${
           eclair ? 'bg-accent-doux text-accent' : 'text-ink'
         }`}
       >
@@ -1865,10 +1874,10 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
     <div
       role="status"
       data-champ="photoEnAttente"
-      className={`mb-2 flex items-center gap-3 rounded-xl border-2 bg-accent-doux p-2 ${tentative ? 'border-alerte' : 'border-accent'}`}
+      className={`mb-2 flex items-center gap-3 rounded-2xl border-2 bg-accent-doux p-2 ${tentative ? 'border-alerte' : 'border-accent'}`}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={photoEnAttente.url} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
+      <img src={photoEnAttente.url} alt="" className="h-14 w-14 shrink-0 rounded-xl object-cover" />
       <p className="min-w-0 flex-1 text-base leading-tight text-ink">
         <b>{navigationPourPhoto(photoEnAttente).consigne}</b>
         <span className="block text-sm text-ink-2">La photo {photoEnAttente.id} ira sur le produit que vous touchez.</span>
@@ -1876,7 +1885,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
       <button
         type="button"
         onClick={() => setPhotoEnAttente(null)}
-        className="min-h-12 shrink-0 rounded-xl border-2 border-line-fort bg-surface px-3 text-sm font-medium text-ink"
+        className="min-h-12 shrink-0 rounded-2xl border-2 border-transparent bg-segment-fond px-3 text-sm font-medium text-ink"
       >
         Retirer la photo
       </button>
@@ -1921,7 +1930,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
   /* ------------------------------------------------ Trois étapes (19/11/2026) */
   /** 1 Client · 2 Produits · 3 Paiement : la même barre sur tablette et sur écran étroit. */
   const barreEtapes = (
-    <nav aria-label="Étapes de la commande" className="flex min-w-0 flex-1 gap-1 rounded-xl border-2 border-line-fort bg-surface p-0.5">
+    <nav aria-label="Étapes de la commande" className="flex min-w-0 flex-1 gap-1 rounded-2xl border-2 border-transparent bg-segment-fond p-0.5">
       {(
         [
           { n: 1, libelle: 'Client', fait: client.trim() !== '' && telephone !== '' && dateRetrait !== null && heureRetrait !== '', resume: client.trim() || null },
@@ -1934,13 +1943,13 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
           type="button"
           aria-current={etape === e.n ? 'step' : undefined}
           onClick={() => { setActif(null); setEtape(e.n); }}
-          className={`flex min-h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg px-2 text-left ${
+          className={`flex min-h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-2 text-left ${
             etape === e.n ? 'bg-[var(--segment-actif)] text-ink' : 'text-ink-2 hover:bg-surface-2'
           }`}
         >
           <span
             className={`chiffres flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-              etape === e.n ? 'bg-accent text-white' : e.fait ? 'bg-accent-doux text-accent' : 'border-2 border-line-fort text-ink-2'
+              etape === e.n ? 'bg-accent text-white' : e.fait ? 'bg-accent-doux text-accent' : 'border-2 border-transparent bg-segment-fond text-ink-2'
             }`}
             aria-hidden
           >
@@ -1962,8 +1971,8 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
    * colonne de droite ne garde que l'argent : l'acompte se voit tout de suite.
    */
   const puceBon = (actif: boolean) =>
-    `min-h-12 rounded-xl border-2 px-3 text-left text-base font-medium leading-tight ${
-      actif ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
+    `min-h-12 rounded-2xl border-2 px-3 text-left text-base font-medium leading-tight ${
+      actif ? 'border-transparent bg-accent-doux text-accent' : 'border-transparent bg-segment-fond text-ink'
     }`;
   const remarquesDuBon = (
     <div className="mt-4 grid gap-2 border-t-2 border-line-fort pt-3" role="group" aria-label="Remarque et options de la commande">
@@ -1982,7 +1991,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
         <button
           type="button"
           onClick={() => setRemarqueOuverte(true)}
-          className="rounded-lg border-l-4 border-accent bg-surface-2 px-3 py-2 text-left text-lg leading-snug text-ink"
+          className="rounded-xl border-l-4 border-accent bg-surface-2 px-3 py-2 text-left text-lg leading-snug text-ink"
         >
           <span className="font-bold">Remarque&nbsp;: </span>
           <span className="break-words">{remarques.trim()}</span>
@@ -2124,7 +2133,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                 /* ============================== Étape 1 : le client et le retrait */
                 // Une seule colonne, centrée : rien à comparer côte à côte ici. Le pavé du
                 // téléphone s'ouvre au centre, sous les champs, pas dans une colonne à part.
-                <section aria-label="Client et retrait" className="relative min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain rounded-2xl border border-line bg-surface">
+                <section aria-label="Client et retrait" className="relative min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain rounded-2xl border border-transparent bg-surface">
                   <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-center gap-5 p-5">
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="flex min-w-0 flex-col">
@@ -2132,7 +2141,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                         <input
                           id="commande-client"
                           ref={champClient}
-                          className={`min-h-14 w-full rounded-xl border-2 bg-surface px-3 text-lg text-ink placeholder:text-ink-3 ${
+                          className={`min-h-14 w-full rounded-2xl border-2 bg-surface px-3 text-lg text-ink placeholder:text-ink-3 ${
                             videNom ? 'border-alerte' : 'border-line-fort'
                           }`}
                           value={client}
@@ -2158,11 +2167,11 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                       </div>
                     </div>
                     {blocPave ? (
-                      <div className="mx-auto w-full max-w-sm rounded-2xl border-2 border-line-fort bg-surface p-3">{blocPave}</div>
+                      <div className="mx-auto w-full max-w-sm rounded-2xl border-2 border-transparent bg-segment-fond p-3">{blocPave}</div>
                     ) : null}
                     <div className="flex flex-wrap items-center gap-3">
                       <span className="text-sm font-semibold text-ink">Commande prise</span>
-                      <div role="group" aria-label="Commande prise" className="flex shrink-0 gap-0.5 rounded-xl border-2 border-line-fort bg-surface p-0.5">
+                      <div role="group" aria-label="Commande prise" className="flex shrink-0 gap-0.5 rounded-2xl border-2 border-transparent bg-segment-fond p-0.5">
                         <Segment actif={origine === 'comptoir'} onClick={() => choisirOrigine('comptoir')}>
                           Comptoir
                         </Segment>
@@ -2190,7 +2199,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                 </section>
               ) : etape === 2 ? (
                 /* ======================================= Étape 2 : les produits */
-                <section aria-label="Produits" className="relative flex min-h-0 min-w-0 flex-1 flex-col rounded-2xl border border-line bg-surface">
+                <section aria-label="Produits" className="relative flex min-h-0 min-w-0 flex-1 flex-col rounded-2xl border border-transparent bg-surface">
                   {grille(
                     true,
                     bandeauPhoto || signauxProduits.length > 0 ? (
@@ -2204,14 +2213,14 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                 </section>
               ) : (
                 /* ============================ Étape 3 : le bon relu, comme le carnet */
-                <section aria-label="Le bon à relire" className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain rounded-2xl border border-line bg-surface p-4">
+                <section aria-label="Le bon à relire" className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain rounded-2xl border border-transparent bg-surface p-4">
                   {bonCarnet}
                   {remarquesDuBon}
                   {/* Pavé de l'acompte ou du prix convenu : au centre du panneau, toujours entier à
                       l'écran ; le total et « Valider » restent visibles à droite. */}
                   {blocPave ? (
                     <div className="absolute inset-0 z-10 flex items-center justify-center overflow-y-auto overscroll-contain rounded-2xl bg-surface/90 p-4">
-                      <div className="w-full max-w-sm rounded-2xl border-2 border-line-fort bg-surface p-3 pb-1">{blocPave}</div>
+                      <div className="w-full max-w-sm rounded-2xl border-2 border-transparent bg-segment-fond p-3 pb-1">{blocPave}</div>
                     </div>
                   ) : null}
                   {voileGerant}
@@ -2223,7 +2232,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
               {etape === 1 ? null : (
               <aside
                 aria-label={etape === 3 ? 'Paiement' : 'Le bon et le pavé de saisie'}
-                className="flex min-h-0 w-[22rem] shrink-0 flex-col overflow-hidden rounded-2xl border-2 border-line-fort bg-surface lg:w-[27rem]"
+                className="flex min-h-0 w-[22rem] shrink-0 flex-col overflow-hidden rounded-2xl border-2 border-transparent bg-segment-fond lg:w-[27rem]"
               >
                 {blocPave && etape === 2 ? (
                   <div className="flex-none border-b border-line p-3 pb-1">
@@ -2246,59 +2255,80 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                     </div>
                   </div>
                 ) : (
-                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2.5">
                   {(
                     <>
                       <section>
-                        <h2 className={TITRE}>Paiement</h2>
-                        {paiement}
+                        <div className="mb-1.5 flex items-center justify-between gap-2">
+                          <h2 className="text-base font-semibold text-ink">Paiement</h2>
+                          <div className="flex gap-1.5">{choixMode}</div>
+                        </div>
+                        {paiementColonne}
                         {boutonPasAcompte}
                       </section>
                     </>
                   )}
                 </div>
                 )}
-                <div className="flex-none border-t border-line bg-surface p-3">
-                  <div className="flex items-end justify-between gap-2" aria-live="polite">
-                    <div className="min-w-0 text-sm leading-tight text-ink-2">
-                      <div>Total à annoncer</div>
-                      <div className="chiffres truncate">
-                        {lignes.length === 0 ? 'aucun produit' : texteReste}
-                      </div>
-                    </div>
-                    <span
-                      className={`chiffres shrink-0 rounded-lg px-1.5 text-3xl font-bold leading-tight transition-colors duration-500 ${
-                        eclair ? 'bg-accent-doux text-accent' : 'text-ink'
-                      }`}
-                    >
-                      {texteTotal.montant ?? <span className="text-xl font-semibold text-ink-2">{texteTotal.suite}</span>}
-                      {texteTotal.montant && texteTotal.suite ? (
-                        <span className="ml-1 block text-right text-xs font-medium text-ink-2">{texteTotal.suite}</span>
-                      ) : null}
-                    </span>
-                  </div>
+                <div className="flex-none border-t border-line bg-surface p-2.5">
                   {etape === 3 ? (
                     <>
                       {refusServeur ? <div className="max-h-48 overflow-y-auto">{rendre([refusServeur])}</div> : null}
-                      {choixVendeur ? <div className="mt-2">{choixVendeur}</div> : null}
+                      {choixVendeur ? <div>{choixVendeur}</div> : null}
                       {acompteARepondre ? (
-                        <p className="mt-2 text-sm font-medium text-ink">
-                          Un acompte est obligatoire : saisissez le montant reçu.
+                        <p className="mt-1.5 text-xs font-medium text-ink">
+                          Un acompte est obligatoire : saisissez le montant reçu.
                         </p>
                       ) : null}
-                      <Bouton
-                        variante="principal"
-                        className="mt-2 min-h-14 w-full text-lg"
-                        disabled={envoi || acompteARepondre}
-                        onClick={() => void valider()}
-                      >
-                        {libelleValider}
-                      </Bouton>
+                      {/* Total à gauche, validation à droite : une seule ligne, l'acompte reste en vue. */}
+                      <div className="mt-1.5 flex items-center gap-2.5" aria-live="polite">
+                        <div className="shrink-0 leading-tight">
+                          <div className="text-xs text-ink-2">Total à annoncer</div>
+                          <span
+                            className={`chiffres rounded-xl text-2xl font-bold transition-colors duration-500 ${
+                              eclair ? 'bg-accent-doux text-accent' : 'text-ink'
+                            }`}
+                          >
+                            {texteTotal.montant ?? <span className="text-lg font-semibold text-ink-2">{texteTotal.suite}</span>}
+                          </span>
+                          <div className="chiffres text-xs text-ink-2">
+                            {lignes.length === 0 ? 'aucun produit' : texteReste}
+                          </div>
+                        </div>
+                        <Bouton
+                          variante="principal"
+                          className="min-h-12 flex-1 text-base"
+                          disabled={envoi || acompteARepondre}
+                          onClick={() => void valider()}
+                        >
+                          {libelleValider}
+                        </Bouton>
+                      </div>
                     </>
                   ) : (
-                    <Bouton variante="principal" className="mt-2 min-h-14 w-full text-lg" onClick={() => { setActif(null); setEtape(3); }}>
-                      Continuer&nbsp;: le paiement
-                    </Bouton>
+                    <>
+                      <div className="flex items-end justify-between gap-2" aria-live="polite">
+                        <div className="min-w-0 text-sm leading-tight text-ink-2">
+                          <div>Total à annoncer</div>
+                          <div className="chiffres truncate">
+                            {lignes.length === 0 ? 'aucun produit' : texteReste}
+                          </div>
+                        </div>
+                        <span
+                          className={`chiffres shrink-0 rounded-xl px-1.5 text-2xl font-bold leading-tight transition-colors duration-500 ${
+                            eclair ? 'bg-accent-doux text-accent' : 'text-ink'
+                          }`}
+                        >
+                          {texteTotal.montant ?? <span className="text-xl font-semibold text-ink-2">{texteTotal.suite}</span>}
+                          {texteTotal.montant && texteTotal.suite ? (
+                            <span className="ml-1 block text-right text-xs font-medium text-ink-2">{texteTotal.suite}</span>
+                          ) : null}
+                        </span>
+                      </div>
+                      <Bouton variante="principal" className="mt-1.5 min-h-12 w-full text-base" onClick={() => { setActif(null); setEtape(3); }}>
+                        Continuer&nbsp;: le paiement
+                      </Bouton>
+                    </>
                   )}
                 </div>
               </aside>
@@ -2671,7 +2701,7 @@ function RecapManques({
               <button
                 type="button"
                 onClick={() => onAller(m)}
-                className="w-full rounded-lg px-1 py-1.5 text-left text-base font-semibold text-ink hover:bg-surface-2"
+                className="w-full rounded-xl px-1 py-1.5 text-left text-base font-semibold text-ink hover:bg-surface-2"
               >
                 • {libelle(m).titre}
                 {/* Refus de règle (mardi, minimum…) : sa phrase du domaine, sans bouton (28/10/2026). */}
@@ -2685,7 +2715,7 @@ function RecapManques({
         <button
           type="button"
           onClick={() => (manques[0] ? onAller(manques[0]) : onFermer())}
-          className="mt-4 min-h-12 w-full rounded-xl bg-accent text-base font-semibold text-white active:bg-accent-fort"
+          className="mt-4 min-h-12 w-full rounded-2xl bg-accent text-base font-semibold text-white active:bg-accent-fort"
         >
           Compléter
         </button>
@@ -2736,14 +2766,14 @@ function FenetreAbandon({
             type="button"
             autoFocus
             onClick={onContinuer}
-            className="min-h-12 w-full rounded-xl bg-accent text-base font-semibold text-white active:bg-accent-fort"
+            className="min-h-12 w-full rounded-2xl bg-accent text-base font-semibold text-white active:bg-accent-fort"
           >
             Continuer la commande
           </button>
           <button
             type="button"
             onClick={onAbandonner}
-            className="min-h-12 w-full rounded-xl border-2 border-line-fort bg-surface text-base font-medium text-bloquant"
+            className="min-h-12 w-full rounded-2xl border-2 border-transparent bg-segment-fond text-base font-medium text-bloquant"
           >
             Abandonner
           </button>
@@ -2778,8 +2808,8 @@ function ChoixVendeur({
   const [libre, setLibre] = useState(equipe.length === 0);
   const [saisi, setSaisi] = useState('');
   const pastille = (actif: boolean) =>
-    `min-h-11 rounded-full border-2 px-3.5 text-base font-medium ${
-      actif ? 'border-sortie bg-sortie text-sortie-texte' : 'border-line-fort bg-surface text-ink'
+    `min-h-10 rounded-full border-2 px-3 text-sm font-medium ${
+      actif ? 'border-sortie bg-sortie text-sortie-texte' : 'border-transparent bg-segment-fond text-ink'
     }`;
   const ecrit = () => {
     const nom = saisi.trim();
@@ -2793,9 +2823,9 @@ function ChoixVendeur({
     <div
       role="group"
       aria-label={titre}
-      className={`rounded-xl border-2 p-2 ${manque ? 'border-alerte bg-alerte-doux' : vendeur ? 'border-line' : 'border-accent bg-accent-doux/40'}`}
+      className={`rounded-2xl border-2 p-1.5 ${manque ? 'border-alerte bg-alerte-doux' : vendeur ? 'border-line' : 'border-transparent bg-accent-doux/40'}`}
     >
-      <p className="mb-1.5 text-sm font-semibold text-ink">
+      <p className="mb-1 text-xs font-semibold text-ink">
         {titre}
         {vendeur ? <span className="ml-1 font-bold text-accent">— {vendeur}</span> : null}
       </p>
@@ -2813,7 +2843,7 @@ function ChoixVendeur({
         <button
           type="button"
           onClick={() => setLibre((v) => !v)}
-          className="min-h-11 rounded-full px-3 text-sm text-ink-2 underline underline-offset-2"
+          className="min-h-10 rounded-full px-2.5 text-xs text-ink-2 underline underline-offset-2"
         >
           Autre prénom…
         </button>
@@ -2835,7 +2865,7 @@ function ChoixVendeur({
             aria-label="Écrire votre prénom"
             className={`${CHAMP_TEXTE} min-w-0 flex-1`}
           />
-          <button type="button" onClick={ecrit} className="min-h-11 shrink-0 rounded-xl bg-segment-fond px-4 text-base font-semibold text-ink">
+          <button type="button" onClick={ecrit} className="min-h-11 shrink-0 rounded-2xl bg-segment-fond px-4 text-base font-semibold text-ink">
             OK
           </button>
         </div>
@@ -2909,12 +2939,12 @@ function BlocGouts({
   const titre = (etage: number) =>
     attendus > 1 ? `Goût de l’étage ${etage + 1}` : viande ? 'Quelle viande\u00a0?' : choix.liste === 'entremet' ? 'Quel entremet\u00a0?' : 'Goût\u00a0?';
   const pastille = (actif: boolean) =>
-    `min-h-11 rounded-lg border-2 px-2.5 text-sm font-medium leading-tight ${
-      actif ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
+    `min-h-11 rounded-xl border-2 px-2.5 text-sm font-medium leading-tight ${
+      actif ? 'border-transparent bg-accent-doux text-accent' : 'border-transparent bg-segment-fond text-ink'
     }`;
 
   return (
-    <div className="mt-2 grid gap-2 rounded-lg border-l-4 border-accent bg-surface-2 px-2.5 py-2">
+    <div className="mt-2 grid gap-2 rounded-xl border-l-4 border-accent bg-surface-2 px-2.5 py-2">
       {replie ? (
         <p className="flex flex-wrap items-center gap-x-2 text-sm font-semibold text-ink">
           <span>
@@ -2923,7 +2953,7 @@ function BlocGouts({
           <button
             type="button"
             onClick={() => setChanger(true)}
-            className="min-h-11 rounded-lg px-1 text-sm font-normal text-ink-2 underline underline-offset-2"
+            className="min-h-11 rounded-xl px-1 text-sm font-normal text-ink-2 underline underline-offset-2"
           >
             Changer le goût
           </button>
@@ -2947,12 +2977,12 @@ function BlocGouts({
                 </button>
               ))}
               {!ferme && noms.length > GOUTS_VISIBLES ? (
-                <button type="button" onClick={() => setTout((v) => !v)} className="min-h-11 rounded-lg px-2.5 text-sm text-ink-2 underline underline-offset-2">
+                <button type="button" onClick={() => setTout((v) => !v)} className="min-h-11 rounded-xl px-2.5 text-sm text-ink-2 underline underline-offset-2">
                   {tout ? 'Moins' : `+ ${noms.length - GOUTS_VISIBLES} autres`}
                 </button>
               ) : null}
               {ferme ? null : (
-                <button type="button" onClick={() => setLibre(libre === etage ? null : etage)} className="min-h-11 rounded-lg px-2.5 text-sm text-ink-2 underline underline-offset-2">
+                <button type="button" onClick={() => setLibre(libre === etage ? null : etage)} className="min-h-11 rounded-xl px-2.5 text-sm text-ink-2 underline underline-offset-2">
                   Autre…
                 </button>
               )}
@@ -3048,7 +3078,7 @@ function BlocFormes({
   const apercu = formesAImprimer(ligne.formes);
 
   return (
-    <div className="grid gap-2 rounded-lg border-l-4 border-accent bg-surface-2 px-2.5 py-2">
+    <div className="grid gap-2 rounded-xl border-l-4 border-accent bg-surface-2 px-2.5 py-2">
       <div>
         <p className="mb-1 text-sm font-semibold text-ink">Combien de chiffres ou lettres&nbsp;?</p>
         <div role="group" aria-label="Nombre de chiffres ou lettres" className="grid grid-cols-5 gap-1">
@@ -3061,8 +3091,8 @@ function BlocFormes({
                 onChange(choisirNombreSymboles(ligne, k));
                 fermerPave();
               }}
-              className={`chiffres min-h-12 rounded-lg border-2 text-lg font-semibold ${
-                n === k ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
+              className={`chiffres min-h-12 rounded-xl border-2 text-lg font-semibold ${
+                n === k ? 'border-transparent bg-accent-doux text-accent' : 'border-transparent bg-segment-fond text-ink'
               }`}
             >
               {k}
@@ -3072,8 +3102,8 @@ function BlocFormes({
             type="button"
             aria-expanded={paveOuvert}
             onClick={ouvrirPave}
-            className={`min-h-12 rounded-lg border-2 text-sm ${
-              horsBoutons ? 'chiffres border-accent bg-accent-doux font-semibold text-accent' : 'border-line bg-surface text-ink-2'
+            className={`min-h-12 rounded-xl border-2 text-sm ${
+              horsBoutons ? 'chiffres border-transparent bg-accent-doux font-semibold text-accent' : 'border-line bg-surface text-ink-2'
             }`}
           >
             {horsBoutons ? n : 'Autre'}
@@ -3246,7 +3276,7 @@ function LigneDuBon({
                 type="button"
                 onClick={onRetirerPhoto}
                 aria-label={`Retirer la photo ${ligne.photoModele} (la ligne reste)`}
-                className="min-h-12 rounded-xl px-2 text-sm text-ink-2 underline underline-offset-2"
+                className="min-h-12 rounded-2xl px-2 text-sm text-ink-2 underline underline-offset-2"
               >
                 Retirer la photo
               </button>
@@ -3257,7 +3287,7 @@ function LigneDuBon({
           <button
             type="button"
             onClick={onRetirer}
-            className="min-h-12 min-w-12 shrink-0 rounded-xl border border-line text-2xl leading-none text-ink-3 hover:text-bloquant"
+            className="min-h-12 min-w-12 shrink-0 rounded-2xl border border-line text-2xl leading-none text-ink-3 hover:text-bloquant"
             aria-label="Retirer la ligne"
           >
             ×
@@ -3285,8 +3315,8 @@ function LigneDuBon({
                       { gateauLibre: false, gouts: [], decorations: [] },
                 )
               }
-              className={`min-h-11 min-w-16 rounded-lg border-2 px-3 text-base font-semibold ${
-                ligne.gateauLibre === v ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
+              className={`min-h-11 min-w-16 rounded-xl border-2 px-3 text-base font-semibold ${
+                ligne.gateauLibre === v ? 'border-transparent bg-accent-doux text-accent' : 'border-transparent bg-segment-fond text-ink'
               }`}
             >
               {v ? 'Oui' : 'Non'}
@@ -3323,8 +3353,8 @@ function LigneDuBon({
                     onTaille(t);
                     setActif(null);
                   }}
-                  className={`chiffres min-h-11 rounded-lg border-2 text-base font-semibold leading-tight ${
-                    tailleCourante === t ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
+                  className={`chiffres min-h-11 rounded-xl border-2 text-base font-semibold leading-tight ${
+                    tailleCourante === t ? 'border-transparent bg-accent-doux text-accent' : 'border-transparent bg-segment-fond text-ink'
                   }`}
                 >
                   {t}
@@ -3346,9 +3376,9 @@ function LigneDuBon({
                 }
                 basculer('quantite');
               }}
-              className={`min-h-11 rounded-lg border-2 text-sm ${
+              className={`min-h-11 rounded-xl border-2 text-sm ${
                 !ligne.origineSurCommande && ligne.quantite !== null && !taillesTriees.includes(ligne.quantite)
-                  ? 'chiffres border-accent bg-accent-doux font-semibold text-accent'
+                  ? 'chiffres border-transparent bg-accent-doux font-semibold text-accent'
                   : 'border-line bg-surface text-ink-2'
               }`}
             >
@@ -3385,8 +3415,8 @@ function LigneDuBon({
                   type="button"
                   aria-pressed={choisie}
                   onClick={() => onChange({ forme: fo })}
-                  className={`min-h-12 rounded-lg border-2 text-lg font-semibold ${
-                    choisie ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink'
+                  className={`min-h-12 rounded-xl border-2 text-lg font-semibold ${
+                    choisie ? 'border-transparent bg-accent-doux text-accent' : 'border-transparent bg-segment-fond text-ink'
                   }`}
                 >
                   {LIBELLES_FORME[fo]}
@@ -3498,7 +3528,7 @@ function LigneDuBon({
                   key={o.id}
                   type="button"
                   onClick={() => onChange({ precision: ligne.precision ? `${ligne.precision}, ${o.nom}` : o.nom })}
-                  className="min-h-10 rounded-full border border-line-fort bg-surface px-3 text-sm text-ink-2"
+                  className="min-h-10 rounded-full border border-transparent bg-segment-fond px-3 text-sm text-ink-2"
                 >
                   {o.nom}
                 </button>
@@ -3532,7 +3562,7 @@ function LigneDuBon({
             const so = sortieDe(s);
             const libelle = so.libelle ?? so.autre;
             return libelle ? (
-              <span className="inline-flex min-h-14 items-center rounded-xl border-2 border-line-fort px-4 text-base text-ink">
+              <span className="inline-flex min-h-14 items-center rounded-2xl border-2 border-transparent bg-segment-fond px-4 text-base text-ink">
                 {libelle}
               </span>
             ) : undefined;
@@ -3648,10 +3678,10 @@ function GrilleProduits({
             aria-pressed={rayon === b.rayon}
             title={b.rayon}
             onClick={() => onRayon(rayon === b.rayon ? null : b.rayon)}
-            className={`min-h-12 shrink-0 rounded-xl border-2 px-4 text-lg font-bold ${
+            className={`min-h-12 shrink-0 rounded-2xl border-2 px-4 text-lg font-bold ${
               rayon === b.rayon
-                ? 'border-accent bg-accent text-white shadow'
-                : 'border-accent bg-accent-doux text-accent'
+                ? 'border-transparent bg-accent text-white shadow'
+                : 'border-transparent bg-accent-doux text-accent'
             }`}
           >
             {b.libelle}
@@ -3662,7 +3692,7 @@ function GrilleProduits({
             type="button"
             aria-expanded={rayonsOuverts}
             onClick={() => onRayonsOuverts(!rayonsOuverts)}
-            className={`min-h-12 rounded-xl border-2 px-3 text-sm font-medium ${autreChoisie ? 'border-accent bg-accent-doux text-accent' : 'border-line-fort bg-surface text-ink-2'}`}
+            className={`min-h-12 rounded-2xl border-2 px-3 text-sm font-medium ${autreChoisie ? 'border-transparent bg-accent-doux text-accent' : 'border-transparent bg-segment-fond text-ink-2'}`}
           >
             {autreChoisie?.libelle ?? 'Familles'} {rayonsOuverts ? '▴' : '▾'}
           </button>
@@ -3670,14 +3700,14 @@ function GrilleProduits({
         <button
           type="button"
           onClick={onPhotos}
-          className="min-h-12 shrink-0 rounded-xl border-2 border-accent bg-surface px-4 text-lg font-bold text-accent"
+          className="min-h-12 shrink-0 rounded-2xl border-2 border-accent bg-surface px-4 text-lg font-bold text-accent"
         >
           Photos
         </button>
         <button
           type="button"
           onClick={onAutreDemande}
-          className="min-h-12 rounded-xl border-2 border-line-fort bg-surface px-3 text-sm font-medium text-ink"
+          className="min-h-12 rounded-2xl border-2 border-transparent bg-segment-fond px-3 text-sm font-medium text-ink"
         >
           Autre demande
         </button>
@@ -3720,7 +3750,7 @@ function GrilleProduits({
           const r = t.raccourci;
           const eclaire = eclair?.produitId === r.cle || t.tailles.some((x) => eclair?.produitId === x.fiche.produit.id);
           const cadre = eclaire
-            ? 'border-accent bg-accent-doux ring-4 ring-accent/40'
+            ? 'border-transparent bg-accent-doux ring-4 ring-accent/40'
             : t.auBon > 0
               ? 'border-accent bg-surface'
               : 'border-line bg-surface';
@@ -3731,7 +3761,7 @@ function GrilleProduits({
                   type="button"
                   onClick={() => onRaccourci(t)}
                   aria-label={`${r.libelle}, choisir la taille${t.auBon > 0 ? `, ${t.auBon} au bon` : ''}`}
-                  className={`relative flex w-full flex-col justify-between rounded-xl border-2 text-left transition duration-300 hover:bg-surface-2 active:scale-[0.97] ${carte} ${cadre}`}
+                  className={`relative flex w-full flex-col justify-between rounded-2xl border-2 text-left transition duration-300 hover:bg-surface-2 active:scale-[0.97] ${carte} ${cadre}`}
                 >
                   <span className={nomCarte(r.libelle)}>{r.libelle}</span>
                   <span className="chiffres text-sm leading-tight text-ink-2">
@@ -3748,7 +3778,7 @@ function GrilleProduits({
               <div
                 role="group"
                 aria-label={r.libelle}
-                className={`relative flex w-full flex-col justify-between rounded-xl border-2 transition duration-300 ${carte} ${cadre}`}
+                className={`relative flex w-full flex-col justify-between rounded-2xl border-2 transition duration-300 ${carte} ${cadre}`}
               >
                 <span className={nomCarte(r.libelle)}>{r.libelle}</span>
                 <span className="mt-1 flex flex-wrap gap-1.5">
@@ -3758,7 +3788,7 @@ function GrilleProduits({
                       type="button"
                       onClick={() => onToucher(x.fiche)}
                       aria-label={`${libelleProduit(x.fiche)}, ${formaterEuros(x.fiche.prix.prixCentimes)}`}
-                      className={`chiffres min-h-11 flex-1 rounded-lg border-2 border-line-fort bg-surface px-1.5 py-0.5 text-sm leading-tight text-ink hover:bg-surface-2 active:scale-[0.97] ${t.tailles.length > 2 ? 'min-w-16' : ''}`}
+                      className={`chiffres min-h-11 flex-1 rounded-xl border-2 border-transparent bg-segment-fond px-1.5 py-0.5 text-sm leading-tight text-ink hover:bg-surface-2 active:scale-[0.97] ${t.tailles.length > 2 ? 'min-w-16' : ''}`}
                     >
                       <span className="block font-bold">{x.libelle}</span>
                       <span className="block text-ink-2">{formaterEuros(x.fiche.prix.prixCentimes)}</span>
@@ -3783,11 +3813,11 @@ function GrilleProduits({
                 disabled={indisponible}
                 onClick={() => onToucher(f)}
                 aria-label={`${libelleProduit(f)}${pastille ? `, ${pastille} au bon` : ''}${indisponible ? ', ajoutez d’abord un gâteau' : ''}`}
-                className={`relative flex w-full flex-col justify-between rounded-xl border-2 text-left transition duration-300 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 ${
+                className={`relative flex w-full flex-col justify-between rounded-2xl border-2 text-left transition duration-300 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 ${
                   tablette ? 'h-full min-h-16 gap-0.5 px-2.5 py-1.5' : 'h-full min-h-20 gap-1 px-3 py-2'
                 } ${
                   eclaire
-                    ? 'border-accent bg-accent-doux ring-4 ring-accent/40'
+                    ? 'border-transparent bg-accent-doux ring-4 ring-accent/40'
                     : q !== null
                       ? 'border-accent bg-surface'
                       : 'border-line bg-surface hover:bg-surface-2'
@@ -4148,7 +4178,7 @@ function Confirmation({
  */
 function VignettePhotoLigne({ id }: { id: string }) {
   const url = useUrlPhoto(id);
-  const classe = 'h-12 w-12 shrink-0 rounded-lg border border-line object-cover';
+  const classe = 'h-12 w-12 shrink-0 rounded-xl border border-line object-cover';
   if (!url) return <span aria-hidden="true" className={`${classe} bg-surface-2`} />;
   // Images déjà allégées (640 px) : servies telles quelles, sans passage par l'optimiseur.
   // eslint-disable-next-line @next/next/no-img-element
@@ -4160,20 +4190,20 @@ function BoutonSortie({ onClick, children }: { onClick: () => void; children: Re
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex min-h-14 w-full items-center justify-center rounded-xl border-2 border-sortie bg-surface px-5 text-lg font-semibold text-sortie sm:w-auto"
+      className="inline-flex min-h-14 w-full items-center justify-center rounded-2xl border-2 border-sortie bg-surface px-5 text-lg font-semibold text-sortie sm:w-auto"
     >
       {children}
     </button>
   );
 }
 
-function Choix({ actif, onClick, children }: { actif: boolean; onClick: () => void; children: ReactNode }) {
+function Choix({ actif, onClick, children, compact = false }: { actif: boolean; onClick: () => void; children: ReactNode; compact?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`min-h-12 rounded-xl border-2 px-4 text-base ${
-        actif ? 'border-accent bg-accent-doux font-medium text-accent' : 'border-line-fort bg-surface text-ink-2'
+      className={`rounded-2xl border-2 ${compact ? 'min-h-10 px-3 text-sm' : 'min-h-12 px-4 text-base'} ${
+        actif ? 'border-transparent bg-accent-doux font-medium text-accent' : 'border-transparent bg-segment-fond text-ink-2'
       }`}
     >
       {children}
@@ -4242,17 +4272,17 @@ function BoutonBande({
   const bord = enErreur
     ? 'border-alerte bg-surface'
     : actif
-      ? 'border-accent bg-accent-doux'
+      ? 'border-transparent bg-accent-doux'
       : aFaire
         ? 'border-accent bg-surface'
-        : 'border-line-fort bg-surface';
+        : 'border-transparent bg-segment-fond';
   return (
     <button
       type="button"
       aria-expanded={actif}
       aria-label={ariaLabel}
       onClick={onClick}
-      className={`flex min-h-12 min-w-0 items-center gap-2 rounded-xl border-2 px-3 text-left ${bord} ${className}`}
+      className={`flex min-h-12 min-w-0 items-center gap-2 rounded-2xl border-2 px-3 text-left ${bord} ${className}`}
     >
       <span className="shrink-0 text-sm text-ink-2">{libelle}</span>
       <span className={`chiffres min-w-0 flex-1 truncate text-right text-base font-semibold ${valeur === null ? 'text-accent' : 'text-ink'}`}>
@@ -4269,7 +4299,7 @@ function Segment({ actif, onClick, children }: { actif: boolean; onClick: () => 
       type="button"
       aria-pressed={actif}
       onClick={onClick}
-      className={`min-h-10 rounded-lg px-3 text-sm ${actif ? 'bg-accent-doux font-semibold text-accent' : 'text-ink-2'}`}
+      className={`min-h-10 rounded-xl px-3 text-sm ${actif ? 'bg-accent-doux font-semibold text-accent' : 'text-ink-2'}`}
     >
       {children}
     </button>
@@ -4282,7 +4312,7 @@ function Puce({ actif, onClick, children }: { actif: boolean; onClick: () => voi
       type="button"
       aria-pressed={actif}
       onClick={onClick}
-      className={`min-h-10 shrink-0 whitespace-nowrap rounded-full border-2 px-3 text-sm ${actif ? 'border-accent bg-accent-doux font-medium text-accent' : 'border-line-fort bg-surface text-ink-2'}`}
+      className={`min-h-10 shrink-0 whitespace-nowrap rounded-full border-2 px-3 text-sm ${actif ? 'border-transparent bg-accent-doux font-medium text-accent' : 'border-transparent bg-segment-fond text-ink-2'}`}
     >
       {children}
     </button>

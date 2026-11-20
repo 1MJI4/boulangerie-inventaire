@@ -44,7 +44,7 @@ export function GestionParcours({
   };
 
   return (
-    <section className="sans-impression mt-4 rounded-xl border border-line bg-surface">
+    <section className="sans-impression mt-4 rounded-2xl border border-transparent bg-surface">
       <button
         type="button"
         onClick={() => setOuvert((o) => !o)}
@@ -95,20 +95,20 @@ export function GestionParcours({
                     onKeyDown={(e) => e.key === 'Enter' && valider()}
                     placeholder="Nom du parcours (ex. tour du matin)"
                     aria-label="Nom du parcours"
-                    className="h-11 min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 text-sm text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none"
+                    className="h-11 min-w-0 flex-1 rounded-xl border border-transparent bg-surface px-3 text-sm text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none"
                   />
                   <button
                     type="button"
                     onClick={valider}
                     disabled={!enregistrable}
-                    className="inline-flex min-h-11 items-center rounded-lg bg-accent px-4 text-sm font-medium text-white hover:bg-accent-fort disabled:bg-ink-3 disabled:opacity-60"
+                    className="inline-flex min-h-11 items-center rounded-xl bg-accent px-4 text-sm font-medium text-white hover:bg-accent-fort disabled:bg-ink-3 disabled:opacity-60"
                   >
                     Enregistrer
                   </button>
                   <button
                     type="button"
                     onClick={onReinitialiserOrdre}
-                    className="inline-flex min-h-11 items-center rounded-lg border border-line px-3 text-sm text-ink-2 hover:bg-surface-2"
+                    className="inline-flex min-h-11 items-center rounded-xl border border-line px-3 text-sm text-ink-2 hover:bg-surface-2"
                   >
                     Repartir de zéro
                   </button>
@@ -130,8 +130,8 @@ export function GestionParcours({
                   return (
                     <li
                       key={p.id}
-                      className={`rounded-lg border p-3 ${
-                        parDefaut ? 'border-accent bg-accent-doux/40' : 'border-line'
+                      className={`rounded-xl border p-3 ${
+                        parDefaut ? 'border-transparent bg-accent-doux/40' : 'border-line'
                       }`}
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -151,17 +151,17 @@ export function GestionParcours({
                           <button
                             type="button"
                             onClick={() => onAppliquer(p.id)}
-                            className="min-h-9 rounded-lg border border-line px-2.5 text-xs font-medium text-ink-2 hover:border-line-fort hover:text-ink"
+                            className="min-h-9 rounded-xl border border-line px-2.5 text-xs font-medium text-ink-2 hover:bg-line-fort/20 hover:text-ink"
                           >
                             Utiliser
                           </button>
                           <button
                             type="button"
                             onClick={() => onDefinirParDefaut(parDefaut ? null : p.id)}
-                            className={`min-h-9 rounded-lg border px-2.5 text-xs font-medium ${
+                            className={`min-h-9 rounded-xl border px-2.5 text-xs font-medium ${
                               parDefaut
-                                ? 'border-accent bg-accent text-white'
-                                : 'border-line text-ink-2 hover:border-line-fort hover:text-ink'
+                                ? 'border-transparent bg-accent text-white'
+                                : 'border-line text-ink-2 hover:bg-line-fort/20 hover:text-ink'
                             }`}
                           >
                             {parDefaut ? 'Par défaut' : 'Par défaut'}
@@ -171,7 +171,7 @@ export function GestionParcours({
                             onClick={() => onRemplacer(p.id)}
                             disabled={!enregistrable}
                             title="Remplacer par le trajet d’aujourd’hui"
-                            className="min-h-9 rounded-lg border border-line px-2.5 text-xs text-ink-2 hover:border-line-fort hover:text-ink disabled:opacity-40"
+                            className="min-h-9 rounded-xl border border-line px-2.5 text-xs text-ink-2 hover:bg-line-fort/20 hover:text-ink disabled:opacity-40"
                           >
                             Mettre à jour
                           </button>
@@ -179,7 +179,7 @@ export function GestionParcours({
                             type="button"
                             onClick={() => onSupprimer(p.id)}
                             aria-label={`Supprimer ${p.nom}`}
-                            className="min-h-9 rounded-lg border border-line px-2.5 text-xs text-ink-3 hover:border-alerte hover:text-alerte"
+                            className="min-h-9 rounded-xl border border-line px-2.5 text-xs text-ink-3 hover:border-alerte hover:text-alerte"
                           >
                             Supprimer
                           </button>

@@ -10,7 +10,8 @@
 // qu'il ira décrocher du rouleau.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Alerte, Bouton, Puce } from '@/components/ui';
+import Link from 'next/link';
+import { Alerte, Bouton } from '@/components/ui';
 import { destinationsDeCommande, dessinerTicket, type Destination } from '@/lib/ticketCanvas';
 import { enBase64, pngMonochrome, zlibNavigateur } from '@/lib/pngMonochrome';
 import type { Commande } from '@/lib/commandes';
@@ -29,12 +30,6 @@ type Travail = {
 };
 
 type EtatImprimante = { statusCode: string; vueLe: string } | null;
-
-const LIBELLE_STATUT: Record<string, string> = {
-  en_attente: 'en file',
-  remis: 'en train d’imprimer',
-  imprime: 'sorti',
-};
 
 /** Nom d'un bon à l'écran, sans capitales criées (les capitales restent sur le papier). */
 const NOM_BON: Record<string, string> = {
@@ -65,15 +60,18 @@ function Rouet() {
 export function ApercuReseau({
   commande,
   onImprime,
-  apresImpression,
-  pendantImpression,
+  haut,
+  whatsapp,
+  secours,
 }: {
   commande: Commande;
   onImprime?: () => void;
-  /** Boutons de la suite (« Nouvelle commande », « Accueil »…), montrés dès le dépôt dans la file. */
-  apresImpression?: ReactNode;
-  /** Une chose utile à faire pendant que ça sort (copier la confirmation…). */
-  pendantImpression?: ReactNode;
+  /** En-tête de l'écran (retour, titre, carte de la commande), au-dessus des colonnes. */
+  haut?: ReactNode;
+  /** Bouton « Copier pour WhatsApp », toujours à côté du bouton principal. */
+  whatsapp?: ReactNode;
+  /** Lien de secours en pied (« Imprimante en panne ? Imprimer sur papier »). */
+  secours?: ReactNode;
 }) {
   const conteneur = useRef<HTMLDivElement>(null);
   // R74 : les papiers de CETTE commande — client, bureau, magasin, puis un bon
@@ -99,6 +97,9 @@ export function ApercuReseau({
   const [lot, setLot] = useState<LotSuivi | null>(null);
   const lotRef = useRef<LotSuivi | null>(null);
   const vusRef = useRef(new Set<number>());
+  // Le bon montré dans l'aperçu : celui qu'on touche dans la liste ; pendant
+  // l'impression, celui qui sort.
+  const [choix, setChoix] = useState<Destination | null>(null);
 
   // Le dessin se fait une fois, à l'affichage. Les canvas sont insérés tels
   // quels dans la page : aucune conversion, donc aucune occasion de diverger.
@@ -280,9 +281,6 @@ export function ApercuReseau({
   // Bloqué : rien n'a bougé depuis un moment. On rend le bouton pour relancer.
   const bloque = enCours && dernierProgres > 0 && Date.now() - dernierProgres > BLOQUE_APRES_MS;
   const verrouille = envoi || (enCours && !bloque);
-  // Dès que les tickets sont dans la file, la suite est proposée : rien à
-  // attendre devant l'écran, ils sortent tout seuls.
-  const deposes = vuEnDirect && travaux.length > 0 && !envoi && !bloque;
   const clientSorti = travaux.some((t) => t.destination === 'CLIENT' && t.statut === 'imprime');
   const remplissage = envoi ? 0.04 : progression(travaux, dernierProgres, horloge);
   const lotAffiche = useMemo<LotImprime | null>(() => {
@@ -291,109 +289,150 @@ export function ApercuReseau({
     return tickets.length ? { cle: lot.cle, tickets, debut: lot.debut, dureeMs: lot.dureeMs, fini: lot.fini } : null;
   }, [lot, papiers]);
 
+  // L'aperçu : le bon touché dans la liste, ou celui qui est en train de sortir.
+  const enSortie = lot && !lot.fini ? (lot.destinations[0] as Destination) : null;
+  const selection: Destination =
+    enSortie && papiersCommande.includes(enSortie)
+      ? enSortie
+      : choix && papiersCommande.includes(choix)
+        ? choix
+        : papiersCommande[0];
+
+  // Un seul canvas visible à la fois ; tous restent dans la page (l'encodage les lit tous).
+  useEffect(() => {
+    const hote = conteneur.current;
+    if (!hote) return;
+    Array.from(hote.querySelectorAll('canvas')).forEach((canvas, i) => {
+      canvas.style.display = papiersCommande[i] === selection ? '' : 'none';
+    });
+  }, [selection, papiersCommande, commande]);
+
+  /** L'état d'un bon dans la liste. */
+  const etatDuPapier = (destination: Destination): { libelle: string; classe: string } => {
+    const t = travaux.filter((x) => x.destination === destination);
+    if (t.length === 0) {
+      return vuEnDirect && travaux.length > 0
+        ? { libelle: '—', classe: 'text-ink-3' }
+        : { libelle: 'en attente', classe: 'text-ink-3' };
+    }
+    if (t.every((x) => x.statut === 'imprime')) return { libelle: '✓ sorti', classe: 'font-semibold text-ok' };
+    if (t.some((x) => x.statut === 'remis')) return { libelle: 'en cours', classe: 'font-semibold text-accent' };
+    return { libelle: 'en file', classe: 'text-ink-2' };
+  };
+
+  const nombreBons = papiersCommande.length;
+  const enImpression = travaux.find((t) => t.statut === 'remis');
+  const libelleMachine = envoi
+    ? 'Préparation…'
+    : tousSortis
+      ? 'Tout est sorti'
+      : bloque
+        ? 'Vérifiez le papier'
+        : enImpression
+          ? `Imprime : bon ${nomBon(enImpression.destination)}`
+          : 'En file';
+
   return (
-    // Centré (22/10/2026) : bouton, état d'impression et tickets dans une colonne au milieu.
-    <div className="ecran-seulement mx-auto flex max-w-xl flex-col items-center">
-      <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
-        <Bouton
-          variante={(tousSortis || enCours) && !envoi && !bloque ? 'secondaire' : 'principal'}
-          disabled={verrouille}
-          aria-busy={verrouille}
-          className="min-h-14 px-6 text-base"
-          onClick={() => void envoyer()}
-        >
-          {envoi ? (
-            <>
-              <Rouet /> Envoi en cours…
-            </>
-          ) : enCours && !bloque ? (
-            <>
-              <Rouet /> Impression en cours… {sortis}/{travaux.length}
-            </>
-          ) : bloque ? (
-            'Relancer l’impression'
-          ) : tousSortis ? (
-            'Réimprimer'
-          ) : (
-            'Envoyer à l’imprimante'
-          )}
-        </Bouton>
-        <Puce ton={enLigne ? 'ok' : 'attention'}>
-          {imprimante
-            ? enLigne
-              ? 'Imprimante en ligne'
-              : `Imprimante injoignable depuis ${depuis(imprimante.vueLe)}`
-            : 'Imprimante pas encore branchée'}
-        </Puce>
-      </div>
+    // Écran d'impression façon iOS (propriétaire, 20/11/2026) : la commande en
+    // résumé, la liste des bons avec leur état, l'aperçu du bon touché, et UN
+    // gros bouton en bas.
+    <div className="ecran-seulement mx-auto max-w-4xl px-4 pb-44">
+      {haut}
 
-      {/* Un papier perdu, taché, ou à donner à deux personnes : on le ressort seul,
-          en un ou deux exemplaires (propriétaire, 19/11/2026). */}
-      <div className="mb-4 w-full max-w-md rounded-xl border border-line bg-surface p-3">
-        <p className="mb-2 text-sm font-medium text-ink">Un seul papier, en 1 ou 2 exemplaires</p>
-        <ul className="space-y-1.5">
-          {papiersCommande.map((destination) => (
-            <li key={destination} className="flex items-center gap-2">
-              <span className="min-w-0 flex-1 text-sm text-ink">{nomBon(destination)}</span>
-              <Bouton
-                className="min-h-11 px-3"
-                disabled={verrouille}
-                aria-label={`Imprimer 1 exemplaire du bon ${nomBon(destination)}`}
-                onClick={() => void envoyer([destination])}
-              >
-                1 exemplaire
-              </Bouton>
-              <Bouton
-                className="min-h-11 px-3"
-                disabled={verrouille}
-                aria-label={`Imprimer 2 exemplaires du bon ${nomBon(destination)}`}
-                onClick={() => void envoyer([destination, destination])}
-              >
-                2 exemplaires
-              </Bouton>
-            </li>
-          ))}
-        </ul>
-      </div>
+      {erreur ? (
+        <div className="mb-4">
+          <Alerte>{erreur}</Alerte>
+        </div>
+      ) : null}
+      {probleme ? (
+        <div className="mb-4">
+          <Alerte ton="attention">
+            L’imprimante signale un problème. Le plus souvent&nbsp;: plus de papier, ou le capot est resté
+            ouvert. Les bons restent en file et sortiront tout seuls une fois réglé.
+          </Alerte>
+        </div>
+      ) : null}
+      {!imprimante ? (
+        <div className="mb-4">
+          <Alerte ton="attention">
+            L’imprimante n’est pas encore branchée à l’application. Vérifiez qu’elle est allumée et reliée au
+            réseau du magasin&nbsp;; si cela continue, prévenez le manager. En attendant, «&nbsp;Imprimer sur
+            papier&nbsp;» en bas de l’écran.
+          </Alerte>
+        </div>
+      ) : null}
 
-      {erreur ? <div className="mb-4"><Alerte>{erreur}</Alerte></div> : null}
-
-      {travaux.length > 0 && vuEnDirect ? (
-        <div
-          role="status"
-          aria-live="polite"
-          className={`mb-4 w-full max-w-md rounded-xl border p-4 ${tousSortis ? 'border-ok/40 bg-ok-doux' : 'border-accent/40 bg-accent-doux'}`}
-        >
-          <ImprimanteTicket
-            etat={envoi ? 'envoi' : tousSortis ? 'fini' : bloque ? 'bloque' : 'impression'}
-            libelle={
-              envoi
-                ? 'Préparation…'
-                : tousSortis
-                  ? 'Tout est sorti'
-                  : bloque
-                    ? 'Vérifiez le papier'
-                    : travaux.find((t) => t.statut === 'remis')
-                      ? `Imprime : bon ${nomBon(travaux.find((t) => t.statut === 'remis')?.destination ?? '')}`
-                      : 'En file'
-            }
-            sortis={sortis}
-            total={travaux.length}
-            lot={lotAffiche}
-          />
-          {/* Une barre qui ne s'arrête jamais : entre deux étapes réelles, elle
-              avance doucement vers la suivante sans jamais la dépasser. */}
-          {!bloque ? (
-            <div className="mx-auto mt-3 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-black/10">
-              <div
-                className={`h-full rounded-full transition-[width] duration-1000 ease-linear ${tousSortis ? 'bg-ok' : 'bg-accent'}`}
-                style={{ width: `${Math.round(remplissage * 100)}%` }}
+      <div className="grid gap-4 md:grid-cols-2 md:items-start">
+        <div className="grid gap-4">
+          <section aria-label="Les bons">
+            <h2 className="mb-1.5 px-4 text-sm text-ink-2">
+              {tousSortis
+                ? `${nombreBons} ${nombreBons > 1 ? 'bons sortis' : 'bon sorti'}`
+                : enCours
+                  ? 'Impression en cours'
+                  : `${nombreBons} ${nombreBons > 1 ? 'bons' : 'bon'} · touchez un bon pour le voir`}
+            </h2>
+            <ul className="overflow-hidden rounded-2xl bg-surface">
+              {papiersCommande.map((destination, rang) => {
+                const etat = etatDuPapier(destination);
+                const actif = destination === selection;
+                return (
+                  <li key={destination} className={rang > 0 ? 'border-t border-line' : ''}>
+                    <button
+                      type="button"
+                      aria-pressed={actif}
+                      onClick={() => setChoix(destination)}
+                      className={`flex min-h-14 w-full items-center justify-between gap-3 px-4 text-left text-base ${
+                        actif ? 'bg-accent-doux' : ''
+                      }`}
+                    >
+                      <span className="font-medium text-ink">{nomBon(destination)}</span>
+                      <span className={`flex items-center gap-1.5 text-sm ${etat.classe}`}>
+                        {etat.libelle}
+                        <span aria-hidden className="text-ink-3">
+                          ›
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="mt-2 px-4 text-sm text-ink-2">
+              <span
+                aria-hidden
+                className={`mr-1.5 inline-block h-2 w-2 rounded-full ${enLigne ? 'bg-ok' : 'bg-attention'}`}
               />
-            </div>
-          ) : null}
-          <div className="mt-3 text-center">
-            <div>
-              <p className="text-base font-semibold text-ink">
+              {imprimante
+                ? enLigne
+                  ? 'Imprimante Star en ligne'
+                  : `Imprimante injoignable depuis ${depuis(imprimante.vueLe)}`
+                : 'Imprimante pas encore branchée'}
+            </p>
+          </section>
+
+          {travaux.length > 0 && vuEnDirect ? (
+            <div role="status" aria-live="polite" className={`rounded-2xl p-4 ${tousSortis ? 'bg-ok-doux' : 'bg-surface'}`}>
+              <ImprimanteTicket
+                etat={envoi ? 'envoi' : tousSortis ? 'fini' : bloque ? 'bloque' : 'impression'}
+                libelle={libelleMachine}
+                sortis={sortis}
+                total={travaux.length}
+                lot={lotAffiche}
+              />
+              {/* Une barre qui ne s'arrête jamais : entre deux étapes réelles, elle
+                  avance doucement vers la suivante sans jamais la dépasser. */}
+              {!bloque ? (
+                <div className="mx-auto mt-3 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-segment-fond">
+                  <div
+                    className={`h-full rounded-full transition-[width] duration-1000 ease-linear ${
+                      tousSortis ? 'bg-ok' : 'bg-accent'
+                    }`}
+                    style={{ width: `${Math.round(remplissage * 100)}%` }}
+                  />
+                </div>
+              ) : null}
+              <p className="mt-3 text-center text-base font-semibold text-ink">
                 {tousSortis
                   ? travaux.length === 1
                     ? '✓ Le bon est sorti'
@@ -406,76 +445,109 @@ export function ApercuReseau({
                         ? '✓ Bon du client sorti — vous pouvez le lui donner'
                         : `Ça imprime — ${sortis} sur ${travaux.length} sortis`}
               </p>
-              {envoi ? (
-                <p className="mt-0.5 text-sm text-ink-2">Préparation des bons…</p>
-              ) : !tousSortis && !bloque ? (
-                <p className="mt-0.5 text-sm text-ink-2">
-                  Vous pouvez passer à la suite&nbsp;: les bons sortent tout seuls, un voyant en bas de
-                  l’écran suit l’impression.
+              {bloque ? (
+                <p className="mt-0.5 text-center text-sm text-ink-2">
+                  Vérifiez le papier et le capot de l’imprimante, puis touchez «&nbsp;Relancer l’impression&nbsp;».
+                </p>
+              ) : !tousSortis ? (
+                <p className="mt-0.5 text-center text-sm text-ink-2">
+                  Les bons sortent tout seuls&nbsp;: un voyant en bas de l’écran suit l’impression.
                 </p>
               ) : null}
             </div>
+          ) : null}
+        </div>
+
+        {/* L'aperçu du bon touché : exactement le papier qui sort de l'imprimante. */}
+        <section
+          aria-label={`Aperçu du bon ${nomBon(selection)}`}
+          className="rounded-2xl bg-surface p-4 md:sticky md:top-20"
+        >
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <h2 className="text-lg font-semibold text-ink">Bon {nomBon(selection)}</h2>
+            <span className="text-sm text-ink-2">aperçu du papier</span>
           </div>
-          {bloque ? (
-            <p className="mt-0.5 text-sm text-ink-2">
-              Vérifiez le papier et le capot de l’imprimante, puis touchez «&nbsp;Relancer l’impression&nbsp;».
-            </p>
-          ) : null}
-          {deposes && !tousSortis && pendantImpression ? (
-            <div className="mt-3 flex flex-wrap items-center justify-center gap-2 text-sm text-ink-2">
-              <span>Pendant ce temps&nbsp;:</span>
-              {pendantImpression}
-            </div>
-          ) : null}
-          {deposes && apresImpression ? (
-            <div className="mt-3 flex flex-wrap justify-center gap-2">{apresImpression}</div>
-          ) : null}
-          <ul className="mt-3 space-y-1.5 text-sm">
-            {travaux.map((travail) => (
-              <li key={travail.id} className="flex items-center gap-2">
-                <span aria-hidden className="w-5 text-center">
-                  {travail.statut === 'imprime' ? '✓' : travail.statut === 'remis' ? '⟳' : '·'}
-                </span>
-                <span className="w-24 font-medium text-ink">{nomBon(travail.destination)}</span>
-                <span className={travail.statut === 'imprime' ? 'text-ok' : 'text-ink-2'}>
-                  {LIBELLE_STATUT[travail.statut] ?? 'en file'}
-                  {/* Le code renvoyé par l'imprimante reste au journal, jamais à l'écran (LOI 9). */}
-                  {travail.erreur && travail.statut !== 'imprime' ? ' — repart après un incident' : ''}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <div ref={conteneur} className="rouleau-apercu overflow-x-auto" />
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <Bouton
+              disabled={verrouille}
+              aria-label={`Imprimer 1 exemplaire du bon ${nomBon(selection)}`}
+              onClick={() => void envoyer([selection])}
+            >
+              1 exemplaire
+            </Bouton>
+            <Bouton
+              disabled={verrouille}
+              aria-label={`Imprimer 2 exemplaires du bon ${nomBon(selection)}`}
+              onClick={() => void envoyer([selection, selection])}
+            >
+              2 exemplaires
+            </Bouton>
+          </div>
+        </section>
+      </div>
+
+      {/* Barre d'action collée en bas : le geste principal est toujours là. */}
+      <div className="sans-impression fixed inset-x-0 bottom-0 z-30 border-t border-line/70 bg-ground/90 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl backdrop-saturate-150">
+        <div className="mx-auto max-w-4xl px-4">
+          <div className="flex gap-3">
+            {tousSortis && !envoi && !bloque ? (
+              <Link
+                href="/commandes/nouvelle"
+                className="inline-flex min-h-14 flex-[1.4] items-center justify-center rounded-2xl bg-accent px-4 text-lg font-semibold text-accent-texte active:scale-[0.98]"
+              >
+                Nouvelle commande
+              </Link>
+            ) : (
+              <Bouton
+                variante="principal"
+                disabled={verrouille}
+                aria-busy={verrouille}
+                className="min-h-14 flex-[1.4] rounded-2xl text-lg"
+                onClick={() => void envoyer()}
+              >
+                {envoi ? (
+                  <>
+                    <Rouet /> Envoi en cours…
+                  </>
+                ) : enCours && !bloque ? (
+                  <>
+                    <Rouet /> Impression… {sortis}/{travaux.length}
+                  </>
+                ) : bloque ? (
+                  'Relancer l’impression'
+                ) : (
+                  `Imprimer ${nombreBons > 1 ? `les ${nombreBons} bons` : 'le bon'}`
+                )}
+              </Bouton>
+            )}
+            {whatsapp ? (
+              <div className="flex flex-1 [&>*]:min-h-14 [&>*]:w-full [&>*]:rounded-2xl [&>*]:text-base">{whatsapp}</div>
+            ) : null}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-sm">
+            {tousSortis ? (
+              <>
+                <button type="button" onClick={() => void envoyer()} className="min-h-9 text-accent">
+                  Réimprimer les bons
+                </button>
+                <Link href="/" className="inline-flex min-h-9 items-center text-ink-2">
+                  Accueil
+                </Link>
+                <Link href="/commandes" className="inline-flex min-h-9 items-center text-ink-2">
+                  Liste des commandes
+                </Link>
+              </>
+            ) : (
+              secours
+            )}
+          </div>
         </div>
-      ) : null}
-
-      {probleme ? (
-        <div className="mb-4">
-          <Alerte ton="attention">
-            L’imprimante signale un problème. Le plus souvent&nbsp;: plus de papier, ou le capot est
-            resté ouvert. Les bons restent en file et sortiront tout seuls une fois réglé.
-          </Alerte>
-        </div>
-      ) : null}
-
-      {!imprimante ? (
-        <div className="mb-4">
-          <Alerte ton="attention">
-            L’imprimante n’est pas encore branchée à l’application. Vérifiez qu’elle est allumée
-            et reliée au réseau du magasin&nbsp;; si cela continue, prévenez le manager.
-          </Alerte>
-        </div>
-      ) : null}
-
-      <p className="mb-4 max-w-prose text-center text-sm text-ink-2">
-        Ci-dessous, les bons tels qu’ils sortiront de l’imprimante. Le premier sort en quelques
-        secondes, les suivants s’enchaînent.
-      </p>
-
-      <div ref={conteneur} className="rouleau-apercu" />
+      </div>
 
       <style>{`
         .rouleau-apercu { display: flex; flex-direction: column; align-items: center; gap: 18px; }
-        .ticket-apercu { background: #fff; box-shadow: 0 2px 18px rgba(0,0,0,.25); image-rendering: auto; }
+        .ticket-apercu { background: #fff; box-shadow: 0 1px 10px rgba(0,0,0,.18); image-rendering: auto; max-width: none; }
       `}</style>
     </div>
   );

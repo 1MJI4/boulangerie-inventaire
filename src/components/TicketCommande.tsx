@@ -18,6 +18,13 @@
 // destination, parce que c'est ce qui se lit à un mètre sur une porte.
 
 import { formaterEuros, type Commande } from '@/lib/commandes';
+import { Fragment } from 'react';
+import { ADRESSE_QR, LIGNES_PIED_CLIENT, SITE_WEB } from '@/lib/coordonneesMagasin';
+import { cheminSvgQr, matriceQr } from '@/lib/qrCode';
+
+// Calculé une fois : l'adresse ne change pas d'un ticket à l'autre.
+const QR = matriceQr(ADRESSE_QR);
+const CHEMIN_QR = cheminSvgQr(QR);
 import {
   LIBELLE_DESTINATION,
   MENTION_LIGNE_LIBRE,
@@ -190,6 +197,23 @@ export function Ticket({
               Communication du virement : {commande.numero}
             </>
           ) : null}
+          <br />
+          Scannez pour nous retrouver
+          <svg
+            role="img"
+            aria-label={`QR code vers ${SITE_WEB}`}
+            viewBox={`-4 -4 ${QR.length + 8} ${QR.length + 8}`}
+            className="tk-qr"
+            shapeRendering="crispEdges"
+          >
+            <path d={CHEMIN_QR} fill="#000" />
+          </svg>
+          {LIGNES_PIED_CLIENT.map((ligne) => (
+            <Fragment key={ligne}>
+              <br />
+              {ligne}
+            </Fragment>
+          ))}
         </div>
       ) : zoneDessinImprimee(commande, destination) ? (
         <div className="tk-libre">
@@ -300,6 +324,7 @@ export const CSS_TICKET = `
 .tk-libre { border: .25mm dashed #000; margin-top: 2.5mm; height: 70mm; padding: 1.2mm; }
 .tk-libre span { font-size: 6.5pt; letter-spacing: .12em; text-transform: uppercase; }
 
+.tk-qr { display: block; width: 26mm; height: 26mm; margin: 1mm auto; }
 .tk-pied { text-align: center; font-size: 7.5pt; line-height: 1.5; margin-top: 3mm; padding-top: 2mm; border-top: .2mm dotted #000; }
 
 @media screen {

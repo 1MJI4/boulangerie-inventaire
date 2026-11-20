@@ -143,7 +143,7 @@ export default function HistoriquePrevisions() {
     <div className="min-h-screen bg-surface-2 py-4 px-4 sm:py-8 sm:px-6 lg:px-8">
       <div>
 {/* En-tête */}
-        <div className="bg-surface rounded-xl border border-line p-6 mb-6">
+        <div className="bg-surface rounded-2xl border border-line p-6 mb-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold text-ink">Historique des Prévisions</h1>
@@ -152,13 +152,13 @@ export default function HistoriquePrevisions() {
             <div className="flex gap-2">
               <Link 
                 href="/saisie-prevue"
-                className="bg-accent hover:bg-accent text-white px-4 py-2 rounded-xl transition-colors duration-200 text-sm font-medium"
+                className="bg-accent hover:bg-accent text-white px-4 py-2 rounded-2xl transition-colors duration-200 text-sm font-medium"
               >
                 Nouvelle prévision
               </Link>
               <Link 
                 href="/dashboard"
-                className="bg-ink-3 hover:bg-ink-2 text-white px-4 py-2 rounded-xl transition-colors duration-200 text-sm font-medium"
+                className="bg-ink-3 hover:bg-ink-2 text-white px-4 py-2 rounded-2xl transition-colors duration-200 text-sm font-medium"
               >
                 Dashboard
               </Link>
@@ -167,7 +167,7 @@ export default function HistoriquePrevisions() {
         </div>
 
         {/* Liste des prévisions */}
-        <div className="bg-surface rounded-xl shadow-sm border border-line overflow-hidden">
+        <div className="bg-surface rounded-2xl shadow-sm border border-line overflow-hidden">
           <div className="px-6 py-4 border-b border-line">
             <h2 className="text-xl font-semibold text-ink">Prévisions récentes</h2>
             <p className="text-sm text-ink-2 mt-1">Cliquez sur une date pour voir les détails</p>
@@ -184,7 +184,7 @@ export default function HistoriquePrevisions() {
               <p className="text-ink-3 mb-4">Commencez à planifier vos productions pour voir l'historique ici</p>
               <Link 
                 href="/saisie-prevue"
-                className="bg-accent hover:bg-accent text-white px-6 py-2 rounded-xl transition-colors"
+                className="bg-accent hover:bg-accent text-white px-6 py-2 rounded-2xl transition-colors"
               >
                 Créer ma première prévision
               </Link>
@@ -241,13 +241,13 @@ export default function HistoriquePrevisions() {
         <div className="mt-6 flex flex-col sm:flex-row gap-3">
           <Link
             href="/planification-demain"
-            className="inline-flex items-center justify-center bg-accent text-white px-6 py-3 rounded-md hover:bg-accent-fort font-medium transition-colors"
+            className="inline-flex items-center justify-center bg-accent text-white px-6 py-3 rounded-lg hover:bg-accent-fort font-medium transition-colors"
           >
             Planning actuel
           </Link>
           <Link
             href="/saisie-prevue"
-            className="inline-flex items-center justify-center bg-accent text-white px-6 py-3 rounded-md hover:bg-accent-fort font-medium transition-colors"
+            className="inline-flex items-center justify-center bg-accent text-white px-6 py-3 rounded-lg hover:bg-accent-fort font-medium transition-colors"
           >
             Nouvelle prévision
           </Link>
@@ -257,7 +257,7 @@ export default function HistoriquePrevisions() {
       {/* Modal de détails */}
       {modalOuverte && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="bg-surface rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+          <div className="bg-surface rounded-2xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
             <div className="px-6 py-4 border-b border-line flex justify-between items-center">
               <div>
                 <h3 className="text-lg font-semibold text-ink">
@@ -287,7 +287,7 @@ export default function HistoriquePrevisions() {
                     produitConnu != null && prevu > 0 ? Math.round((produit / prevu) * 100) : null;
                   
                   return (
-                    <div key={inventaire.id} className="bg-surface-2 rounded-xl p-4 border border-line">
+                    <div key={inventaire.id} className="bg-surface-2 rounded-2xl p-4 border border-line">
                       <div className="flex justify-between items-start mb-3">
                         <h4 className="font-medium text-ink text-lg">
                           {inventaire.produit.nom}

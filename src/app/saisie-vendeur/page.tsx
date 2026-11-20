@@ -40,7 +40,10 @@
 // Colonne du pavé : « 87/123 », loupe, sortie, le pavé, puis le bilan de fin
 // quand il y a quelque chose à dire — rien ne recouvre la grille.
 
+import Link from 'next/link';
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useProfil } from '@/components/ProfilAppareil';
+import { DEFINITIONS } from '@/lib/profils';
 import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide } from '@/components/ui';
 import { BandeauOnglets, Onglet } from '@/components/BandeauOnglets';
 import { GestionParcours } from '@/components/GestionParcours';
@@ -87,6 +90,7 @@ type Section = {
 const GRAVITE: Record<Niveau, number> = { bloquant: 3, avertissement: 2, information: 1 };
 
 export default function Comptage() {
+  const { profil } = useProfil();
   const [date, setDate] = useState(() => dateDuJour());
   const [indexSection, setIndexSection] = useState(0);
   const [recherche, setRecherche] = useState('');
@@ -616,7 +620,7 @@ export default function Comptage() {
         <button
           type="button"
           onClick={() => setDebutControle({ date, signalements: [] })}
-          className="min-h-11 rounded-lg border border-line-fort bg-surface px-3 text-sm font-medium text-ink"
+          className="min-h-11 rounded-2xl bg-segment-fond px-3.5 text-[15px] font-semibold text-ink"
         >
           Compris
         </button>
@@ -629,7 +633,7 @@ export default function Comptage() {
       type="button"
       onClick={() => setRechercheOuverte(true)}
       aria-label="Chercher un produit"
-      className="sans-impression flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm text-ink-2 hover:border-line-fort hover:text-ink"
+      className="sans-impression flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-surface px-3.5 text-[15px] font-medium text-ink-2 hover:text-ink"
     >
       Chercher
     </button>
@@ -686,7 +690,7 @@ export default function Comptage() {
         placeholder="Chercher un produit dans toute la liste…"
         aria-label="Chercher un produit"
         autoFocus
-        className="h-11 min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 text-sm text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none"
+        className="h-11 min-w-0 flex-1 rounded-2xl bg-segment-fond px-3.5 text-base text-ink placeholder:text-ink-3 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-accent/40"
       />
       <Bouton
         variante="secondaire"
@@ -784,7 +788,7 @@ export default function Comptage() {
             onClick={() => setBandeauOuvert(!bandeauVisible)}
             aria-expanded={bandeauVisible}
             aria-label={`${progression.comptes} produits comptés sur ${progression.total} — voir l’avancement`}
-            className="flex h-11 min-w-0 flex-1 flex-col items-stretch justify-center gap-1 rounded-lg px-2 text-left hover:bg-surface-2"
+            className="flex h-11 min-w-0 flex-1 flex-col items-stretch justify-center gap-1 rounded-xl px-2 text-left hover:bg-surface-2"
           >
             <span className="chiffres text-sm text-ink">
               <span className="font-semibold">{progression.comptes}</span>/{progression.total} comptés
@@ -803,7 +807,7 @@ export default function Comptage() {
           onClick={() => setRechercheOuverte(true)}
           aria-label="Chercher un produit"
           title="Chercher un produit"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-line bg-surface text-ink-2 hover:border-line-fort hover:text-ink"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-surface text-ink-2 hover:text-ink"
         >
           <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="7" />
@@ -816,7 +820,7 @@ export default function Comptage() {
           onClick={() => definirPleinEcran(false)}
           aria-label="Quitter le plein écran"
           title="Quitter le plein écran"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-line bg-surface text-ink-2 hover:border-line-fort hover:text-ink"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-surface text-ink-2 hover:text-ink"
         >
           <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
@@ -826,7 +830,7 @@ export default function Comptage() {
 
       {/* Le point de fin (ce qui manque, terminé, envoi en attente) : AU-DESSUS du pavé, là où l'œil est. */}
       {bandeauVisible ? (
-        <div className="rounded-xl border border-line bg-surface p-2">
+        <div className="rounded-2xl bg-surface p-2">
           {bandeauProgression(null)}
           <div className="flex justify-end">
             <Bouton variante="secondaire" onClick={() => setBandeauOuvert(false)} className="shrink-0">
@@ -853,7 +857,7 @@ export default function Comptage() {
                 type="button"
                 onClick={() => changerDePage(index)}
                 disabled={!cible}
-                className={`flex min-h-14 flex-col justify-center rounded-xl border-2 border-line-fort bg-surface px-2 py-1 text-ink hover:bg-surface-2 active:bg-surface-2 disabled:border-line disabled:text-ink-3 disabled:opacity-50 ${
+                className={`flex min-h-14 flex-col justify-center rounded-2xl bg-segment-fond px-2 py-1 text-ink active:scale-[0.98] active:opacity-80 disabled:text-ink-3 disabled:opacity-50 ${
                   precedente ? 'items-start text-left' : 'items-end text-right'
                 }`}
               >
@@ -871,7 +875,7 @@ export default function Comptage() {
 
       {/* Avertissement LOI 11 (inventaire avant la fermeture) SOUS le pavé : il ne gêne pas la saisie. */}
       {blocAvertissementDebut.length > 0 ? (
-        <div className="rounded-xl border border-line bg-surface p-2">{blocAvertissementDebut}</div>
+        <div className="rounded-2xl bg-surface p-2">{blocAvertissementDebut}</div>
       ) : null}
     </div>
   );
@@ -908,7 +912,7 @@ export default function Comptage() {
           </Carte>
         ) : disposition ? (
           <div
-            className="grid gap-x-2 rounded-xl border border-line bg-surface"
+            className="grid gap-x-2 rounded-2xl bg-surface"
             style={{
               gridTemplateColumns: `repeat(${disposition.colonnes}, minmax(0, 1fr))`,
               gridAutoRows: `${disposition.hauteurLigne}px`,
@@ -962,6 +966,13 @@ export default function Comptage() {
           }
           actions={
             <>
+              {/* La barre d'onglets du bas est cachée pendant le comptage : une sortie claire. */}
+              <Link
+                href={profil ? DEFINITIONS[profil].accueil : '/'}
+                className="sans-impression inline-flex min-h-11 items-center rounded-2xl bg-segment-fond px-4 text-[15px] font-semibold text-ink"
+              >
+                Quitter
+              </Link>
               <BasculeCotePave className="sans-impression min-h-11 px-2.5 text-xs" />
               <ReglagesSaisie
                 preferences={preferences}
@@ -974,7 +985,7 @@ export default function Comptage() {
                 <button
                   type="button"
                   onClick={() => definirPleinEcran(true)}
-                  className="sans-impression hidden min-h-11 items-center rounded-lg border border-line bg-surface px-2.5 text-xs text-ink-2 hover:border-line-fort hover:text-ink sm:inline-flex"
+                  className="sans-impression hidden min-h-11 items-center rounded-2xl bg-surface px-3 text-xs font-medium text-ink-2 hover:text-ink sm:inline-flex"
                 >
                   Plein écran
                 </button>
@@ -1016,7 +1027,7 @@ export default function Comptage() {
             data-defilement-liste
             className={
               contraint
-                ? 'min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-xl [&_[data-ligne-produit]]:scroll-mt-11'
+                ? 'min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-2xl [&_[data-ligne-produit]]:scroll-mt-11'
                 : undefined
             }
           >
@@ -1048,9 +1059,9 @@ export default function Comptage() {
                     type="button"
                     onClick={() => compter(produitSelectionne.id, valeurSelectionnee === '0' ? '' : '0')}
                     aria-pressed={valeurSelectionnee === '0'}
-                    className={`h-14 w-14 rounded-xl border text-base font-medium ${
+                    className={`h-14 w-14 rounded-2xl border text-base font-medium ${
                       valeurSelectionnee === '0'
-                        ? 'border-accent bg-accent-doux text-accent'
+                        ? 'border-transparent bg-accent-doux text-accent'
                         : 'border-line text-ink-3'
                     }`}
                   >
@@ -1070,7 +1081,7 @@ export default function Comptage() {
                     placeholder={selectionAuPoids ? '— kg' : '—'}
                     aria-label={selectionAuPoids ? `${produitSelectionne.nom}, poids en kg` : produitSelectionne.nom}
                     autoFocus={!modePave && !selectionAuPoids}
-                    className="chiffres h-20 w-36 rounded-xl border border-line-fort bg-surface text-center text-4xl font-semibold text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none"
+                    className="chiffres h-20 w-36 rounded-2xl border border-transparent bg-segment-fond text-center text-4xl font-semibold text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none"
                   />
                 </div>
 

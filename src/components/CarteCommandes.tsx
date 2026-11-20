@@ -36,7 +36,7 @@ export function CarteCommandes() {
 
   return (
     <Link href="/commandes" className="mb-8 block">
-      <Carte className="p-4 transition-colors hover:border-accent">
+      <Carte className="p-4 transition-colors hover:bg-accent-doux">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-medium text-ink">Commandes</h2>

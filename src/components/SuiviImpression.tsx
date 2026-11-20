@@ -102,7 +102,7 @@ export function SuiviImpression() {
     <div
       role="status"
       aria-live="polite"
-      className="ecran-seulement pointer-events-none fixed print:hidden bottom-4 left-4 z-40 flex max-w-[calc(100vw-2rem)] flex-col gap-2"
+      className="ecran-seulement suivi-impression pointer-events-none fixed print:hidden bottom-[calc(5.75rem+env(safe-area-inset-bottom))] left-4 z-40 flex max-w-[calc(100vw-2rem)] flex-col gap-2"
     >
       <VoyantCommandesEnAttente />
       {visibles.map((suivie) => {

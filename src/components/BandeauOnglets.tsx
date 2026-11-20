@@ -158,10 +158,10 @@ export function Onglet({
       onClick={onClick}
       data-actif={actif}
       aria-selected={actif}
-      className={`flex min-h-10 shrink-0 snap-start items-center gap-2 whitespace-nowrap rounded-lg border px-3 text-sm transition-colors ${
+      className={`flex min-h-10 shrink-0 snap-start items-center gap-2 whitespace-nowrap rounded-full px-3.5 text-[15px] transition-colors ${
         actif
-          ? 'border-accent bg-accent-doux font-medium text-accent'
-          : 'border-line bg-surface text-ink-2 hover:border-line-fort hover:text-ink'
+          ? 'bg-accent-doux font-semibold text-accent'
+          : 'bg-surface text-ink-2 hover:text-ink'
       }`}
     >
       {libelle}
