@@ -199,11 +199,11 @@ export function filtrerParType<T extends Pick<Commande, 'lignes'>>(commandes: re
 
 export type CleGroupe = 'aImprimer' | 'enRetard' | 'duJour' | 'aVenir';
 
-/** Ordre d'affichage des groupes, et des filtres sous la recherche. */
+/** Ordre d'affichage des groupes, et des filtres sous la recherche : « Aujourd'hui » d'abord (propriétaire, 20/11/2026). */
 export const GROUPES: readonly { cle: CleGroupe; titre: string; ton?: 'accent' | 'attention' | 'alerte' }[] = [
+  { cle: 'duJour', titre: 'Aujourd’hui' },
   { cle: 'aImprimer', titre: 'À imprimer', ton: 'accent' },
   { cle: 'enRetard', titre: 'Retraits en retard', ton: 'alerte' },
-  { cle: 'duJour', titre: 'Aujourd’hui' },
   { cle: 'aVenir', titre: 'À venir' },
 ];
 

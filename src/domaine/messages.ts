@@ -193,6 +193,8 @@ export type ParametresMessages = {
   ERR_BON_ILLISIBLE: Record<string, never>;
   /** Bons pas partis vers l'imprimante : réseau coupé avant toute réponse. */
   ERR_IMPRESSION_NON_ENVOYEE: Record<string, never>;
+  /** Feuille de prévisions pas partie vers l'imprimante (réseau coupé, file refusée). */
+  ERR_FEUILLE_NON_ENVOYEE: Record<string, never>;
 
   // --- Accès (securite) ------------------------------------------------------
   /**
@@ -844,6 +846,13 @@ export const CATALOGUE: { [C in CodeCatalogue]: Entree<C> } = {
       `Pas de connexion : les bons ne sont pas partis. La commande, elle, reste enregistrée. ` +
       `Envoyez-les à nouveau dès le retour du réseau.`,
     correction: () => 'Envoyer à nouveau',
+  },
+  ERR_FEUILLE_NON_ENVOYEE: {
+    niveau: 'bloquant',
+    cas: 'Impression : la feuille de prévisions n’est pas arrivée dans la file de l’imprimante (réseau coupé ou file refusée).',
+    message: () =>
+      `La feuille n’est pas partie : pas de connexion. Réessayez, ou imprimez-la sur papier avec « Sur papier ».`,
+    correction: () => 'Réessayer',
   },
 
   // --- Accès ---------------------------------------------------------------------

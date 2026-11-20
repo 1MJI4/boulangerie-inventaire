@@ -201,7 +201,7 @@ test('groupes de la liste : à imprimer, retard, aujourd’hui, à venir — plu
   assert.deepEqual(g.aVenir.map((c) => c.id), [4]);
   // Un acompte saisi est un acompte reçu : plus aucun groupe « à vérifier ».
   assert.deepEqual(Object.keys(g).sort(), ['aImprimer', 'aVenir', 'duJour', 'enRetard']);
-  assert.deepEqual(GROUPES.map((x) => x.cle), ['aImprimer', 'enRetard', 'duJour', 'aVenir']);
+  assert.deepEqual(GROUPES.map((x) => x.cle), ['duJour', 'aImprimer', 'enRetard', 'aVenir']);
 });
 
 test('retraits en retard : dès l’heure de retrait passée, le jour même (29/10/2026)', () => {

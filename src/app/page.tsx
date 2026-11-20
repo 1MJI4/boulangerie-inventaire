@@ -9,6 +9,8 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 import { useProfil } from '@/components/ProfilAppareil';
 import { dateDuJour, formatDateLong, journeeProduction } from '@/lib/dateProduction';
 import { DEFINITIONS, LIBELLES_ECRANS } from '@/lib/profils';
@@ -55,7 +57,7 @@ function ListeEcrans({ titre, ecrans, avecMoment }: { titre: string; ecrans: rea
   return (
     <section className="mt-8">
       <h2 className="mb-2 text-sm text-ink-2">{titre}</h2>
-      <ul className="overflow-hidden rounded-xl border border-line bg-surface">
+      <ul className="overflow-hidden rounded-2xl border border-transparent bg-surface">
         {ecrans.map((href, index) => (
           <li key={href} className={index > 0 ? 'border-t border-line' : undefined}>
             <Link
@@ -91,8 +93,15 @@ export default function Accueil() {
   const { profil, prete, ouvrirSelecteur } = useProfil();
   const journee = journeeProduction();
   const aujourdhui = dateDuJour();
+  const routeur = useRouter();
+  // Le manager n'a pas d'autre accueil que les commandes.
+  const versAccueil = prete && profil === 'manager' ? DEFINITIONS.manager.accueil : null;
+  useEffect(() => {
+    if (versAccueil) routeur.replace(versAccueil);
+  }, [versAccueil, routeur]);
 
   if (!prete || !profil) return null;
+  if (versAccueil) return null;
 
   const definition = DEFINITIONS[profil];
 
@@ -119,7 +128,7 @@ export default function Accueil() {
         <button
           type="button"
           onClick={ouvrirSelecteur}
-          className="inline-flex min-h-11 items-center rounded-xl border border-line-fort px-4 text-sm text-ink-2 hover:text-ink"
+          className="inline-flex min-h-11 items-center rounded-2xl border border-transparent bg-segment-fond px-4 text-sm text-ink-2 hover:text-ink"
         >
           Profil&nbsp;: <span className="ml-1 font-medium text-ink">{definition.libelle}</span>
           <span className="ml-2 underline underline-offset-2">Changer</span>

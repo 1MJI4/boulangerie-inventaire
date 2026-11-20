@@ -52,17 +52,22 @@ export const DEFINITIONS: Record<Profil, DefinitionProfil> = {
   manager: {
     libelle: 'Manager',
     description: 'Tous les écrans, prévisions et statistiques',
-    accueil: '/',
+    // Le manager ouvre l'application sur les commandes (propriétaire, 20/11/2026).
+    accueil: '/commandes',
+    // Ordre = ordre de la barre d'onglets (les quatre premiers sont visibles, le
+    // reste est sous « Plus »). Le comptage du restant se fait tous les soirs :
+    // il passe en deuxième. La production réalisée et ses réglages se font
+    // rarement : ils sont au fond (propriétaire, 20/11/2026).
     ecrans: [
       '/commandes',
-      '/commandes/reglages',
+      '/saisie-vendeur',
       '/saisie-prevue',
       '/planification-demain',
-      '/saisie-production',
-      '/saisie-vendeur',
       '/inventaire',
       '/dashboard',
+      '/saisie-production',
       '/historique-previsions',
+      '/commandes/reglages',
       // Comptage de la Glory (page de test du 17/11/2026) : RETIRÉ pour l'instant
       // (propriétaire, 19/11/2026). L'écran et ses règles restent dans le code
       // (`src/app/glory`, `src/domaine/caisse.ts`) ; pour le remettre, rajouter '/glory' ici.

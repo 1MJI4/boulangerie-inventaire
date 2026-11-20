@@ -3,33 +3,34 @@
 // src/app/dashboard/page.tsx
 //
 // Tableau de bord du manager. La question de l'écran : « qu'est-ce qui est
-// resté hier soir, et qu'est-ce qui a manqué ? ». Les restes sont comptés
-// chaque soir ; la production ne l'est souvent pas (constat du propriétaire,
-// 19/11/2026). L'écran met donc en avant ce qui est toujours connu — les
-// restes — et n'affiche le vendu que lorsque la production a été saisie.
+// resté hier soir ? ». Les restes sont la seule donnée comptée tous les soirs ;
+// la production réalisée et les prévisions se saisissent rarement (propriétaire,
+// 20/11/2026 : « l'écran doit être optimisé pour les restes, les autres éléments
+// ne sont pas utilisés dans l'app »). L'écran ne montre donc QUE les restes :
+// plus de colonne « fabriqué » ni « vendu », plus de lien vers la planification.
 //
-// Mise en page (propriétaire, 19/11/2026 : « propre ») : une liste alignée en
-// colonnes, des chiffres à droite en chiffres tabulaires, un tiret gris pour ce
-// qui manque, la couleur réservée à ce qui demande attention. Aucun calcul
-// ici : tout vient de `src/domaine/bilanInventaire.ts`.
+// Même logique que les prévisions : des boutons de rayon, la viennoiserie
+// d'abord (c'est ce qui se compte et se produit le plus), les autres un
+// toucher plus loin. Un produit pas compté reste un tiret, jamais un zéro.
+// Aucun calcul ici : tout vient de `src/domaine/bilanInventaire.ts`.
 
 import { dateDuJour, decalerJours } from '@/lib/dateProduction';
 import {
   bilanJournee,
   ecartDeRestes,
   plusGrosRestes,
-  tauxDeLaLigne,
-  venduDeLaLigne,
-  type BilanJournee,
   type LigneBilan,
 } from '@/domaine/bilanInventaire';
-import { useEffect, useRef, useState } from 'react';
+import { trierCategories } from '@/lib/postes';
+import { Segmente } from '@/components/fiche/ElementsCommande';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 
 interface Produit {
   id: number;
   nom: string;
   ordre: number;
+  categorie: string;
 }
 
 interface Inventaire {
@@ -43,14 +44,6 @@ interface Inventaire {
   produit: Produit;
 }
 
-interface DateInventaire {
-  date: string;
-  /** Bilan calculé par le domaine : inconnu ≠ zéro, vendu seulement si tout est connu. */
-  bilan: BilanJournee;
-  /** Écart de restes avec le même jour la semaine d'avant ; null si non comparable. */
-  ecartSemaine: number | null;
-}
-
 /** Ce que le domaine a besoin de savoir d'une ligne d'inventaire. */
 const versLigne = (inv: Inventaire): LigneBilan & { id: number } => ({
   id: inv.id,
@@ -60,10 +53,10 @@ const versLigne = (inv: Inventaire): LigneBilan & { id: number } => ({
   unite: inv.unite,
 });
 
-/** Nombre de plus gros restes montrés en tête d'une journée (affichage, pas une règle). */
-const NB_PLUS_GROS_RESTES = 5;
+/** Le rayon montré à l'arrivée : celui qu'on compte et qu'on produit le plus. */
+const RAYON_PRINCIPAL = 'Viennoiserie';
 /** Plus gros restes cités dans le bloc « Dernier comptage » (affichage). */
-const NB_RESTES_EN_TETE = 4;
+const NB_RESTES_EN_TETE = 5;
 /** Noms de produits à zéro cités en tête du détail ; au-delà : « et N autres » (affichage). */
 const NB_ZEROS_CITES = 6;
 /** Filtres du tableau des produits d'une journée. */
@@ -76,13 +69,11 @@ const FILTRES = [
 type Filtre = (typeof FILTRES)[number]['cle'];
 /** Journées listées (affichage). */
 const NB_JOURNEES = 10;
-/** Sous ce pourcentage vendu, le chiffre passe en alerte (affichage). */
-const SEUIL_VENTE_FAIBLE = 60;
 
 /** Colonnes de la liste des journées, partagées par l'en-tête et les lignes. */
-const COLONNES_JOURNEES = 'sm:grid sm:grid-cols-[minmax(0,1fr)_6rem_7rem_5rem_11rem] sm:items-center sm:gap-x-4';
-/** Colonnes du détail d'une journée. */
-const COLONNES_DETAIL = 'grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_6.5rem] items-center gap-x-3';
+const COLONNES_JOURNEES = 'sm:grid sm:grid-cols-[minmax(0,1fr)_7rem_8rem_5rem] sm:items-center sm:gap-x-4';
+/** Colonnes du détail d'une journée : un produit, son reste. */
+const COLONNES_DETAIL = 'grid grid-cols-[minmax(0,1fr)_6.5rem] items-center gap-x-3';
 
 const MANQUE = <span className="text-ink-3">—</span>;
 
@@ -97,8 +88,8 @@ function quantite(valeur: number | null, unite?: string | null) {
 }
 
 export default function DashboardInventaires() {
-  const [journees, setJournees] = useState<DateInventaire[]>([]);
-  const [dernierComptage, setDernierComptage] = useState<(DateInventaire & { gros: (LigneBilan & { id: number })[] }) | null>(null);
+  const [parDate, setParDate] = useState<Map<string, Inventaire[]>>(new Map());
+  const [rayon, setRayon] = useState(RAYON_PRINCIPAL);
   const [detail, setDetail] = useState<Inventaire[]>([]);
   const [ouverte, setOuverte] = useState<string | null>(null);
   const [chargement, setChargement] = useState(true);
@@ -116,30 +107,12 @@ export default function DashboardInventaires() {
         const debut = decalerJours(dateDuJour(), -60);
         const reponse = await fetch(`/api/inventaires?debut=${debut}&limit=2000`);
         const lignes: Inventaire[] = await reponse.json();
-        const parDate = new Map<string, Inventaire[]>();
+        const table = new Map<string, Inventaire[]>();
         for (const inv of lignes) {
           const date = String(inv.dateInventaire).slice(0, 10);
-          parDate.set(date, [...(parDate.get(date) ?? []), inv]);
+          table.set(date, [...(table.get(date) ?? []), inv]);
         }
-        // Bilan de chaque journée chargée, pour comparer à la semaine d'avant.
-        const bilans = new Map([...parDate].map(([date, l]) => [date, bilanJournee(l.map(versLigne))] as const));
-        const liste = [...bilans.keys()]
-          .sort((a, b) => (a < b ? 1 : a > b ? -1 : 0))
-          .slice(0, NB_JOURNEES)
-          .map((date) => {
-            const bilan = bilans.get(date)!;
-            return { date, bilan, ecartSemaine: ecartDeRestes(bilan, bilans.get(decalerJours(date, -7))) };
-          });
-        if (!annule) {
-          setJournees(liste);
-          // Le dernier soir compté : la réponse à la question de l'écran, dite en premier.
-          const dernier = liste.find((j) => j.bilan.restesComptes > 0);
-          setDernierComptage(
-            dernier
-              ? { ...dernier, gros: plusGrosRestes((parDate.get(dernier.date) ?? []).map(versLigne), NB_RESTES_EN_TETE) }
-              : null,
-          );
-        }
+        if (!annule) setParDate(table);
       } catch {
         if (!annule) setEchec(true);
       } finally {
@@ -150,6 +123,56 @@ export default function DashboardInventaires() {
       annule = true;
     };
   }, []);
+
+  // Les boutons du haut : la viennoiserie d'abord, puis les autres rayons dans l'ordre habituel.
+  const nomsRayons = useMemo(() => {
+    const tous = new Set<string>();
+    for (const lignes of parDate.values()) for (const l of lignes) if (l.produit?.categorie) tous.add(l.produit.categorie);
+    return [...tous].sort((a, b) =>
+      a === RAYON_PRINCIPAL ? -1 : b === RAYON_PRINCIPAL ? 1 : trierCategories([a, b])[0] === a ? -1 : 1,
+    );
+  }, [parDate]);
+  const rayonActif = nomsRayons.includes(rayon) ? rayon : (nomsRayons[0] ?? rayon);
+
+  // Sous chaque bouton : les pièces restées au dernier soir compté, pour voir d'un coup d'œil où ça reste.
+  const restesParRayon = useMemo(() => {
+    const dates = [...parDate.keys()].sort().reverse();
+    const dernier = dates.find((d) => (parDate.get(d) ?? []).some((i) => i.quantiteRestante != null));
+    const table = new Map<string, number>();
+    if (!dernier) return table;
+    for (const nom of nomsRayons) {
+      const lignes = (parDate.get(dernier) ?? []).filter((i) => i.produit?.categorie === nom).map(versLigne);
+      table.set(nom, bilanJournee(lignes).resteTotalPieces ?? 0);
+    }
+    return table;
+  }, [parDate, nomsRayons]);
+
+  // Le bilan de chaque journée, pour le rayon choisi : la comparaison à la
+  // semaine d'avant se fait sur le même rayon.
+  const { journees, dernierComptage } = useMemo(() => {
+    const bilans = new Map(
+      [...parDate].map(([date, l]) => {
+        const lignes = l.filter((i) => i.produit?.categorie === rayonActif);
+        return [date, { bilan: bilanJournee(lignes.map(versLigne)), lignes }] as const;
+      }),
+    );
+    const liste = [...bilans.keys()]
+      .filter((date) => (bilans.get(date)?.bilan.produits ?? 0) > 0)
+      .sort((a, b) => (a < b ? 1 : a > b ? -1 : 0))
+      .slice(0, NB_JOURNEES)
+      .map((date) => {
+        const { bilan } = bilans.get(date)!;
+        return { date, bilan, ecartSemaine: ecartDeRestes(bilan, bilans.get(decalerJours(date, -7))?.bilan) };
+      });
+    // Le dernier soir compté : la réponse à la question de l'écran, dite en premier.
+    const dernier = liste.find((j) => j.bilan.restesComptes > 0);
+    return {
+      journees: liste,
+      dernierComptage: dernier
+        ? { ...dernier, gros: plusGrosRestes((bilans.get(dernier.date)?.lignes ?? []).map(versLigne), NB_RESTES_EN_TETE) }
+        : null,
+    };
+  }, [parDate, rayonActif]);
 
   const ouvrir = async (date: string) => {
     setOuverte(date);
@@ -171,24 +194,24 @@ export default function DashboardInventaires() {
     }
   };
 
-  // Résumé de la journée ouverte (toute la journée, pas seulement les lignes filtrées).
-  const lignesDetail = detail.map(versLigne);
+  // Résumé de la journée ouverte, pour le rayon choisi.
+  const detailRayon = detail.filter((inv) => inv.produit?.categorie === rayonActif);
+  const lignesDetail = detailRayon.map(versLigne);
   const bilanDetail = bilanJournee(lignesDetail);
-  const grosRestes = plusGrosRestes(lignesDetail, NB_PLUS_GROS_RESTES);
+  const grosRestes = plusGrosRestes(lignesDetail, NB_RESTES_EN_TETE);
   const filtre = recherche.trim().toLowerCase();
   const selonEtat = (inv: Inventaire) =>
     filtreEtat === 'tous' ||
     (filtreEtat === 'reste' && (inv.quantiteRestante ?? 0) > 0) ||
     (filtreEtat === 'zero' && inv.quantiteRestante === 0) ||
     (filtreEtat === 'vide' && inv.quantiteRestante == null);
-  const visibles = detail.filter((inv) => selonEtat(inv) && (!filtre || inv.produit.nom.toLowerCase().includes(filtre)));
+  const visibles = detailRayon.filter((inv) => selonEtat(inv) && (!filtre || inv.produit.nom.toLowerCase().includes(filtre)));
   const nombrePar: Record<Filtre, number> = {
-    tous: detail.length,
-    reste: detail.filter((inv) => (inv.quantiteRestante ?? 0) > 0).length,
+    tous: detailRayon.length,
+    reste: detailRayon.filter((inv) => (inv.quantiteRestante ?? 0) > 0).length,
     zero: bilanDetail.aZero.length,
-    vide: detail.filter((inv) => inv.quantiteRestante == null).length,
+    vide: detailRayon.filter((inv) => inv.quantiteRestante == null).length,
   };
-  const productionConnue = bilanDetail.productionsSaisies > 0;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
@@ -196,26 +219,31 @@ export default function DashboardInventaires() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink">Tableau de bord</h1>
-          <p className="mt-0.5 text-sm text-ink-2">Ce qui est resté chaque soir, et ce qui a manqué.</p>
+          <p className="mt-0.5 text-sm text-ink-2">Ce qui est resté en rayon chaque soir.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href="/historique-previsions" className="inline-flex min-h-11 items-center rounded-xl border border-line-fort px-4 text-sm font-medium text-ink">
-            Historique
-          </Link>
-          <Link href="/planification-demain" className="inline-flex min-h-11 items-center rounded-xl border border-line-fort px-4 text-sm font-medium text-ink">
-            Planification
-          </Link>
-          <Link href="/inventaire" className="inline-flex min-h-11 items-center rounded-xl bg-accent px-4 text-sm font-semibold text-accent-texte">
-            Saisir un inventaire
-          </Link>
-        </div>
+        {/* La seule action utile ici : le comptage du soir. */}
+        <Link href="/saisie-vendeur" className="inline-flex min-h-11 items-center rounded-2xl bg-accent px-4 text-[15px] font-semibold text-accent-texte">
+          Compter le restant
+        </Link>
       </div>
+
+      {nomsRayons.length > 1 ? (
+        <div className="mt-5">
+          <Segmente<string>
+            libelle="Rayon"
+            valeur={rayonActif}
+            onChange={setRayon}
+            nombreDessous
+            options={nomsRayons.map((r) => ({ valeur: r, libelle: r, nombre: restesParRayon.get(r) }))}
+          />
+        </div>
+      ) : null}
 
       {/* -------------------------------------------------- Dernier comptage */}
       {dernierComptage ? (
         <section
           aria-labelledby="dernier-comptage"
-          className="mt-6 grid gap-x-10 gap-y-4 rounded-xl border border-line bg-surface p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
+          className="mt-4 grid gap-x-10 gap-y-4 rounded-2xl bg-surface p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
         >
           <div>
             <h2 id="dernier-comptage" className="text-sm text-ink-2">
@@ -247,7 +275,7 @@ export default function DashboardInventaires() {
             <button
               type="button"
               onClick={() => void ouvrir(dernierComptage.date)}
-              className="mt-3 inline-flex min-h-11 items-center rounded-xl border border-line-fort px-4 text-sm font-medium text-ink"
+              className="mt-3 inline-flex min-h-11 items-center rounded-2xl bg-segment-fond px-4 text-[15px] font-semibold text-ink"
             >
               Voir le détail
             </button>
@@ -271,29 +299,28 @@ export default function DashboardInventaires() {
       ) : null}
 
       {/* --------------------------------------------------------- Journées */}
-      <section aria-label="Journées d’inventaire" className="mt-6 overflow-hidden rounded-xl border border-line bg-surface">
+      <section aria-label="Restes par soir" className="mt-4 overflow-hidden rounded-2xl bg-surface">
         <div className={`hidden px-4 py-2.5 text-xs text-ink-2 ${COLONNES_JOURNEES}`}>
-          <span>Journée</span>
+          <span>Soir</span>
           <span className="text-right">Restes (pièces)</span>
           <span className="text-right">Semaine d’avant</span>
           <span className="text-right">À zéro</span>
-          <span className="text-right">Vendu</span>
         </div>
 
         {chargement ? (
-          <p className="border-t border-line px-4 py-8 text-center text-sm text-ink-2">Chargement des inventaires…</p>
+          <p className="border-t border-line px-4 py-8 text-center text-sm text-ink-2">Chargement des comptages…</p>
         ) : echec ? (
           <p className="border-t border-line px-4 py-8 text-center text-sm text-ink-2">
-            Les inventaires n’ont pas pu être chargés. Vérifiez le réseau puis rouvrez cet écran.
+            Les comptages n’ont pas pu être chargés. Vérifiez le réseau puis rouvrez cet écran.
           </p>
         ) : journees.length === 0 ? (
           <p className="border-t border-line px-4 py-8 text-center text-sm text-ink-2">
-            Aucun inventaire sur les 60 derniers jours. Le premier comptage du soir apparaîtra ici.
+            Aucun comptage de {rayonActif.toLowerCase()} sur les 60 derniers jours. Le premier comptage du soir apparaîtra ici.
           </p>
         ) : (
           <ul>
             {journees.map(({ date, bilan, ecartSemaine }) => (
-              <li key={date} className="border-t border-line">
+              <li key={date} className="border-t border-line first:border-t-0">
                 <button
                   type="button"
                   onClick={() => void ouvrir(date)}
@@ -302,9 +329,11 @@ export default function DashboardInventaires() {
                   <span className="block min-w-0">
                     <span className="block truncate text-base font-medium text-ink first-letter:uppercase">{dateLongue(date)}</span>
                     <span className="block text-[0.8125rem] text-ink-2">
-                      {bilan.restesComptes === bilan.produits
-                        ? `${bilan.produits} produits comptés`
-                        : `${bilan.restesComptes} produits comptés sur ${bilan.produits}`}
+                      {bilan.restesComptes === 0
+                        ? 'pas encore compté'
+                        : bilan.restesComptes === bilan.produits
+                          ? `${bilan.produits} produits comptés`
+                          : `${bilan.restesComptes} produits comptés sur ${bilan.produits}`}
                     </span>
                   </span>
 
@@ -332,21 +361,6 @@ export default function DashboardInventaires() {
                       <span className="sm:hidden">À zéro </span>
                       <span className={`chiffres ${bilan.aZero.length > 0 ? 'font-medium text-ink' : 'text-ink-2'}`}>{bilan.aZero.length}</span>
                     </span>
-                    <span className="sm:text-right">
-                      {bilan.tauxVente === null ? (
-                        <span className="text-ink-3">{bilan.restesComptes === 0 ? 'pas encore compté' : 'production non saisie'}</span>
-                      ) : (
-                        <>
-                          <span className="sm:hidden">Vendu </span>
-                          <span className="chiffres text-ink">
-                            {bilan.venduTotalPieces} / {bilan.produitTotalPieces}
-                          </span>
-                          <span className={`chiffres ml-1.5 font-medium ${bilan.tauxVente < SEUIL_VENTE_FAIBLE ? 'text-alerte' : 'text-ink'}`}>
-                            {bilan.tauxVente}&nbsp;%
-                          </span>
-                        </>
-                      )}
-                    </span>
                   </span>
                 </button>
               </li>
@@ -366,11 +380,11 @@ export default function DashboardInventaires() {
         className="fixed inset-0 m-auto w-[calc(100%-1.5rem)] max-w-3xl border-0 bg-transparent p-0 text-ink backdrop:bg-voile"
       >
         {ouverte ? (
-          <div className="flex max-h-[92dvh] flex-col overflow-hidden rounded-2xl bg-surface shadow-xl">
+          <div className="flex max-h-[92dvh] flex-col overflow-hidden rounded-3xl bg-surface shadow-xl">
             <div className="flex items-start justify-between gap-3 px-5 pt-4">
               <div className="min-w-0">
                 <h2 id="detail-titre" className="truncate text-lg font-semibold text-ink first-letter:uppercase">
-                  {dateLongue(ouverte)}
+                  {dateLongue(ouverte)} · {rayonActif}
                 </h2>
                 <p className="text-sm text-ink-2">
                   {chargementDetail
@@ -382,17 +396,17 @@ export default function DashboardInventaires() {
               <button
                 type="button"
                 onClick={() => fenetre.current?.close()}
-                className="-mr-2 inline-flex min-h-11 items-center rounded-xl px-3 text-sm font-medium text-ink-2 hover:text-ink"
+                className="-mr-2 inline-flex min-h-11 items-center rounded-2xl px-3 text-[15px] font-medium text-ink-2 hover:text-ink"
               >
                 Fermer
               </button>
             </div>
 
             <div className="overflow-y-auto overscroll-contain px-5 pb-5 pt-4">
-              {!chargementDetail && detail.length > 0 ? (
+              {!chargementDetail && detailRayon.length > 0 ? (
                 <>
                   {/* L'essentiel : un seul cadre, deux réponses côte à côte. */}
-                  <div className="grid rounded-xl border border-line sm:grid-cols-2">
+                  <div className="grid rounded-2xl bg-surface-2 sm:grid-cols-2">
                     <div className="p-4">
                       <h3 className="text-sm text-ink-2">Plus gros restes</h3>
                       {grosRestes.length === 0 ? (
@@ -428,7 +442,7 @@ export default function DashboardInventaires() {
                             <button
                               type="button"
                               onClick={() => setFiltreEtat('zero')}
-                              className="mt-2 inline-flex min-h-11 items-center rounded-xl border border-line-fort px-4 text-sm font-medium text-ink"
+                              className="mt-2 inline-flex min-h-11 items-center rounded-2xl bg-segment-fond px-4 text-[15px] font-semibold text-ink"
                             >
                               Voir les {bilanDetail.aZero.length} produits à zéro
                             </button>
@@ -438,19 +452,13 @@ export default function DashboardInventaires() {
                     </div>
                   </div>
 
-                  {!productionConnue && bilanDetail.restesComptes > 0 ? (
-                    <p className="mt-3 text-sm text-ink-2">
-                      La production de cette journée n’a pas été saisie : le vendu ne se calcule pas, seuls les restes sont connus.
-                    </p>
-                  ) : null}
-
                   <input
                     type="search"
                     value={recherche}
                     onChange={(e) => setRecherche(e.target.value)}
                     placeholder="Chercher un produit"
                     aria-label="Chercher un produit"
-                    className="mt-4 min-h-11 w-full rounded-xl border border-line-fort bg-surface px-3 text-base text-ink placeholder:text-ink-3"
+                    className="mt-4 min-h-11 w-full rounded-2xl bg-segment-fond px-3 text-base text-ink placeholder:text-ink-3"
                   />
 
                   <div role="group" aria-label="Filtrer les produits" className="mt-2 flex flex-wrap gap-1.5">
@@ -460,8 +468,8 @@ export default function DashboardInventaires() {
                         type="button"
                         aria-pressed={filtreEtat === f.cle}
                         onClick={() => setFiltreEtat(f.cle)}
-                        className={`min-h-11 rounded-full px-4 text-sm font-medium ${
-                          filtreEtat === f.cle ? 'bg-ink text-surface' : 'bg-segment-fond text-ink'
+                        className={`min-h-11 rounded-full px-4 text-[15px] font-medium ${
+                          filtreEtat === f.cle ? 'bg-accent text-accent-texte' : 'bg-segment-fond text-ink'
                         }`}
                       >
                         {f.libelle} <span className="chiffres font-normal opacity-80">{nombrePar[f.cle]}</span>
@@ -469,13 +477,11 @@ export default function DashboardInventaires() {
                     ))}
                   </div>
 
-                  {/* Tous les produits : une ligne chacun, chiffres alignés à droite. */}
+                  {/* Tous les produits : une ligne chacun, le reste à droite. */}
                   <div className="mt-3">
                     <div className={`${COLONNES_DETAIL} pb-1.5 text-xs text-ink-2`}>
                       <span>Produit</span>
-                      <span className="text-right">Fabriqué</span>
                       <span className="text-right">Reste</span>
-                      <span className="text-right">Vendu</span>
                     </div>
                     {visibles.length === 0 ? (
                       <p className="border-t border-line py-6 text-center text-sm text-ink-2">
@@ -484,30 +490,12 @@ export default function DashboardInventaires() {
                     ) : (
                       <ul>
                         {visibles.map((inv) => {
-                          const ligne = versLigne(inv);
-                          const vendu = venduDeLaLigne(ligne);
-                          const taux = tauxDeLaLigne(ligne);
                           const reste = inv.quantiteRestante;
                           return (
                             <li key={inv.id} className={`${COLONNES_DETAIL} min-h-11 border-t border-line py-1.5 text-base`}>
                               <span className="min-w-0 truncate text-ink">{inv.produit.nom}</span>
-                              <span className="chiffres text-right text-ink-2">{quantite(inv.quantiteProduite, inv.unite)}</span>
                               <span className={`chiffres text-right ${reste ? 'font-semibold text-ink' : 'text-ink-2'}`}>
                                 {quantite(reste, inv.unite)}
-                              </span>
-                              <span className="chiffres text-right text-ink-2">
-                                {vendu === null ? (
-                                  MANQUE
-                                ) : (
-                                  <>
-                                    {quantite(vendu, inv.unite)}
-                                    {taux !== null ? (
-                                      <span className={`ml-1.5 text-[0.8125rem] ${taux < SEUIL_VENTE_FAIBLE ? 'font-medium text-alerte' : ''}`}>
-                                        {taux}&nbsp;%
-                                      </span>
-                                    ) : null}
-                                  </>
-                                )}
                               </span>
                             </li>
                           );
@@ -517,7 +505,7 @@ export default function DashboardInventaires() {
                   </div>
                 </>
               ) : !chargementDetail ? (
-                <p className="py-8 text-center text-sm text-ink-2">Aucune ligne d’inventaire pour cette journée.</p>
+                <p className="py-8 text-center text-sm text-ink-2">Aucune ligne de comptage pour cette journée dans ce rayon.</p>
               ) : null}
             </div>
           </div>

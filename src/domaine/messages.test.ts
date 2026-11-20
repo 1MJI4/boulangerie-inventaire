@@ -128,6 +128,7 @@ const EXEMPLES: Partial<Record<CodeCatalogue, unknown>> = {
   ERR_PHOTO_TROP_LOURDE: { maxMo: 10 },
   ERR_PHOTO_MASQUEE: { photo: 'G019' },
   ERR_IMPRESSION_NON_ENVOYEE: {},
+  ERR_FEUILLE_NON_ENVOYEE: {},
   INFO_COMMANDE_GARDEE_SUR_TABLETTE: {},
   AVERT_COMMANDE_INHABITUELLE: {},
   AVERT_INVENTAIRE_AVANT_FERMETURE: { heureFermeture: 'Hh' },
@@ -504,4 +505,5 @@ test('panne réseau : le vendeur sait que rien n’est enregistré, sans « serv
   );
   // Impression : la commande reste enregistrée, les bons ne sont pas partis.
   assert.match(messagePour('ERR_IMPRESSION_NON_ENVOYEE', {}), /bons ne sont pas partis.*reste enregistrée/);
+  assert.match(messagePour('ERR_FEUILLE_NON_ENVOYEE', {}), /feuille n’est pas partie.*Sur papier/);
 });

@@ -82,6 +82,10 @@ export async function POST(requete: NextRequest) {
   try {
     if (typeof corps.commandeId === 'number') {
       await prisma.travailImpression.deleteMany({ where: { commandeId: corps.commandeId } });
+    } else if (typeof corps.numero === 'string' && corps.numero !== '') {
+      // Papier sans commande (feuille de prévisions) : même principe, repartir
+      // d'une file vide pour ce numéro, sinon une réimpression annonce « 2 sur 2 ».
+      await prisma.travailImpression.deleteMany({ where: { commandeId: null, numero: corps.numero } });
     }
     await prisma.travailImpression.createMany({ data: aEcrire });
   } catch (error) {
@@ -98,21 +102,32 @@ export async function GET(requete: NextRequest) {
   const garde = exigerRole(requete, 'tablette', "suivre l'impression");
   if (!garde.ok) return garde.reponse;
   const id = Number(requete.nextUrl.searchParams.get('commandeId'));
+  const numero = requete.nextUrl.searchParams.get('numero') ?? '';
   try {
-    return NextResponse.json(await suivi(id));
+    return NextResponse.json(await suivi(id, numero));
   } catch (error) {
     const { corps, statut } = traiterErreur(error, 'GET /api/impression');
     return NextResponse.json(corps, { status: statut });
   }
 }
 
-async function suivi(id: number) {
+async function suivi(id: number, numero = '') {
   const etatBrut = await prisma.reglage.findUnique({ where: { cle: 'imprimante:etat' } });
   let imprimante: { statusCode: string; vueLe: string } | null = null;
   try {
     imprimante = etatBrut ? JSON.parse(etatBrut.valeur) : null;
   } catch {
     imprimante = null;
+  }
+
+  // Papier sans commande (feuille de prévisions) : on le retrouve par son numéro.
+  if ((!Number.isFinite(id) || id <= 0) && numero !== '') {
+    const travaux = await prisma.travailImpression.findMany({
+      where: { commandeId: null, numero },
+      orderBy: { id: 'asc' },
+      select: { id: true, destination: true, statut: true, erreur: true, imprimeLe: true },
+    });
+    return { imprimante, travaux };
   }
 
   if (!Number.isFinite(id) || id <= 0) return { imprimante, travaux: [] };

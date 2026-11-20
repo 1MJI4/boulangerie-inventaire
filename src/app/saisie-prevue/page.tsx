@@ -3,21 +3,24 @@
 // Écran du manager, quelques heures avant la fournée : il note ce qu'il veut
 // voir produit. Dès qu'il saisit, le pâtissier le voit sur son écran.
 //
-// En pratique il ne planifie presque que la viennoiserie. C'est donc le seul
-// rayon ouvert à l'arrivée ; les autres sont là, repliés, pour les fois où il
-// en a besoin — et s'ouvrent d'eux-mêmes s'ils contiennent déjà des quantités.
+// En pratique il ne planifie presque que la viennoiserie. C'est donc le rayon
+// choisi à l'arrivée ; les autres (Pains, Salé…) sont un toucher plus loin, dans
+// les boutons du haut, avec le nombre de quantités déjà demandées dessous
+// (propriétaire, 20/11/2026). Sur chaque ligne, les RESTES du dernier comptage
+// passent en premier : c'est l'information qui décide de la quantité.
 //
 // LOI 2 : un produit au kilo se planifie en poids (grammes), au pavé décimal ;
 // le « + commande » (1 + 11) reste réservé aux produits à la pièce.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide, Progression, Puce } from '@/components/ui';
 import { IndicateurSauvegarde } from '@/components/IndicateurSauvegarde';
 import { LigneSaisie } from '@/components/LigneSaisie';
 import { SelecteurJournee } from '@/components/SelecteurJournee';
 import { BandeauCommandes } from '@/components/BandeauCommandes';
-import { formatDateLong, journeeProduction } from '@/lib/dateProduction';
-import { useMemoireLocale } from '@/lib/memoireLocale';
+import { formatDateCourt, formatDateLong, journeeProduction } from '@/lib/dateProduction';
+import { useRestesVeille } from '@/lib/useRestesVeille';
+import { Segmente } from '@/components/fiche/ElementsCommande';
 import { LIBELLE_POSTE, trierCategories } from '@/lib/postes';
 import { formatHeure, useHistoriqueProduit } from '@/lib/useHistoriqueProduit';
 import { useSaisieJournee, type Produit } from '@/lib/useSaisieJournee';
@@ -43,10 +46,8 @@ const RAYON_PRINCIPAL = 'Viennoiserie';
 export default function SaisiePrevisions() {
   const [date, setDate] = useState(() => journeeProduction());
   const [recherche, setRecherche] = useState('');
-  const [ouvertsManuellement, setOuvertsManuellement] = useMemoireLocale<string[]>(
-    'boulangerie:rayons-previsions',
-    [RAYON_PRINCIPAL]
-  );
+  // Le rayon affiché : la viennoiserie à chaque arrivée, les autres au toucher.
+  const [rayonChoisi, setRayonChoisi] = useState(RAYON_PRINCIPAL);
 
   const saisie = useSaisieJournee({ date, champ: 'quantitePrevue' });
   // Le « 1 + 11 » des anciennes feuilles : ce qui sort normalement du four, et
@@ -55,6 +56,7 @@ export default function SaisiePrevisions() {
   // la semaine suivante.
   const commande = useSaisieJournee({ date, champ: 'quantiteCommande' });
   const { reperes } = useHistoriqueProduit(date);
+  const restes = useRestesVeille(date);
   // R72 — commandes prises dans l'application : comptées toutes seules pour le
   // fournil (dérivés compris), affichées ici pour que le manager ne les retape pas.
   const partCommandes = usePartCommandee(date);
@@ -154,23 +156,24 @@ export default function SaisiePrevisions() {
     });
   }, [saisie.produits, saisie.valeurs, recherche]);
 
-  // Un rayon qui contient déjà des quantités s'ouvre tout seul : le manager
-  // doit voir ce qu'il a demandé, même dans un rayon qu'il ouvre rarement.
-  const estOuvert = (categorie: string, remplis: number) =>
-    enRecherche || remplis > 0 || ouvertsManuellement.includes(categorie);
-
-  const basculer = (categorie: string) => {
-    setOuvertsManuellement(
-      ouvertsManuellement.includes(categorie)
-        ? ouvertsManuellement.filter((c) => c !== categorie)
-        : [...ouvertsManuellement, categorie]
+  // Les boutons du haut : la viennoiserie d'abord, puis les autres rayons dans l'ordre habituel.
+  const nomsRayons = useMemo(() => {
+    const tous = new Set(saisie.produits.map((p) => p.categorie));
+    return [...tous].sort((a, b) =>
+      a === RAYON_PRINCIPAL ? -1 : b === RAYON_PRINCIPAL ? 1 : trierCategories([a, b])[0] === a ? -1 : 1,
     );
-  };
-
-  // Au premier chargement, seule la viennoiserie est dépliée.
-  useEffect(() => {
-    if (ouvertsManuellement.length === 0) setOuvertsManuellement([RAYON_PRINCIPAL]);
-  }, [ouvertsManuellement, setOuvertsManuellement]);
+  }, [saisie.produits]);
+  // Rayon choisi absent de la liste (liste vide, rayon renommé) : le premier existant.
+  const rayonActif = nomsRayons.includes(rayonChoisi) ? rayonChoisi : (nomsRayons[0] ?? rayonChoisi);
+  // La recherche traverse tous les rayons ; sinon, un seul rayon à la fois.
+  const rayonsAffiches = enRecherche ? rayons : rayons.filter((r) => r.categorie === rayonActif);
+  const demandesParRayon = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const p of saisie.produits) {
+      if ((saisie.valeurs[p.id] ?? '') !== '') n.set(p.categorie, (n.get(p.categorie) ?? 0) + 1);
+    }
+    return n;
+  }, [saisie.produits, saisie.valeurs]);
 
   /* -------------------------------------------------- Aide à la décision */
 
@@ -212,9 +215,7 @@ export default function SaisiePrevisions() {
   /* ------------------------------------------- Enchaînement de la saisie */
 
   // Ordre affiché à l'écran : « suivant » = la ligne juste en dessous.
-  const ordreAffiche = rayons.flatMap(({ categorie, produits, remplis }) =>
-    estOuvert(categorie, remplis) ? produits : []
-  );
+  const ordreAffiche = rayonsAffiches.flatMap(({ produits }) => produits);
 
   /**
    * Passe au produit affiché après `produitId` : pavé décimal s'il est au kilo
@@ -283,6 +284,18 @@ export default function SaisiePrevisions() {
           />
         </div>
 
+        {!enRecherche && nomsRayons.length > 1 ? (
+          <div className="sans-impression mb-4">
+            <Segmente<string>
+              libelle="Rayon"
+              valeur={rayonActif}
+              onChange={setRayonChoisi}
+              nombreDessous
+              options={nomsRayons.map((r) => ({ valeur: r, libelle: r, nombre: demandesParRayon.get(r) ?? 0 }))}
+            />
+          </div>
+        ) : null}
+
         <div className="sans-impression mb-4">
           <input
             type="search"
@@ -290,7 +303,7 @@ export default function SaisiePrevisions() {
             onChange={(e) => setRecherche(e.target.value)}
             placeholder="Chercher un produit dans tous les rayons…"
             aria-label="Chercher un produit"
-            className="h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none sm:max-w-80"
+            className="h-11 w-full rounded-xl border border-transparent bg-surface px-3 text-sm text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none sm:max-w-80"
           />
         </div>
 
@@ -325,15 +338,14 @@ export default function SaisiePrevisions() {
             <Chargement libelle="Chargement de la liste des produits…" />
             <RappelChargement className="mx-auto max-w-md" />
           </>
-        ) : rayons.length === 0 ? (
+        ) : rayonsAffiches.length === 0 ? (
           <Carte>
             <EtatVide titre="Aucun produit ne correspond" detail="Essayez un autre mot." />
           </Carte>
         ) : (
           <div className="space-y-3">
-            {rayons.map(({ categorie, produits, remplis }) => {
-              const ouvert = estOuvert(categorie, remplis);
-              const principal = categorie === RAYON_PRINCIPAL;
+            {rayonsAffiches.map(({ categorie, produits, remplis }) => {
+              const ouvert = true;
               const avecReperes = produits.filter(
                 (p) => (reperes.get(p.id)?.moyenneProduite ?? 0) > 0
               ).length;
@@ -341,20 +353,7 @@ export default function SaisiePrevisions() {
               return (
                 <Carte key={categorie}>
                   <div className="flex flex-wrap items-center justify-between gap-3 px-4">
-                    <button
-                      type="button"
-                      onClick={() => basculer(categorie)}
-                      aria-expanded={ouvert}
-                      className="-mx-2 flex min-h-11 min-w-0 items-center gap-2 rounded-md px-2 text-left hover:bg-surface-2"
-                    >
-                      <span aria-hidden className="text-ink-3">
-                        {ouvert ? '▾' : '▸'}
-                      </span>
-                      <span className="text-sm font-semibold text-ink">{categorie}</span>
-                      {!principal && remplis === 0 ? (
-                        <span className="text-xs text-ink-3">rarement planifié</span>
-                      ) : null}
-                    </button>
+                    <h2 className="flex min-h-11 items-center text-sm font-semibold text-ink">{categorie}</h2>
 
                     <div className="flex items-center gap-3">
                       {remplis > 0 ? (
@@ -388,6 +387,7 @@ export default function SaisiePrevisions() {
                       <div className="border-t border-line">
                         {produits.map((produit) => {
                           const repere = reperes.get(produit.id);
+                          const reste = restes.parProduit.get(produit.id) ?? null;
                           const auPoids = produit.unite === 'kg';
                           const partAuto = partCommandes.parProduit.get(produit.id);
                           const commandeAuto = partAuto?.commandeAuto ?? 0;
@@ -454,8 +454,14 @@ export default function SaisiePrevisions() {
                                     : undefined
                               }
                               indice={
-                                commandeAuto > 0 || parPlateau !== null || repere?.dernier?.produite != null ? (
+                                reste != null || commandeAuto > 0 || parPlateau !== null || repere?.dernier?.produite != null ? (
                                   <>
+                                    {reste != null ? (
+                                      <span className="chiffres text-sm font-semibold text-ink">
+                                        Reste {formatDateCourt(restes.jour).split(' ').slice(0, 2).join(' ')} : {afficher(produit, reste)}
+                                        {commandeAuto > 0 || parPlateau !== null || repere?.dernier?.produite != null ? ' · ' : ''}
+                                      </span>
+                                    ) : null}
                                     {commandeAuto > 0 ? (
                                       <span className="chiffres font-medium text-accent">
                                         + {commandeAuto} commandé{commandeAuto > 1 ? 's' : ''} dans l&apos;application

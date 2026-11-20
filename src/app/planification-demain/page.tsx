@@ -19,6 +19,9 @@ import { DEFINITIONS } from '@/lib/profils';
 import { DESCRIPTION_POSTE, LIBELLE_POSTE, POSTES, estPoste, type Poste } from '@/lib/postes';
 import { enPlateaux, formaterPlateaux, sePlanifieEnPlateaux } from '@/domaine/plateaux';
 import { formaterDerives, totalAProduire } from '@/domaine/commandesFournil';
+import { construireFeuille } from '@/domaine/feuillePrevisions';
+import type { FeuillePrevisions } from '@/domaine/feuillePrevisions';
+import { FenetreImpressionFeuille } from '@/components/FenetreImpressionFeuille';
 import type { PartCommandeeJournee, PartFournil } from '@/lib/serveur/partCommandee';
 
 /**
@@ -210,6 +213,10 @@ export default function Fournil() {
     }
   };
 
+  // Feuille à cocher sur le ticket de l'imprimante Star (propriétaire, 20/11/2026) :
+  // même chemin que les bons de commande. En cas de panne, « Imprimer sur papier ».
+  const [feuilleOuverte, setFeuilleOuverte] = useState<{ feuille: FeuillePrevisions; numero: string } | null>(null);
+
   const parCategorie = useMemo(() => {
     const groupes = new Map<string, LigneFournil[]>();
     for (const ligne of [...lignes].sort((a, b) => a.produit.ordre - b.produit.ordre)) {
@@ -219,6 +226,30 @@ export default function Fournil() {
     }
     return [...groupes.entries()];
   }, [lignes]);
+
+  const imprimerSurTicket = () => {
+    const partDeJour = new Map<number, PartFournil>(
+      (part && part.journee === date ? part.bases : []).map((b) => [b.produitId, b]),
+    );
+    const feuille = construireFeuille({
+      titre: `Feuille ${LIBELLE_POSTE[poste].toLowerCase()}`,
+      dateLongue: formatDateLong(date),
+      sections: parCategorie.map(([categorie, liste]) => ({
+        titre: categorie,
+        lignes: liste.map((l) => ({
+          nom: l.produit.nom,
+          quantitePrevue: l.quantitePrevue,
+          quantiteCommande: l.quantiteCommande,
+          commandeAuto: l.commandeAuto ?? null,
+          plateauCommandes: l.plateauCommandes ?? null,
+          piecesParPlateau: l.produit.piecesParPlateau ?? null,
+          derives: formaterDerives(partDeJour.get(l.produitId)?.detail ?? []),
+        })),
+      })),
+    });
+    // La fenêtre se charge du reste : préparer, déposer dans la file, suivre la sortie.
+    setFeuilleOuverte({ feuille, numero: `Prévisions ${date} ${poste}` });
+  };
 
   const faits = lignes.filter((l) => l.faitLe !== null).length;
   const total = lignes.reduce((somme, l) => somme + totalAProduire(l.quantitePrevue, l.plateauCommandes), 0);
@@ -240,10 +271,14 @@ export default function Fournil() {
           </>
         }
         actions={
-          <div className="sans-impression flex items-center gap-2">
+          <div className="sans-impression flex flex-wrap items-center gap-2">
             <SelecteurJournee date={date} onChange={setDate} libelle="Fournée" />
-            <Bouton variante="secondaire" onClick={() => window.print()}>
-              Imprimer
+            <Bouton variante="principal" onClick={imprimerSurTicket} disabled={lignes.length === 0}>
+              Imprimer le ticket
+            </Bouton>
+            {/* Secours : imprimante de bureau, quand le ticket ne sort pas. */}
+            <Bouton variante="secondaire" onClick={() => window.print()} disabled={lignes.length === 0}>
+              Sur papier
             </Bouton>
           </div>
         }
@@ -255,14 +290,14 @@ export default function Fournil() {
             <span className="text-xs text-ink-3">{DESCRIPTION_POSTE[poste]}</span>
           ) : (
             <>
-              <div role="tablist" aria-label="Poste" className="flex gap-1 rounded-lg border border-line bg-surface p-1">
+              <div role="tablist" aria-label="Poste" className="flex gap-1 rounded-xl border border-transparent bg-surface p-1">
                 {POSTES.map((p) => (
                   <button
                     key={p}
                     role="tab"
                     aria-selected={poste === p}
                     onClick={() => setPosteMemorise(p)}
-                    className={`min-h-9 rounded-md px-3 text-sm font-medium transition-colors ${
+                    className={`min-h-9 rounded-lg px-3 text-sm font-medium transition-colors ${
                       poste === p ? 'bg-accent-doux text-accent' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
                     }`}
                   >
@@ -325,7 +360,7 @@ export default function Fournil() {
           />
         </Carte>
       ) : (
-        <div className="zone-impression space-y-4">
+        <div className="zone-impression feuille-previsions space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <Puce ton="accent">
@@ -379,10 +414,10 @@ export default function Fournil() {
                         disabled={enCours.has(ligne.produitId)}
                         aria-pressed={fait}
                         aria-label={`Marquer ${ligne.produit.nom} comme produit`}
-                        className={`sans-impression flex h-8 w-8 shrink-0 items-center justify-center rounded-md border text-sm transition-colors ${
+                        className={`sans-impression flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-sm transition-colors ${
                           fait
                             ? 'border-ok bg-ok text-white'
-                            : 'border-line-fort text-transparent hover:border-accent'
+                            : 'border-line-fort text-transparent hover:bg-accent-doux'
                         }`}
                       >
                         ✓
@@ -449,6 +484,13 @@ export default function Fournil() {
           ))}
         </div>
       )}
+      {feuilleOuverte ? (
+        <FenetreImpressionFeuille
+          feuille={feuilleOuverte.feuille}
+          numero={feuilleOuverte.numero}
+          onFermer={() => setFeuilleOuverte(null)}
+        />
+      ) : null}
     </>
   );
 }
