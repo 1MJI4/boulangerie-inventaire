@@ -12,8 +12,9 @@ import { useSearchParams } from 'next/navigation';
 import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide, LienBouton } from '@/components/ui';
 import { useEquipe } from '@/lib/vendeurs';
 import { depuisApi, typesDeCommande, type Commande, type CommandeApi } from '@/lib/commandes';
-import { dateDuJour } from '@/lib/dateProduction';
-import { decalerJours } from '@/domaine/calendrier';
+import { dateDuJour, formatDateLong } from '@/lib/dateProduction';
+import { decalerJours, estJourFerme, type JourFerme } from '@/domaine/calendrier';
+import { BandeSemaine } from '@/components/BandeSemaine';
 import { RappelChargement } from '@/components/rappels';
 import { echecReseau, lireReponse } from '@/components/commande/modele';
 import { FicheCommande } from '@/components/FicheCommande';
@@ -65,6 +66,10 @@ function EcranCommandes() {
   const [annulees, setAnnulees] = useState<Commande[] | null>(null);
   const [erreurAnnulees, setErreurAnnulees] = useState<string | null>(null);
   const aujourdhui = dateDuJour();
+  // Bande de la semaine (21/11/2026) : retraits par jour ; toucher un jour filtre la liste.
+  const [debutSemaine, setDebutSemaine] = useState(0);
+  const [jourChoisi, setJourChoisi] = useState<string | null>(null);
+  const [joursFermes, setJoursFermes] = useState<JourFerme[]>([]);
   // En retard dès l'heure de retrait passée, rouge à 19h (29/10/2026) : l'écran suit l'heure.
   const { minutes } = useMaintenant();
 
@@ -132,10 +137,33 @@ function EcranCommandes() {
     };
   }, [charger]);
 
+  useEffect(() => {
+    let vivant = true;
+    fetch('/api/calendrier', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((c: { joursFermes?: JourFerme[] } | null) => {
+        if (vivant && c && Array.isArray(c.joursFermes)) setJoursFermes(c.joursFermes);
+      })
+      .catch(() => {});
+    return () => {
+      vivant = false;
+    };
+  }, []);
+
   const groupes = useMemo(
-    () => grouperCommandes(chercherCommandes(commandes ?? [], recherche), aujourdhui, minutes),
-    [commandes, recherche, aujourdhui, minutes],
+    () =>
+      grouperCommandes(
+        chercherCommandes(
+          jourChoisi ? (commandes ?? []).filter((c) => c.retraitLe.slice(0, 10) === jourChoisi) : (commandes ?? []),
+          recherche,
+        ),
+        aujourdhui,
+        minutes,
+      ),
+    [commandes, recherche, aujourdhui, minutes, jourChoisi],
   );
+  const semaine = Array.from({ length: 7 }, (_, k) => decalerJours(aujourdhui, debutSemaine * 7 + k));
+  const retraitsDuJour = (iso: string) => (commandes ?? []).filter((c) => c.retraitLe.slice(0, 10) === iso);
   const annuleesTrouvees = useMemo(() => chercherCommandes(annulees ?? [], recherche), [annulees, recherche]);
   const ouverte = [...(commandes ?? []), ...(annulees ?? [])].find((c) => c.id === ouverteId) ?? null;
 
@@ -262,6 +290,41 @@ function EcranCommandes() {
 
       {erreur ? <Alerte>{erreur}</Alerte> : null}
 
+      {vue === 'enCours' ? (
+        <BandeSemaine
+          titre="Retraits de la semaine"
+          jours={semaine}
+          aujourdhui={aujourdhui}
+          choisi={jourChoisi}
+          onChoisir={(j) => setJourChoisi((avant) => (avant === j ? null : j))}
+          onPrecedente={() => setDebutSemaine((d) => d - 1)}
+          onSuivante={() => setDebutSemaine((d) => d + 1)}
+          onRetourAujourdhui={debutSemaine !== 0 ? () => setDebutSemaine(0) : null}
+          cellule={(iso) => {
+            const liste = retraitsDuJour(iso);
+            const ferme = estJourFerme(iso, joursFermes);
+            return {
+              libelle: `${formatDateLong(iso)} : ${ferme ? 'fermé' : `${liste.length} retrait${liste.length > 1 ? 's' : ''}`}`,
+              ferme,
+              bas: ferme ? <span className="text-xs font-normal">fermé</span> : liste.length === 0 ? undefined : liste.length,
+              point: liste.some((c) => c.statut === 'a_imprimer'),
+            };
+          }}
+          note={
+            jourChoisi ? (
+              <>
+                Retraits du {formatDateLong(jourChoisi)} seulement ·{' '}
+                <button type="button" onClick={() => setJourChoisi(null)} className="min-h-11 font-medium text-accent">
+                  Tout afficher
+                </button>
+              </>
+            ) : (
+              'Toucher un jour pour ne voir que ses retraits · un point = bon à imprimer.'
+            )
+          }
+        />
+      ) : null}
+
       <div className="mb-5">
         {/* Champ de recherche d'iOS : piste grise, loupe, texte de 17 points. */}
         <label className="relative block">
@@ -356,6 +419,14 @@ function EcranCommandes() {
               onOuvrir={(c) => setOuverteId(c.id)}
             />
           ))}
+          {jourChoisi && filtre === null && GROUPES.every((g) => groupes[g.cle].length === 0) ? (
+            <div className="rounded-2xl bg-surface px-4 py-6 text-center">
+              <p className="text-base text-ink-2">Aucun retrait ce jour-là.</p>
+              <button type="button" onClick={() => setJourChoisi(null)} className="mt-2 min-h-11 px-3 text-base font-medium text-accent">
+                Voir toutes les commandes
+              </button>
+            </div>
+          ) : null}
           {filtre !== null && groupes[filtre].length === 0 ? (
             <div className="rounded-2xl bg-surface px-4 py-6 text-center">
               <p className="text-base text-ink-2">Aucune commande ici.</p>

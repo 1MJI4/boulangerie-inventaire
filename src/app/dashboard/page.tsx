@@ -97,6 +97,8 @@ export default function DashboardInventaires() {
   const [echec, setEchec] = useState(false);
   const [recherche, setRecherche] = useState('');
   const [filtreEtat, setFiltreEtat] = useState<Filtre>('tous');
+  /** 0 = la semaine qui finit aujourd'hui ; −1 = la précédente… */
+  const [debutSemaine, setDebutSemaine] = useState(0);
   const fenetre = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -174,6 +176,15 @@ export default function DashboardInventaires() {
     };
   }, [parDate, rayonActif]);
 
+  // Bande de la semaine (comme pour les commandes) : 7 soirs, reste du rayon choisi.
+  // Les données chargées couvrent 60 jours : on ne remonte pas plus loin.
+  const aujourdhui = dateDuJour();
+  const semaine = Array.from({ length: 7 }, (_, k) => decalerJours(aujourdhui, debutSemaine * 7 - 6 + k));
+  const bilanDuSoir = (date: string) => {
+    const lignes = (parDate.get(date) ?? []).filter((i) => i.produit?.categorie === rayonActif).map(versLigne);
+    return lignes.length > 0 ? bilanJournee(lignes) : null;
+  };
+
   const ouvrir = async (date: string) => {
     setOuverte(date);
     setRecherche('');
@@ -238,6 +249,69 @@ export default function DashboardInventaires() {
           />
         </div>
       ) : null}
+
+      {/* ------------------------------------------- La semaine en bande */}
+      <div className="mt-4 flex items-center justify-between gap-2">
+        <h2 className="text-lg font-bold tracking-tight text-ink">Semaine</h2>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            aria-label="Semaine précédente"
+            disabled={debutSemaine <= -8}
+            onClick={() => setDebutSemaine((d) => d - 1)}
+            className="h-11 w-11 rounded-full text-2xl text-accent hover:bg-accent-doux disabled:opacity-30"
+          >
+            ‹
+          </button>
+          {debutSemaine !== 0 ? (
+            <button
+              type="button"
+              onClick={() => setDebutSemaine(0)}
+              className="h-11 rounded-full px-3 text-base font-medium text-accent hover:bg-accent-doux"
+            >
+              Aujourd’hui
+            </button>
+          ) : null}
+          <button
+            type="button"
+            aria-label="Semaine suivante"
+            disabled={debutSemaine >= 0}
+            onClick={() => setDebutSemaine((d) => d + 1)}
+            className="h-11 w-11 rounded-full text-2xl text-accent hover:bg-accent-doux disabled:opacity-30"
+          >
+            ›
+          </button>
+        </div>
+      </div>
+      <div className="mt-1 grid grid-cols-7 gap-1 rounded-2xl bg-surface p-1.5">
+        {semaine.map((iso) => {
+          const d = new Date(`${iso}T12:00:00Z`);
+          const nom = d.toLocaleDateString('fr-BE', { weekday: 'short', timeZone: 'UTC' }).replace('.', '');
+          const bilan = bilanDuSoir(iso);
+          const compte = bilan !== null && bilan.restesComptes > 0;
+          const estAujourdhui = iso === aujourdhui;
+          return (
+            <button
+              key={iso}
+              type="button"
+              disabled={bilan === null}
+              onClick={() => void ouvrir(iso)}
+              aria-label={`${dateLongue(iso)} : ${compte ? `${bilan.resteTotalPieces ?? 0} pièces restées` : 'pas encore compté'}`}
+              className="relative flex min-h-[4.75rem] flex-col items-center justify-start rounded-2xl px-0.5 py-1.5 text-ink hover:bg-surface-2 disabled:hover:bg-transparent"
+            >
+              <span className={`text-xs font-medium ${estAujourdhui ? 'text-accent' : 'text-ink-2'}`}>{estAujourdhui ? 'auj.' : nom}</span>
+              <span className={`chiffres text-xl font-semibold leading-tight ${estAujourdhui ? 'text-accent' : ''}`}>{d.getUTCDate()}</span>
+              <span className="chiffres mt-auto text-sm font-semibold">
+                {compte ? bilan.resteTotalPieces ?? 0 : <span className="opacity-40">·</span>}
+              </span>
+              {compte && bilan.aZero.length > 0 ? (
+                <span aria-hidden className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-accent" />
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-1 px-1 text-xs text-ink-2">Pièces restées en rayon chaque soir · un point = au moins un produit à zéro.</p>
 
       {/* -------------------------------------------------- Dernier comptage */}
       {dernierComptage ? (

@@ -10,8 +10,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alerte, Carte, Chargement, Entete, EtatVide, Puce } from '@/components/ui';
-import { SelecteurJournee } from '@/components/SelecteurJournee';
-import { dateDuJour, formatDateLong } from '@/lib/dateProduction';
+import { BandeSemaine } from '@/components/BandeSemaine';
+import { bilanJournee } from '@/domaine/bilanInventaire';
+import { dateDuJour, decalerJours, formatDateLong } from '@/lib/dateProduction';
 import { trierCategories } from '@/lib/postes';
 import { RappelChargement } from '@/components/rappels';
 import { formaterQuantite } from '@/domaine/unites';
@@ -37,6 +38,13 @@ export default function InventaireComplet() {
   const [lignes, setLignes] = useState<Ligne[]>([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
+  // Bande de la semaine (21/11/2026) : les 7 soirs qui finissent aujourd'hui, restes comptés par soir.
+  const [debutSemaine, setDebutSemaine] = useState(0);
+  const [semaineLignes, setSemaineLignes] = useState<Ligne[]>([]);
+  const aujourdhui = dateDuJour();
+  const jours = Array.from({ length: 7 }, (_, k) => decalerJours(aujourdhui, debutSemaine * 7 - 6 + k));
+  const premierJour = jours[0];
+  const dernierJour = jours[6];
   const auPoids = lignes.some((l) => l.produit.unite === 'kg');
 
   const charger = useCallback(async () => {
@@ -56,6 +64,26 @@ export default function InventaireComplet() {
   useEffect(() => {
     void charger();
   }, [charger]);
+
+  useEffect(() => {
+    let vivant = true;
+    fetch(`/api/inventaires?debut=${premierJour}&fin=${dernierJour}&limit=2000`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((l: (Ligne & { dateInventaire?: string })[]) => {
+        if (vivant && Array.isArray(l)) setSemaineLignes(l);
+      })
+      .catch(() => {});
+    return () => {
+      vivant = false;
+    };
+  }, [premierJour, dernierJour]);
+
+  const bilanDuSoir = (iso: string) => {
+    const duSoir = (semaineLignes as (Ligne & { dateInventaire?: string })[]).filter((l) => String(l.dateInventaire).slice(0, 10) === iso);
+    return duSoir.length === 0
+      ? null
+      : bilanJournee(duSoir.map((l) => ({ nom: l.produit.nom, quantiteRestante: l.quantiteRestante, quantiteProduite: l.quantiteProduite, unite: l.produit.unite })));
+  };
 
   const parCategorie = useMemo(() => {
     const groupes = new Map<string, Ligne[]>();
@@ -87,7 +115,28 @@ export default function InventaireComplet() {
       <Entete
         titre="Inventaire de la journée"
         sousTitre={<span className="capitalize">{formatDateLong(date)}</span>}
-        actions={<SelecteurJournee date={date} onChange={setDate} />}
+      />
+
+      <BandeSemaine
+        titre="Soirs de la semaine"
+        jours={jours}
+        aujourdhui={aujourdhui}
+        choisi={date}
+        onChoisir={setDate}
+        onPrecedente={() => setDebutSemaine((d) => d - 1)}
+        onSuivante={() => setDebutSemaine((d) => d + 1)}
+        onRetourAujourdhui={debutSemaine !== 0 ? () => setDebutSemaine(0) : null}
+        peutSuivante={debutSemaine < 0}
+        cellule={(iso) => {
+          const b = bilanDuSoir(iso);
+          const compte = b !== null && b.restesComptes > 0;
+          return {
+            libelle: `${formatDateLong(iso)} : ${compte ? `${b.resteTotalPieces ?? 0} pièces restées` : 'pas encore compté'}`,
+            bas: compte ? (b.resteTotalPieces ?? 0) : undefined,
+            point: compte && b.aZero.length > 0,
+          };
+        }}
+        note="Pièces restées en rayon chaque soir · un point = au moins un produit à zéro."
       />
 
       {erreur ? (
