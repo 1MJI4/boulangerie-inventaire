@@ -10,17 +10,13 @@
 //    Le lien est une DONNÉE (src/catalogue/basesFournil.ts), jamais déduit du
 //    nom (LOI 6) : c'est la seule passerelle entre le catalogue de commande et
 //    la liste d'inventaire, qui restent deux listes séparées (LOI 10).
-// 2. Un plateau tient N pièces, PEU IMPORTE LA SORTE : on additionne les pièces
-//    commandées de toutes les sortes qui partagent les plateaux. Chaque tranche
-//    de N = un plateau en plus. Pour le reste : jusqu'à la tolérance (4), pas
-//    de plateau, on prend sur la vente normale ; au-delà (5 et plus), un
-//    plateau en plus.
+// 2. Plateaux (Croissant, Couque au chocolat) — SIMPLIFIÉ le 21/11/2026 : plus de tolérance
+//    ni de plateau complété. Les pièces commandées PRÉREMPLISSENT les champs du
+//    manager, qui les modifie ensuite à sa guise : 6 commandées → « + 6 » ; 7 →
+//    « + 7 » ; 16 → 1 plateau ; 20 → 1 plateau et « + 4 » (preremplirCommandes).
 // 3. Une commande annulée ne compte plus.
 //
 // LOI 2 : tout reste en PIÈCES. Fonctions pures, aucun accès base.
-
-/** Pièces en trop tolérées sans sortir de plateau (« si on dépasse de 5 on ajoute »). */
-export const TOLERANCE_SANS_PLATEAU = 4;
 
 /** Statut d'une commande qui ne compte plus pour le fournil. */
 const STATUT_ANNULEE = 'annulee';
@@ -108,158 +104,21 @@ export function partCommandeeParBase(
   });
 }
 
-export interface PartPlateau {
-  fournil: string;
-  /** Pièces commandées pour cette sorte. */
-  commandees: number;
-  /** Pièces à SORTIR EN PLUS pour cette sorte (0 si prises sur la vente normale). */
-  aSortir: number;
-}
-
-export interface PlateauxEnPlus {
-  /** Pièces commandées, toutes sortes confondues. */
-  totalCommandees: number;
-  /** Plateaux entiers à sortir en plus de ceux du manager. */
-  plateaux: number;
-  /** Pièces commandées servies sur les plateaux de la vente normale (0 à tolérance). */
-  prisesSurVente: number;
-  /** Places du dernier plateau complétées pour la vente (0 si le compte tombe juste). */
-  complement: number;
-  /** Sorte qui complète le plateau, null s'il n'y a rien à compléter. */
-  sorteDuComplement: string | null;
-  repartition: PartPlateau[];
-}
-
 /**
- * Plateaux à sortir en plus pour des sortes qui PARTAGENT leurs plateaux.
- * `parts` : pièces commandées par sorte, dans l'ordre d'affichage.
- *
- *   3 pièces  → 0 plateau, 3 prises sur la vente normale
- *   5 pièces  → 1 plateau, 11 places complétées
- *   20 pièces → 1 plateau, 4 prises sur la vente normale
- *   21 pièces → 2 plateaux, 11 places complétées
- *
- * HYPOTHÈSE À VALIDER (docs/QUESTIONS-GERANT.md) : le plateau ajouté part
- * PLEIN, complété par la sorte la plus commandée (égalité : la première de la
- * liste) ; les pièces « prises sur la vente » sont retirées de cette même sorte.
+ * Préremplissage des champs du manager pour un produit à plateaux (21/11/2026) :
+ * chaque tranche entière de `piecesParPlateau` pièces commandées = 1 plateau, le
+ * reste va dans le « + » (en pièces). Jamais de tolérance ni de complément :
+ *   6 → 0 plateau, + 6   ·   7 → + 7   ·   10 → + 10   ·   16 → 1 plateau   ·   20 → 1 plateau, + 4
+ * Ce n'est qu'un PRÉREMPLISSAGE : le manager corrige ensuite les deux champs.
  */
-export function plateauxEnPlus(
-  parts: readonly { fournil: string; pieces: number }[],
+export function preremplirCommandes(
+  piecesCommandees: number,
   piecesParPlateau: number,
-  tolerance: number = TOLERANCE_SANS_PLATEAU,
-): PlateauxEnPlus {
-  const propres = parts
-    .map((p) => ({ fournil: p.fournil, pieces: Number.isSafeInteger(p.pieces) && p.pieces > 0 ? p.pieces : 0 }));
-  const total = propres.reduce((s, p) => s + p.pieces, 0);
-  const reste = total % piecesParPlateau;
-  const pleins = (total - reste) / piecesParPlateau;
-  const plateaux = pleins + (reste > tolerance ? 1 : 0);
-  const capacite = plateaux * piecesParPlateau;
-
-  const repartition: PartPlateau[] = propres.map((p) => ({
-    fournil: p.fournil,
-    commandees: p.pieces,
-    aSortir: p.pieces,
-  }));
-
-  // Sorte la plus commandée ; à égalité, la première de la liste.
-  let majoritaire: PartPlateau | null = null;
-  for (const r of repartition) {
-    if (r.commandees > 0 && (majoritaire === null || r.commandees > majoritaire.commandees)) majoritaire = r;
-  }
-
-  let prisesSurVente = 0;
-  let complement = 0;
-  if (capacite >= total) {
-    complement = capacite - total;
-    if (majoritaire && complement > 0) majoritaire.aSortir += complement;
-  } else {
-    // Le reste (≤ tolérance) est servi sur la vente normale : on le retire
-    // de la sorte la plus commandée d'abord, puis des suivantes.
-    prisesSurVente = total - capacite;
-    let aRetirer = prisesSurVente;
-    const ordre = [...repartition].sort((a, b) => b.commandees - a.commandees);
-    for (const r of ordre) {
-      const retire = Math.min(r.aSortir, aRetirer);
-      r.aSortir -= retire;
-      aRetirer -= retire;
-      if (aRetirer === 0) break;
-    }
-  }
-
-  return {
-    totalCommandees: total,
-    plateaux,
-    prisesSurVente,
-    complement,
-    sorteDuComplement: complement > 0 && majoritaire ? majoritaire.fournil : null,
-    repartition,
-  };
-}
-
-/**
- * Prévisions (propriétaire, 19/11/2026) : les plateaux sortis pour les
- * commandes sont DÉJÀ dans le champ du manager, qui peut ensuite le modifier.
- * Rend, par sorte, le nombre de plateaux ENTIERS à y afficher. Le total est
- * celui de `plateauxEnPlus` ; chaque sorte reçoit d'abord ses plateaux pleins,
- * et un plateau partagé s'affiche une seule fois, sur la sorte qui en occupe
- * le plus (à égalité, la première de la liste).
- */
-export function plateauxParSorte(
-  parts: readonly { fournil: string; pieces: number }[],
-  piecesParPlateau: number,
-  tolerance: number = TOLERANCE_SANS_PLATEAU,
-): Map<string, number> {
-  const total = plateauxEnPlus(parts, piecesParPlateau, tolerance).plateaux;
-  const sortes = parts.map((p) => {
-    const pieces = Number.isSafeInteger(p.pieces) && p.pieces > 0 ? p.pieces : 0;
-    const reste = pieces % piecesParPlateau;
-    return { fournil: p.fournil, plateaux: (pieces - reste) / piecesParPlateau, reste };
-  });
-  let aPlacer = total - sortes.reduce((s, x) => s + x.plateaux, 0);
-  const parReste = [...sortes].sort((a, b) => b.reste - a.reste);
-  for (const s of parReste) {
-    if (aPlacer <= 0) break;
-    if (s.reste === 0) continue;
-    s.plateaux += 1;
-    aPlacer -= 1;
-  }
-  return new Map(sortes.map((s) => [s.fournil, s.plateaux]));
-}
-
-/**
- * Le champ des prévisions montre le TOTAL (plateaux du manager + plateaux des
- * commandes). Ce que le manager demande en propre = total tapé − plateaux des
- * commandes, jamais négatif : les commandes prises ne se retirent pas d'ici.
- */
-export function partDuManager(plateauxTapes: number, plateauxDesCommandes: number): number {
-  const tapes = Number.isSafeInteger(plateauxTapes) && plateauxTapes > 0 ? plateauxTapes : 0;
-  const commandes = Number.isSafeInteger(plateauxDesCommandes) && plateauxDesCommandes > 0 ? plateauxDesCommandes : 0;
-  return Math.max(0, tapes - commandes);
-}
-
-/** « 14 Croissant + 2 Couque au chocolat » — contenu des plateaux en plus (noms à la lettre). */
-export function formaterContenuPlateaux(repartition: readonly PartPlateau[]): string {
-  return repartition
-    .filter((r) => r.aSortir > 0)
-    .map((r) => `${r.aSortir} ${r.fournil}`)
-    .join(' + ');
-}
-
-/**
- * Phrase du résumé, pour le manager et le pâtissier.
- *   « 9 pièces commandées → 1 plateau en plus : 14 Croissant + 2 Couque au chocolat »
- *   « 3 pièces commandées — à prendre sur les plateaux prévus, pas de plateau en plus »
- *   « 20 pièces commandées → 1 plateau en plus : … · 4 à prendre sur les plateaux prévus »
- * Chaîne vide s'il n'y a aucune commande.
- */
-export function formaterResumePlateaux(p: PlateauxEnPlus): string {
-  if (p.totalCommandees === 0) return '';
-  const commandees = `${p.totalCommandees} pièce${p.totalCommandees > 1 ? 's' : ''} commandée${p.totalCommandees > 1 ? 's' : ''}`;
-  if (p.plateaux === 0) return `${commandees} — à prendre sur les plateaux prévus, pas de plateau en plus`;
-  const plateaux = `${p.plateaux} plateau${p.plateaux > 1 ? 'x' : ''} en plus : ${formaterContenuPlateaux(p.repartition)}`;
-  const surVente = p.prisesSurVente > 0 ? ` · ${p.prisesSurVente} à prendre sur les plateaux prévus` : '';
-  return `${commandees} → ${plateaux}${surVente}`;
+): { plateaux: number; plus: number } {
+  const n = Number.isSafeInteger(piecesCommandees) && piecesCommandees > 0 ? piecesCommandees : 0;
+  if (!Number.isSafeInteger(piecesParPlateau) || piecesParPlateau <= 0) return { plateaux: 0, plus: n };
+  const plus = n % piecesParPlateau;
+  return { plateaux: (n - plus) / piecesParPlateau, plus };
 }
 
 /**

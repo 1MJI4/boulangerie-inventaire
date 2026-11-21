@@ -12,7 +12,7 @@
 // LOI 2 : un produit au kilo se planifie en poids (grammes), au pavé décimal ;
 // le « + commande » (1 + 11) reste réservé aux produits à la pièce.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide, Progression, Puce } from '@/components/ui';
 import { IndicateurSauvegarde } from '@/components/IndicateurSauvegarde';
 import { LigneSaisie } from '@/components/LigneSaisie';
@@ -37,7 +37,7 @@ import {
   sePlanifieEnPlateaux,
   suggestionEnPlateaux,
 } from '@/domaine/plateaux';
-import { formaterDerives, partDuManager, plateauxParSorte } from '@/domaine/commandesFournil';
+import { formaterDerives, preremplirCommandes } from '@/domaine/commandesFournil';
 import { usePartCommandee } from '@/lib/usePartCommandee';
 
 /** Le rayon que le manager planifie tous les jours. */
@@ -76,32 +76,11 @@ export default function SaisiePrevisions() {
     return Number.isFinite(n) ? n : 0;
   };
   const partCommandee = (produitId: number) => lireEntier(commande.valeurs[produitId] ?? '');
-  /*
-   * Plateaux sortis pour les commandes de l'application (propriétaire,
-   * 19/11/2026) : ils sont DÉJÀ dans le champ — 55 couques commandées, le
-   * champ montre 4 plateaux sans rien taper — et le manager modifie le total.
-   * La base ne change pas : sa demande à lui = total tapé − plateaux des
-   * commandes (domaine : plateauxParSorte, partDuManager).
-   */
-  const plateauxCommandes = useMemo(() => {
-    const parProduit = new Map<number, number>();
-    const contenances = new Set(saisie.produits.map((p) => p.piecesParPlateau).filter(sePlanifieEnPlateaux));
-    for (const contenance of contenances) {
-      const groupe = saisie.produits.filter((p) => p.piecesParPlateau === contenance);
-      const parSorte = plateauxParSorte(
-        groupe.map((p) => ({ fournil: p.nom, pieces: partCommandes.parProduit.get(p.id)?.commandeAuto ?? 0 })),
-        contenance,
-      );
-      for (const p of groupe) parProduit.set(p.id, parSorte.get(p.nom) ?? 0);
-    }
-    return parProduit;
-  }, [saisie.produits, partCommandes.parProduit]);
   const plateauxAffiches = (produit: Produit, parPlateau: number) => {
     const brut = saisie.valeurs[produit.id] ?? '';
-    const pourCommandes = plateauxCommandes.get(produit.id) ?? 0;
-    if (brut === '') return pourCommandes > 0 ? String(pourCommandes) : '';
+    if (brut === '') return '';
     const base = Math.max(0, lireEntier(brut) - partCommandee(produit.id));
-    return String(enPlateaux(base, parPlateau).plateaux + pourCommandes);
+    return String(enPlateaux(base, parPlateau).plateaux);
   };
   const definirPlateaux = (produit: Produit, parPlateau: number, saisieBrute: string) => {
     const chiffres = saisieBrute.replace(/[^0-9]/g, '');
@@ -110,10 +89,43 @@ export default function SaisiePrevisions() {
       saisie.definir(produit.id, commandees > 0 ? String(commandees) : '');
       return;
     }
-    const aLui = partDuManager(Number(chiffres), plateauxCommandes.get(produit.id) ?? 0);
-    const pieces = piecesDePlateaux(aLui, parPlateau) + commandees;
+    const pieces = piecesDePlateaux(Number(chiffres), parPlateau) + commandees;
     saisie.definir(produit.id, pieces > 0 ? String(pieces) : '');
   };
+
+  /*
+   * Commandes de croissants et de couques au chocolat (propriétaire, 21/11/2026) : elles
+   * PRÉREMPLISSENT les champs du manager — 6 commandées → « + 6 », 7 → « + 7 », 16 → 1
+   * plateau, 20 → 1 plateau et « + 4 » — puis il modifie comme il veut (domaine :
+   * preremplirCommandes). Une seule fois par produit et par journée, et seulement si le
+   * « + » est encore vide : ce qu'il a tapé n'est jamais écrasé. Les pièces s'ajoutent à
+   * ce qu'il avait déjà demandé.
+   */
+  const dejaPrerempli = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (saisie.chargement || commande.chargement) return;
+    for (const produit of saisie.produits) {
+      if (!sePlanifieEnPlateaux(produit.piecesParPlateau)) continue;
+      const cle = `${date}:${produit.id}`;
+      if (dejaPrerempli.current.has(cle)) continue;
+      const pieces = partCommandes.parProduit.get(produit.id)?.commandeAuto ?? 0;
+      if (pieces <= 0) continue;
+      dejaPrerempli.current.add(cle);
+      let deja = false;
+      try {
+        deja = window.localStorage.getItem(`prevue:prerempli:${cle}`) === '1';
+        window.localStorage.setItem(`prevue:prerempli:${cle}`, '1');
+      } catch {
+        /* stockage indisponible : le « + » vide suffit comme garde */
+      }
+      if ((commande.valeurs[produit.id] ?? '') !== '' || deja) continue;
+      const { plateaux, plus } = preremplirCommandes(pieces, produit.piecesParPlateau);
+      const dejaDemande = lireEntier(saisie.valeurs[produit.id] ?? '');
+      commande.definir(produit.id, plus > 0 ? String(plus) : '');
+      saisie.definir(produit.id, String(dejaDemande + piecesDePlateaux(plateaux, produit.piecesParPlateau) + plus));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- une fois par produit et par journée (garde ci-dessus)
+  }, [saisie.chargement, commande.chargement, saisie.produits, partCommandes.parProduit, date]);
 
   /**
    * Le complément s'ajoute au total, il ne le remplace pas : le manager avait
@@ -184,7 +196,7 @@ export default function SaisiePrevisions() {
       if (moyenne == null || moyenne <= 0) continue;
       if (sePlanifieEnPlateaux(produit.piecesParPlateau)) {
         const plateaux = suggestionEnPlateaux(moyenne, produit.piecesParPlateau);
-        if (plateaux != null) definirPlateaux(produit, produit.piecesParPlateau, String(plateaux + (plateauxCommandes.get(produit.id) ?? 0)));
+        if (plateaux != null) definirPlateaux(produit, produit.piecesParPlateau, String(plateaux));
       } else {
         saisie.definir(produit.id, String(moyenne));
       }
@@ -309,21 +321,6 @@ export default function SaisiePrevisions() {
 
         <BandeauCommandes journee={date} />
 
-        {partCommandes.resumes.length > 0 ? (
-          <Carte className="mb-5 border-accent/40 p-4">
-            <h2 className="text-sm font-medium text-ink">Déjà compté pour le fournil</h2>
-            {partCommandes.resumes.map((resume) => (
-              <p key={resume} className="chiffres mt-1 text-sm text-ink">
-                {resume}
-              </p>
-            ))}
-            <p className="mt-2 text-xs text-ink-3">
-              Les commandes de croissants et de couques au chocolat prises dans l&apos;application
-              s&apos;ajoutent toutes seules à la feuille du fournil : ne les retapez pas dans le « + ».
-            </p>
-          </Carte>
-        ) : null}
-
         {saisie.erreurChargement ? (
           <Alerte>
             {saisie.erreurChargement}{' '}
@@ -408,7 +405,6 @@ export default function SaisiePrevisions() {
                               : 0;
                           const resteAncien =
                             parPlateau !== null ? enPlateaux(baseHorsCommande, parPlateau).reste : 0;
-                          const plateauxAuto = plateauxCommandes.get(produit.id) ?? 0;
                           return (
                             <LigneSaisie
                               key={produit.id}
@@ -447,7 +443,7 @@ export default function SaisiePrevisions() {
                               onAppliquerSuggestion={
                                 parPlateau !== null
                                   ? suggestionPlateaux != null
-                                    ? () => definirPlateaux(produit, parPlateau, String(suggestionPlateaux + plateauxAuto))
+                                    ? () => definirPlateaux(produit, parPlateau, String(suggestionPlateaux))
                                     : undefined
                                   : repere?.moyenneProduite != null
                                     ? () => saisie.definir(produit.id, String(repere.moyenneProduite))
@@ -466,9 +462,6 @@ export default function SaisiePrevisions() {
                                       <span className="chiffres font-medium text-accent">
                                         + {commandeAuto} commandé{commandeAuto > 1 ? 's' : ''} dans l&apos;application
                                         {derives !== '' ? ` (${derives})` : ''}
-                                        {plateauxAuto > 0
-                                          ? ` → ${plateauxAuto} plateau${plateauxAuto > 1 ? 'x' : ''} déjà compté${plateauxAuto > 1 ? 's' : ''} ici, ajoutez les vôtres`
-                                          : ''}
                                         {parPlateau !== null || repere?.dernier?.produite != null ? ' · ' : ''}
                                       </span>
                                     ) : null}

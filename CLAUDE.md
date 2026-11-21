@@ -75,12 +75,16 @@ fournil** : leurs commandes **augmentent leur base** (Croissant, Couque au choco
 comme les commandes de Croissant et de Pain chocolat simples. « Croissant aux amandes » et
 « Croissant au chocolat » sont des **produits à part**, à ne pas confondre. Le lien
 commande → fournil est une **donnée** (`src/catalogue/basesFournil.ts`), jamais déduite du
-nom ; c'est la seule passerelle entre les deux listes (LOI 10). Plateaux : pièces commandées
-des deux sortes additionnées, un plateau en plus par tranche de 16, et pour le reste
-**jusqu'à 4 pièces on prend sur la vente normale, à partir de 5 un plateau en plus**. La part
-est **recalculée en entier** depuis les commandes non annulées (jamais additionnée au fil de
-l'eau) et écrite dans `Inventaire.commandeAuto` / `plateauCommandes`. Règles :
-`src/domaine/commandesFournil.ts`.
+nom ; c'est la seule passerelle entre les deux listes (LOI 10). Une même ligne de commande peut
+viser deux produits du fournil selon son choix (Beignet « Sucré » / « Nature »). La part des
+commandes est **recalculée en entier** depuis les commandes non annulées (jamais additionnée au fil
+de l'eau). **Plateaux simplifiés (propriétaire, 21/11/2026)** : pour Croissant et Couque au
+chocolat, plus de tolérance ni de plateau complété — les pièces commandées **préremplissent** les
+champs du manager, qui les **modifie ensuite** : 6 commandées → « + 6 », 7 → « + 7 », 16 → 1
+plateau, 20 → 1 plateau et « + 4 ». Rien n'est ajouté tout seul en base pour ces deux produits
+(`commandeAuto` / `plateauCommandes` à 0), sinon la part compterait deux fois ; les autres produits
+de la table gardent l'ajout automatique dans `Inventaire.commandeAuto` / `plateauCommandes`. Règles :
+`src/domaine/commandesFournil.ts` (`preremplirCommandes`).
 
 ## LOI N°3 — Le jour de fermeture
 

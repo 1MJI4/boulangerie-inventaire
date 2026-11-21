@@ -24,9 +24,7 @@ import { journaliser } from '@/lib/journal';
 import { dateDuJour } from '@/lib/dateProduction';
 import { BASES_FOURNIL, basesSuivies, clesSuivies } from '@/catalogue/basesFournil';
 import {
-  formaterResumePlateaux,
   partCommandeeParBase,
-  plateauxEnPlus,
   type DetailCommande,
   type LigneCommandee,
 } from '@/domaine/commandesFournil';
@@ -37,15 +35,22 @@ export interface PartFournil {
   nom: string;
   /** Pièces commandées dans l'application pour ce produit (dérivés compris). */
   commandeAuto: number;
-  /** Pièces à sortir EN PLUS pour ces commandes. */
+  /** Pièces à sortir EN PLUS pour ces commandes (0 pour un produit à plateaux : voir `enPlateaux`). */
   plateauCommandes: number;
+  /**
+   * Produit à plateaux (Croissant, Couque au chocolat) — 21/11/2026 : ses commandes ne sont PAS
+   * ajoutées toutes seules à la feuille ; l'écran des prévisions les PRÉREMPLIT dans les champs
+   * du manager (domaine : preremplirCommandes), qui les modifie. Rien n'est donc écrit en base
+   * à part (commandeAuto et plateauCommandes restent à 0) : sinon elles compteraient deux fois.
+   */
+  enPlateaux: boolean;
   detail: DetailCommande[];
 }
 
 export interface PartCommandeeJournee {
   journee: string;
   bases: PartFournil[];
-  /** Une phrase par groupe de sortes qui partagent leurs plateaux (vide si aucune commande). */
+  /** Gardé pour les écrans existants ; plus de phrase de plateaux (21/11/2026) : toujours vide. */
   resumes: string[];
 }
 
@@ -101,29 +106,16 @@ export async function recalculerPartCommandee(journee: string): Promise<PartComm
   const parts = partCommandeeParBase(lignes, liens);
   const partDe = new Map(parts.map((p) => [p.fournil, p]));
 
-  // Sortes qui partagent leurs plateaux = même contenance (16 pour Croissant
-  // et Couque au chocolat). Un produit sans plateau sort ses pièces telles quelles.
-  const aSortir = new Map<string, number>();
-  const resumes: string[] = [];
-  const contenances = [...new Set(produits.map((p) => p.piecesParPlateau).filter(sePlanifieEnPlateaux))];
-  for (const contenance of contenances) {
-    const groupe = produits.filter((p) => p.piecesParPlateau === contenance);
-    const calcul = plateauxEnPlus(
-      groupe.map((p) => ({ fournil: p.nom, pieces: partDe.get(p.nom)?.pieces ?? 0 })),
-      contenance,
-    );
-    for (const r of calcul.repartition) aSortir.set(r.fournil, r.aSortir);
-    const resume = formaterResumePlateaux(calcul);
-    if (resume !== '') resumes.push(resume);
-  }
-
   const bases: PartFournil[] = produits.map((p) => {
     const part = partDe.get(p.nom);
+    const enPlateaux = sePlanifieEnPlateaux(p.piecesParPlateau);
     return {
       produitId: p.id,
       nom: p.nom,
       commandeAuto: part?.pieces ?? 0,
-      plateauCommandes: aSortir.get(p.nom) ?? part?.pieces ?? 0,
+      // Un produit à plateaux : rien d'ajouté tout seul (préremplissage côté écran).
+      plateauCommandes: enPlateaux ? 0 : (part?.pieces ?? 0),
+      enPlateaux,
       detail: part?.detail ?? [],
     };
   });
@@ -138,10 +130,12 @@ export async function recalculerPartCommandee(journee: string): Promise<PartComm
     const enBase = new Map(existants.map((e) => [e.produitId, e]));
     const ecritures = bases.flatMap((b) => {
       const avant = enBase.get(b.produitId);
-      const rien = b.commandeAuto === 0 && b.plateauCommandes === 0;
+      // Écrit en base : la part automatique seulement pour les produits SANS plateaux.
+      const auto = b.enPlateaux ? 0 : b.commandeAuto;
+      const rien = auto === 0 && b.plateauCommandes === 0;
       if (!avant && rien) return [];
-      if (avant && (avant.commandeAuto ?? 0) === b.commandeAuto && (avant.plateauCommandes ?? 0) === b.plateauCommandes) return [];
-      const donnees = { commandeAuto: b.commandeAuto, plateauCommandes: b.plateauCommandes };
+      if (avant && (avant.commandeAuto ?? 0) === auto && (avant.plateauCommandes ?? 0) === b.plateauCommandes) return [];
+      const donnees = { commandeAuto: auto, plateauCommandes: b.plateauCommandes };
       return [
         prisma.inventaire.upsert({
           where: { produitId_dateInventaire: { produitId: b.produitId, dateInventaire: date } },
@@ -154,7 +148,7 @@ export async function recalculerPartCommandee(journee: string): Promise<PartComm
     if (ecritures.length > 0) await prisma.$transaction(ecritures);
   }
 
-  return { journee, bases, resumes };
+  return { journee, bases, resumes: [] };
 }
 
 /**

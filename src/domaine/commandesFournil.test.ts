@@ -4,15 +4,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
-  TOLERANCE_SANS_PLATEAU,
   controlerLiensFournil,
   formaterDerives,
-  formaterResumePlateaux,
   totalAProduire,
   partCommandeeParBase,
-  plateauxEnPlus,
-  plateauxParSorte,
-  partDuManager,
+  preremplirCommandes,
   type LienFournil,
   type LigneCommandee,
 } from './commandesFournil.ts';
@@ -122,89 +118,24 @@ test('lignes ignorées : au kilo, sans produit du catalogue, quantité invalide'
 
 /* ------------------------------------------------------------ plateaux */
 
-const sortes = (croissants: number, couques: number) => [
-  { fournil: 'Croissant', pieces: croissants },
-  { fournil: 'Couque au chocolat', pieces: couques },
-];
-
-test('la tolérance est de 4 pièces', () => {
-  assert.equal(TOLERANCE_SANS_PLATEAU, 4);
+test('préremplissage : 6 → + 6, 7 → + 7, 10 → + 10, rien de complété ni de toléré', () => {
+  assert.deepEqual(preremplirCommandes(6, 16), { plateaux: 0, plus: 6 });
+  assert.deepEqual(preremplirCommandes(7, 16), { plateaux: 0, plus: 7 });
+  assert.deepEqual(preremplirCommandes(10, 16), { plateaux: 0, plus: 10 });
+  assert.deepEqual(preremplirCommandes(15, 16), { plateaux: 0, plus: 15 });
 });
 
-test('jusqu’à 4 pièces : pas de plateau en plus, pris sur la vente normale', () => {
-  for (const n of [1, 2, 3, 4]) {
-    const p = plateauxEnPlus(sortes(n, 0), 16);
-    assert.equal(p.plateaux, 0, String(n));
-    assert.equal(p.prisesSurVente, n, String(n));
-    assert.deepEqual(p.repartition.map((r) => r.aSortir), [0, 0], String(n));
-  }
+test('préremplissage : 16 → directement 1 plateau ; 20 → 1 plateau et + 4 ; 32 → 2 plateaux', () => {
+  assert.deepEqual(preremplirCommandes(16, 16), { plateaux: 1, plus: 0 });
+  assert.deepEqual(preremplirCommandes(20, 16), { plateaux: 1, plus: 4 });
+  assert.deepEqual(preremplirCommandes(32, 16), { plateaux: 2, plus: 0 });
 });
 
-test('5 pièces : un plateau en plus, complété à 16', () => {
-  const p = plateauxEnPlus(sortes(5, 0), 16);
-  assert.equal(p.plateaux, 1);
-  assert.equal(p.prisesSurVente, 0);
-  assert.equal(p.complement, 11);
-  assert.equal(p.sorteDuComplement, 'Croissant');
-  assert.deepEqual(p.repartition.map((r) => r.aSortir), [16, 0]);
-});
-
-test('16 → 1 plateau juste ; 20 → 1 plateau et 4 sur la vente ; 21 → 2 plateaux', () => {
-  const seize = plateauxEnPlus(sortes(16, 0), 16);
-  assert.deepEqual([seize.plateaux, seize.prisesSurVente, seize.complement], [1, 0, 0]);
-  const vingt = plateauxEnPlus(sortes(20, 0), 16);
-  assert.deepEqual([vingt.plateaux, vingt.prisesSurVente, vingt.complement], [1, 4, 0]);
-  assert.deepEqual(vingt.repartition.map((r) => r.aSortir), [16, 0]);
-  const vingtEtUn = plateauxEnPlus(sortes(21, 0), 16);
-  assert.deepEqual([vingtEtUn.plateaux, vingtEtUn.prisesSurVente, vingtEtUn.complement], [2, 0, 11]);
-});
-
-test('plateau partagé entre sortes : 7 croissants + 2 couques = 1 seul plateau', () => {
-  const p = plateauxEnPlus(sortes(7, 2), 16);
-  assert.equal(p.totalCommandees, 9);
-  assert.equal(p.plateaux, 1);
-  // Complété par la sorte la plus commandée.
-  assert.deepEqual(p.repartition, [
-    { fournil: 'Croissant', commandees: 7, aSortir: 14 },
-    { fournil: 'Couque au chocolat', commandees: 2, aSortir: 2 },
-  ]);
-  assert.equal(formaterResumePlateaux(p), '9 pièces commandées → 1 plateau en plus : 14 Croissant + 2 Couque au chocolat');
-});
-
-test('deux sortes qui tiennent ensemble : 6 + 6 = 1 plateau, pas 2', () => {
-  const p = plateauxEnPlus(sortes(6, 6), 16);
-  assert.equal(p.plateaux, 1);
-  assert.equal(p.sorteDuComplement, 'Croissant'); // égalité : la première de la liste
-  assert.deepEqual(p.repartition.map((r) => r.aSortir), [10, 6]);
-});
-
-test('3 + 2 = 5 : chaque sorte seule resterait sous le seuil, ensemble un plateau', () => {
-  assert.equal(plateauxEnPlus(sortes(3, 2), 16).plateaux, 1);
-});
-
-test('les pièces à sortir font toujours des plateaux entiers', () => {
-  for (let a = 0; a <= 40; a++) {
-    for (let b = 0; b <= 40; b++) {
-      const p = plateauxEnPlus(sortes(a, b), 16);
-      const sorties = p.repartition.reduce((s, r) => s + r.aSortir, 0);
-      assert.equal(sorties, p.plateaux * 16, `${a}+${b}`);
-      assert.equal(sorties, a + b - p.prisesSurVente + p.complement, `${a}+${b}`);
-      assert.ok(p.prisesSurVente <= 4, `${a}+${b}`);
-      assert.ok(p.repartition.every((r) => r.aSortir >= 0), `${a}+${b}`);
-    }
-  }
-});
-
-test('résumé : rien, sous le seuil, avec reste pris sur la vente', () => {
-  assert.equal(formaterResumePlateaux(plateauxEnPlus(sortes(0, 0), 16)), '');
-  assert.equal(
-    formaterResumePlateaux(plateauxEnPlus(sortes(1, 0), 16)),
-    '1 pièce commandée — à prendre sur les plateaux prévus, pas de plateau en plus',
-  );
-  assert.equal(
-    formaterResumePlateaux(plateauxEnPlus(sortes(12, 8), 16)),
-    '20 pièces commandées → 1 plateau en plus : 8 Croissant + 8 Couque au chocolat · 4 à prendre sur les plateaux prévus',
-  );
+test('préremplissage : rien commandé, valeur invalide ou produit sans plateau', () => {
+  assert.deepEqual(preremplirCommandes(0, 16), { plateaux: 0, plus: 0 });
+  assert.deepEqual(preremplirCommandes(-3, 16), { plateaux: 0, plus: 0 });
+  assert.deepEqual(preremplirCommandes(1.5, 16), { plateaux: 0, plus: 0 });
+  assert.deepEqual(preremplirCommandes(9, 0), { plateaux: 0, plus: 9 });
 });
 
 test('total à produire : prévu 48 + 16 pour les commandes = 64', () => {
@@ -258,26 +189,4 @@ test('contrôle de la table : clé inconnue ou citée deux fois', () => {
     (cle) => cle === CROISSANT,
   );
   assert.equal(erreurs.length, 2);
-});
-
-/* ---- Prévisions : les plateaux des commandes déjà dans le champ (propriétaire, 19/11/2026) */
-
-test('plateaux des commandes par sorte : 55 couques → 4 plateaux sur la Couque, rien sur le Croissant', () => {
-  assert.deepEqual(plateauxParSorte(sortes(0, 55), 16), new Map([['Croissant', 0], ['Couque au chocolat', 4]]));
-  // Plateau partagé : il s'affiche sur la sorte la plus commandée, une seule fois.
-  assert.deepEqual(plateauxParSorte(sortes(7, 2), 16), new Map([['Croissant', 1], ['Couque au chocolat', 0]]));
-  // Sous le seuil : aucun plateau en plus.
-  assert.deepEqual(plateauxParSorte(sortes(3, 0), 16), new Map([['Croissant', 0], ['Couque au chocolat', 0]]));
-  // Chaque sorte remplit ses plateaux : 32 + 16 = 2 et 1.
-  assert.deepEqual(plateauxParSorte(sortes(32, 16), 16), new Map([['Croissant', 2], ['Couque au chocolat', 1]]));
-  // 20 + 20 = 40 → 3 plateaux (8 en trop > 4) : 1 chacun, le 3e à la première des deux.
-  assert.deepEqual(plateauxParSorte(sortes(20, 20), 16), new Map([['Croissant', 2], ['Couque au chocolat', 1]]));
-});
-
-test('champ des prévisions : le manager modifie le total, sa part = total tapé − plateaux des commandes', () => {
-  assert.equal(partDuManager(7, 4), 3);
-  assert.equal(partDuManager(4, 4), 0);
-  // Il ne descend pas sous ce que les commandes demandent : sa part reste à 0.
-  assert.equal(partDuManager(2, 4), 0);
-  assert.equal(partDuManager(5, 0), 5);
 });
