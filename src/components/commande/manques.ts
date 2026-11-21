@@ -11,7 +11,7 @@
 
 import { libelleProduit } from '../../domaine/commande.ts';
 import { estSeparationProposee } from '../../domaine/unGateauParLigne.ts';
-import { champLocal, ficheDe, gateauDeLaLigne, indexLigne, type CatalogueCommande, type LigneEcran } from './modele.ts';
+import { champLocal, ficheDe, gateauDeLaLigne, indexLigne, motDeLaLigne, type CatalogueCommande, type LigneEcran } from './modele.ts';
 
 /**
  * Ce qui manque, en quelques mots (« Nom du client », « Goût — Bavarois »).
@@ -61,6 +61,8 @@ export const MANQUE_SIMPLE: ReadonlySet<string> = new Set([
 
 /** R73 : mot-clé d'une viande de burger manquante (le champ technique est « gouts »). */
 export const MOT_VIANDE = 'Viande';
+/** Beignet : sucré ou nature (21/11/2026). */
+export const MOT_SORTE = 'Sorte';
 
 /**
  * true : signalement d'un champ simplement vide (mot-clé, sans bouton). Une
@@ -85,7 +87,7 @@ export function libelleManque(
   const mot = estSeparationProposee(m.valeurProposee)
     ? MOT_UN_GATEAU_PAR_LIGNE
     : m.code === 'ERR_VIANDE_MANQUANTE'
-      ? MOT_VIANDE
+      ? (i !== null && lignes[i] && motDeLaLigne(lignes[i]) === 'sorte' ? MOT_SORTE : MOT_VIANDE)
       : (MOTS_MANQUANTS[champLocal(m.champ)] ?? null);
   const ligne = i !== null ? lignes[i] : undefined;
   const fiche = ligne ? ficheDe(catalogue, gateauDeLaLigne(ligne)) : null;
@@ -106,10 +108,16 @@ export const CHAMPS_A_PHRASE: ReadonlySet<string> = new Set(['client', 'telephon
  * 28/10/2026 : comme une app Apple — phrase courte, ni triangle ni capitales).
  * Champ du haut : la phrase du domaine ; champ d'une ligne : « À remplir : goût ».
  */
-export function texteChampVide(s: { message: string; champ?: string; code?: string }): string {
+export function texteChampVide(s: { message: string; champ?: string; code?: string }, lignes?: readonly LigneEcran[]): string {
   const champ = champLocal(s.champ);
   if (CHAMPS_A_PHRASE.has(champ)) return s.message;
   // R73 : la viande d'un burger est rangée dans le champ « gouts » ; on dit « viande ».
-  const mot = s.code === 'ERR_VIANDE_MANQUANTE' ? MOT_VIANDE : MOTS_MANQUANTS[champ];
+  const i = indexLigne(s.champ);
+  const mot =
+    s.code === 'ERR_VIANDE_MANQUANTE'
+      ? i !== null && lignes?.[i] && motDeLaLigne(lignes[i]) === 'sorte'
+        ? MOT_SORTE
+        : MOT_VIANDE
+      : MOTS_MANQUANTS[champ];
   return mot ? `À remplir\u00a0: ${mot.toLocaleLowerCase('fr')}` : 'À remplir';
 }

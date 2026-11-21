@@ -25,7 +25,7 @@ import { LIBELLES_SELON_GOUT } from '../catalogue/libellesSelonGout.ts';
 import { POSTES_PRODUCTION } from '../catalogue/postesProduction.ts';
 import { echeancePoste, repartirParPoste, type BonDePoste, type Poste } from '../domaine/postes.ts';
 import { GOUTS_SUR_COMMANDE } from '../catalogue/goutsSurCommande.ts';
-import { demandeUneViande } from '../domaine/gouts.ts';
+import { demandeUneViande, motDuChoix } from '../domaine/gouts.ts';
 import { libelleSelonGout } from '../domaine/libelles.ts';
 import { ADRESSE_QR, LIGNES_PIED_CLIENT } from './coordonneesMagasin.ts';
 import { matriceQr } from './qrCode.ts';
@@ -261,10 +261,12 @@ export function goutsLignesAImprimer(
   gouts: readonly string[] | null | undefined,
   /** R73 : la valeur est la viande d'un burger → « VIANDE : KEFTA ». */
   viande = false,
+  /** Beignet : « SORTE : SUCRÉ ». */
+  sorte = false,
 ): string[] | null {
   const g = (gouts ?? []).map((x) => x.trim()).filter(Boolean);
   if (g.length === 0) return null;
-  if (g.length === 1) return [collerEtiquette(viande ? 'VIANDE :' : 'GOÛT :', g[0].toUpperCase())];
+  if (g.length === 1) return [collerEtiquette(sorte ? 'SORTE :' : viande ? 'VIANDE :' : 'GOÛT :', g[0].toUpperCase())];
   return g.map((x, i) => collerEtiquette(`ÉTAGE ${i + 1} :`, x.toUpperCase()));
 }
 
@@ -425,7 +427,11 @@ export function formaterLigneTicket(ligne: LigneCommande, destination: Destinati
     photoModele: collerApresDeuxPoints(photoModeleDeLigne(ligne)),
     gouts: nomSelonGout
       ? null
-      : goutsLignesAImprimer(ligne.gouts, demandeUneViande(GOUTS_SUR_COMMANDE[ligne.produitCatalogue?.cleCatalogue ?? ''])),
+      : goutsLignesAImprimer(
+          ligne.gouts,
+          demandeUneViande(GOUTS_SUR_COMMANDE[ligne.produitCatalogue?.cleCatalogue ?? '']),
+          motDuChoix(GOUTS_SUR_COMMANDE[ligne.produitCatalogue?.cleCatalogue ?? '']) === 'sorte',
+        ),
     decorations: ligne.decorations?.length ? collerEtiquette('Déco :', ligne.decorations.join(', ')) : null,
     ecriture: ecritureAImprimer(ligne),
     photoImprimee: ligne.photoImprimee === true ? MENTION_PHOTO_A_IMPRIMER : null,

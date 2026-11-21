@@ -87,7 +87,7 @@ import {
 import { CORRESPONDANCES_COMPTOIR } from '@/catalogue/correspondancesComptoir';
 import { LIBELLES_SELON_GOUT } from '@/catalogue/libellesSelonGout';
 import { GOUTS_SUR_COMMANDE } from '@/catalogue/goutsSurCommande';
-import { GOUT_AU_CHOIX, demandeUneViande, goutsAttendus, goutsProposes, type ChoixGout } from '@/domaine/gouts';
+import { GOUT_AU_CHOIX, demandeUneViande, goutsAttendus, goutsProposes, motDuChoix, type ChoixGout } from '@/domaine/gouts';
 import { gateauSurCommandeDe } from '@/domaine/prixComptoir';
 import type { Echec, Resultat } from '@/domaine/resultat';
 import type { Deverrouillage, FicheTarifee, Forme, SortieRemplacement } from '@/domaine/types';
@@ -137,6 +137,7 @@ import {
   SUPPLEMENT_ECRITURE,
   SUPPLEMENT_PHOTO,
   ajouterAutreViande,
+  motDeLaLigne,
   etapeDuChamp,
   goutDitParLaTuile,
   ligneAViande,
@@ -996,7 +997,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
             data-champ={s.champ ?? undefined}
             className="mt-1 text-sm text-alerte"
           >
-            {texteChampVide(s)}
+            {texteChampVide(s, lignes)}
           </p>
         ))}
         {rendreRefus(autres, unite, prefixe)}
@@ -1635,7 +1636,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                       }}
                       className="mt-2 min-h-11 rounded-xl border-2 border-transparent bg-segment-fond px-3 text-sm font-medium text-ink"
                     >
-                      ＋ Autre viande
+                      {motDeLaLigne(ligne) === 'sorte' ? '＋ Autre sorte' : '＋ Autre viande'}
                     </button>
                   ) : null}
                   {gateau ? blocGateauDe(ligne, i, signauxSurGateau) : null}
@@ -2937,7 +2938,7 @@ function BlocGouts({
     if (suivants[etage] && suivants.every(Boolean)) onGoutChoisi?.();
   };
   const titre = (etage: number) =>
-    attendus > 1 ? `Goût de l’étage ${etage + 1}` : viande ? 'Quelle viande\u00a0?' : choix.liste === 'entremet' ? 'Quel entremet\u00a0?' : 'Goût\u00a0?';
+    attendus > 1 ? `Goût de l’étage ${etage + 1}` : viande ? (motDuChoix(choix) === 'sorte' ? 'Quelle sorte\u00a0?' : 'Quelle viande\u00a0?') : choix.liste === 'entremet' ? 'Quel entremet\u00a0?' : 'Goût\u00a0?';
   const pastille = (actif: boolean) =>
     `min-h-11 rounded-xl border-2 px-2.5 text-sm font-medium leading-tight ${
       actif ? 'border-transparent bg-accent-doux text-accent' : 'border-transparent bg-segment-fond text-ink'

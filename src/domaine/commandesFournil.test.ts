@@ -22,6 +22,7 @@ import { identifiantProduit } from '../catalogue/normaliser.ts';
 const PATE_AMANDE = 'viennoiserie/croissant-a-la-pate-damande';
 const CROISSANT = 'viennoiserie/croissant';
 const PAIN_CHOCOLAT = 'viennoiserie/pain-chocolat';
+const COUQUE_BEURRE = 'viennoiserie/couque-au-beurre';
 const DOUBLE = 'viennoiserie/couque-au-chocolat-double';
 
 /** La table telle qu'elle sera quand la Couque au chocolat double sera au tarif. */
@@ -38,6 +39,22 @@ test('une commande de dérivé augmente sa base, sans ligne à part', () => {
   assert.deepEqual(parts, [
     { fournil: 'Croissant', pieces: 7, detail: [{ libelle: "Croissant à la pâte d'amande", pieces: 7, derive: true }] },
   ]);
+});
+
+test('6 couques au beurre commandées : la feuille du fournil les ajoute à la Couque au beurre, à la pièce', () => {
+  const parts = partCommandeeParBase([ligne(COUQUE_BEURRE, 'Couque au beurre', 6)], BASES_FOURNIL);
+  assert.deepEqual(parts, [{ fournil: 'Couque au beurre', pieces: 6, detail: [{ libelle: 'Couque au beurre', pieces: 6, derive: false }] }]);
+});
+
+test('beignets : la sorte choisie (sucré / nature) désigne la ligne du fournil', () => {
+  const b = 'viennoiserie/beignet';
+  const parts = partCommandeeParBase(
+    [{ ...ligne(b, 'Beignet', 15), gouts: ['Sucré'] }, { ...ligne(b, 'Beignet', 10), gouts: ['nature'] }, { ...ligne(b, 'Beignet', 3), gouts: ['Sucré'] }],
+    BASES_FOURNIL,
+  );
+  assert.deepEqual(parts.map((p) => [p.fournil, p.pieces]), [['Beignet sucré', 18], ['Beignet nature', 10]]);
+  // Sans sorte (ne peut pas arriver : elle est obligatoire) : rien n'est deviné.
+  assert.deepEqual(partCommandeeParBase([ligne(b, 'Beignet', 5)], BASES_FOURNIL), []);
 });
 
 test('deux dérivés de bases différentes : chacun augmente la sienne', () => {
@@ -73,7 +90,7 @@ test('une commande annulée ne compte plus', () => {
   assert.deepEqual(parts.map((p) => [p.fournil, p.pieces]), [['Couque au chocolat', 5]]);
 });
 
-test('« Croissant aux amandes » et « Croissant au chocolat » ne sont PAS des dérivés', () => {
+test('« Croissant aux amandes » et « Croissant au chocolat » ne sont PAS des dérivés : chacun augmente SA ligne, jamais le Croissant', () => {
   const parts = partCommandeeParBase(
     [
       ligne('viennoiserie/croissant-aux-amandes', 'Croissant aux amandes', 12),
@@ -81,7 +98,9 @@ test('« Croissant aux amandes » et « Croissant au chocolat » ne sont PAS des
     ],
     LIENS_COMPLETS,
   );
-  assert.deepEqual(parts, []);
+  assert.deepEqual(parts.map((p) => [p.fournil, p.pieces]), [['Croissant au chocolat', 12], ['Croissant aux amandes', 12]]);
+  assert.ok(parts.every((p) => p.detail.every((d) => !d.derive)));
+  assert.ok(!parts.some((p) => p.fournil === 'Croissant'));
 });
 
 test('une entrée « à venir » ne sert pas tant que le produit n’est pas au tarif', () => {
@@ -223,8 +242,10 @@ function clesDuTarif(fichier: string): Set<string> {
 test('la table ne cite que des produits à la pièce du tarif (hors entrées à venir)', () => {
   const cles = clesDuTarif('catalogue_prix_2026-11.csv');
   assert.deepEqual(controlerLiensFournil(BASES_FOURNIL, (cle) => cles.has(cle)), []);
-  assert.deepEqual(clesSuivies(), [CROISSANT, PATE_AMANDE, PAIN_CHOCOLAT]);
-  assert.deepEqual(basesSuivies(), ['Croissant', 'Couque au chocolat']);
+  assert.deepEqual(clesSuivies(), BASES_FOURNIL.filter((l) => !l.aVenir).map((l) => l.commande));
+  assert.ok(clesSuivies().includes(COUQUE_BEURRE) && clesSuivies().includes(CROISSANT) && clesSuivies().includes(PAIN_CHOCOLAT));
+  assert.deepEqual(basesSuivies().slice(0, 3), ['Croissant', 'Couque au chocolat', 'Couque au beurre']);
+  assert.equal(new Set(basesSuivies()).size, basesSuivies().length);
 });
 
 test('contrôle de la table : clé inconnue ou citée deux fois', () => {

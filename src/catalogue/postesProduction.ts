@@ -55,6 +55,8 @@ const PATE_CUISSON_CONFITURE: readonly TachePoste[] = [
   { poste: 'atelier', role: 'la cuisson et la confiture' },
   { poste: 'boulanger', role: 'la pâte' },
 ];
+/** Beignet (propriétaire, 21/11/2026) : l'atelier le fait, mais la pâte vient du boulanger. */
+const ATELIER_ET_PATE: readonly TachePoste[] = [{ poste: 'atelier' }, { poste: 'boulanger', role: 'la pâte' }];
 /** Crêpes farcies : atelier ; le boulanger est prévenu au-delà de 5 sur la commande. */
 const CREPES: readonly TachePoste[] = [
   { poste: 'atelier' },
@@ -108,6 +110,8 @@ export const POSTES_PRODUCTION: DonneesPostes = {
     'oriental/harcha-semoule-confiture': ATELIER,
     'oriental/harcha-grise-confiture': ATELIER,
     'oriental/baghrer-confiture': ATELIER,
+    // Beignet : à l'atelier (pas au pâtissier, malgré son rayon Viennoiserie), pâte du boulanger.
+    'viennoiserie/beignet': ATELIER_ET_PATE,
     // Crêpes farcies : boulanger prévenu au-delà de 5.
     'sales/crepe-facie/fromage': CREPES,
     'sales/crepe-facie/poulet': CREPES,

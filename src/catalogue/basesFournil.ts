@@ -30,6 +30,32 @@ export const BASES_FOURNIL: readonly LienFournil[] = [
   { commande: "viennoiserie/croissant", fournil: "Croissant", derive: false },
   { commande: "viennoiserie/croissant-a-la-pate-damande", fournil: "Croissant", derive: true },
   { commande: "viennoiserie/pain-chocolat", fournil: "Couque au chocolat", derive: false },
+  // Couque au beurre (21/11/2026) : même produit au tarif et au fournil, à la pièce
+  // (pas de plateau : ses pièces s'ajoutent telles quelles à la feuille).
+  { commande: "viennoiserie/couque-au-beurre", fournil: "Couque au beurre", derive: false },
+  // Toute la viennoiserie qui a une ligne au fournil (propriétaire, 21/11/2026) : à la pièce,
+  // même produit des deux côtés. Les deux gosettes s'écrivent « Gosette pommes / cerises »
+  // au fournil et « Gosette aux pommes / cerises » au tarif : même produit (confirmé 21/11/2026).
+  // Pas de ligne au fournil, donc rien à lier : Sablés, Financier, Palmier, Mini-viennoiseries,
+  // Fqaqess ; à trancher (QUESTIONS-GERANT) : Brioches, Cougnou.
+  { commande: "viennoiserie/couque-aux-raisins", fournil: "Couque aux raisins", derive: false },
+  { commande: "viennoiserie/croissant-au-chocolat", fournil: "Croissant au chocolat", derive: false },
+  { commande: "viennoiserie/croissant-aux-amandes", fournil: "Croissant aux amandes", derive: false },
+  { commande: "viennoiserie/torsade", fournil: "Torsade", derive: false },
+  { commande: "viennoiserie/couque-suisse-longue", fournil: "Couque suisse longue", derive: false },
+  { commande: "viennoiserie/couque-suisse-ronde", fournil: "Couque suisse ronde", derive: false },
+  { commande: "viennoiserie/huit", fournil: "Huit", derive: false },
+  { commande: "viennoiserie/noix-de-pecan", fournil: "Noix de pécan", derive: false },
+  { commande: "viennoiserie/maton-fromage", fournil: "Maton fromage", derive: false },
+  { commande: "viennoiserie/coque-croquant-amandes-cerise", fournil: "Coque croquant amandes cerise", derive: false },
+  { commande: "viennoiserie/coque-croquant-noisettes-chocolat", fournil: "Coque croquant noisettes chocolat", derive: false },
+  { commande: "viennoiserie/gosette-aux-pommes", fournil: "Gosette pommes", derive: false },
+  { commande: "viennoiserie/gosette-aux-cerises", fournil: "Gosette cerises", derive: false },
+  { commande: "viennoiserie/sandwich-mou", fournil: "Sandwich mou", derive: false },
+  // Beignet : au choix du client, sucré ou nature (propriétaire, 21/11/2026) — la sorte
+  // choisie sur la ligne (goutsSurCommande.ts) désigne la ligne du fournil.
+  { commande: "viennoiserie/beignet", fournil: "Beignet sucré", derive: false, gout: "Sucré" },
+  { commande: "viennoiserie/beignet", fournil: "Beignet nature", derive: false, gout: "Nature" },
   // Pas encore au tarif (prix donné par le propriétaire le 19/11/2026, nom
   // exact à confirmer) : l'entrée s'active en retirant `aVenir` quand la ligne
   // « Couque au chocolat double » sera importée dans un tarif daté.

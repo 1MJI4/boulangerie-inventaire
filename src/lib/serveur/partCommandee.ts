@@ -69,6 +69,7 @@ export async function recalculerPartCommandee(journee: string): Promise<PartComm
       select: {
         quantite: true,
         unite: true,
+        gouts: true,
         produitCatalogue: { select: { cleCatalogue: true, nom: true } },
         commande: { select: { statut: true } },
       },
@@ -95,6 +96,7 @@ export async function recalculerPartCommandee(journee: string): Promise<PartComm
     quantite: l.quantite,
     unite: l.unite,
     statutCommande: l.commande.statut,
+    gouts: l.gouts,
   }));
   const parts = partCommandeeParBase(lignes, liens);
   const partDe = new Map(parts.map((p) => [p.fournil, p]));

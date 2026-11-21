@@ -25,7 +25,7 @@ import { formaterQuantite } from '../../domaine/unites.ts';
 import type { DelaisCommande, PlageOuverture, RegleSupplementParPersonne, ReglementCommande } from '../../domaine/constantes.ts';
 import { FAMILLE_SUPPLEMENT, FAMILLES_GATEAU, SUPPLEMENT_ECRITURE, SUPPLEMENT_PHOTO } from '../../domaine/constantes.ts';
 import type { ChoixGout } from '../../domaine/gouts.ts';
-import { demandeUneViande, goutsInitiaux } from '../../domaine/gouts.ts';
+import { demandeUneViande, goutsInitiaux, motDuChoix } from '../../domaine/gouts.ts';
 import { GOUTS_SUR_COMMANDE } from '../../catalogue/goutsSurCommande.ts';
 import { RACCOURCIS_GATEAUX, type RaccourciGateau } from '../../catalogue/raccourcisGateaux.ts';
 
@@ -1435,7 +1435,12 @@ export function ligneOuverteDuBon(lignes: readonly LigneEcran[], actif: string |
 // Une viande par ligne : « 15 kefta et 15 tenders » = deux lignes du même
 // burger. La règle (viande obligatoire, minimum sur le total) est au domaine.
 
-/** Le produit de la ligne demande une viande (donnée GOUTS_SUR_COMMANDE). */
+/** « viande » (burger) ou « sorte » (beignet) : le mot du choix fermé de la ligne. */
+export function motDeLaLigne(l: LigneEcran): 'viande' | 'sorte' {
+  return motDuChoix(l.produitId !== null ? GOUTS_SUR_COMMANDE[l.produitId] : null);
+}
+
+/** Le produit de la ligne demande une viande, ou une sorte (donnée GOUTS_SUR_COMMANDE). */
 export function ligneAViande(l: LigneEcran): boolean {
   return l.produitId !== null && demandeUneViande(GOUTS_SUR_COMMANDE[l.produitId]);
 }

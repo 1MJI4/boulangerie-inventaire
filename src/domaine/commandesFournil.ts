@@ -33,6 +33,12 @@ export interface LienFournil {
   fournil: string;
   /** true = produit dérivé (fini après cuisson) : à signaler au pâtissier. */
   derive: boolean;
+  /**
+   * Sorte choisie sur la ligne (21/11/2026) : un même produit commandé peut aller à
+   * plusieurs produits du fournil — Beignet « Sucré » → Beignet sucré, « Nature » →
+   * Beignet nature. Absent : valable pour toute la commande de ce produit.
+   */
+  gout?: string;
   /** true = pas encore au tarif : l'entrée est gardée mais ne sert pas. */
   aVenir?: boolean;
 }
@@ -46,6 +52,8 @@ export interface LigneCommandee {
   quantite: number;
   unite: 'piece' | 'kg';
   statutCommande: string;
+  /** Goûts / sorte choisis sur la ligne (la sorte d'un beignet). */
+  gouts?: readonly string[];
 }
 
 export interface DetailCommande {
@@ -72,14 +80,16 @@ export function partCommandeeParBase(
   liens: readonly LienFournil[],
 ): PartCommandee[] {
   const actifs = liens.filter((l) => !l.aVenir);
-  const parCle = new Map(actifs.map((l) => [l.commande, l]));
+  const cle = (commande: string, gout?: string) => `${commande}|${(gout ?? '').trim().toLocaleLowerCase('fr')}`;
+  const parCle = new Map(actifs.map((l) => [cle(l.commande, l.gout), l]));
   const parts = new Map<string, PartCommandee>();
 
   for (const ligne of lignes) {
     if (ligne.statutCommande === STATUT_ANNULEE) continue;
     if (ligne.unite !== 'piece' || ligne.cleCatalogue === null) continue;
     if (!Number.isSafeInteger(ligne.quantite) || ligne.quantite <= 0) continue;
-    const lien = parCle.get(ligne.cleCatalogue);
+    // La sorte choisie d'abord (Beignet Sucré), sinon le lien du produit entier.
+    const lien = parCle.get(cle(ligne.cleCatalogue, ligne.gouts?.[0])) ?? parCle.get(cle(ligne.cleCatalogue));
     if (!lien) continue;
 
     const part = parts.get(lien.fournil) ?? { fournil: lien.fournil, pieces: 0, detail: [] };
@@ -280,8 +290,9 @@ export function controlerLiensFournil(
   const vues = new Set<string>();
   for (const l of liens) {
     if (l.commande.trim() === '' || l.fournil.trim() === '') erreurs.push('Entrée incomplète (clé ou produit du fournil vide).');
-    if (vues.has(l.commande)) erreurs.push(`« ${l.commande} » est cité deux fois : un produit commandé n'a qu'une base.`);
-    vues.add(l.commande);
+    const id = `${l.commande}|${l.gout ?? ''}`;
+    if (vues.has(id)) erreurs.push(`« ${l.commande} »${l.gout ? ` (${l.gout})` : ''} est cité deux fois : un produit commandé n'a qu'une base.`);
+    vues.add(id);
     if (!l.aVenir && !existe(l.commande)) erreurs.push(`« ${l.commande} » n'est pas un produit à la pièce du catalogue de commande.`);
   }
   return erreurs;

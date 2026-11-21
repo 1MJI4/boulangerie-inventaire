@@ -59,6 +59,8 @@ test('qui fait quoi (réponses du propriétaire, 19/11/2026)', () => {
   assert.deepEqual(postesDe('sur-commande/mini-batbout-farci'), ['atelier', 'boulanger']);
   // Harcha, Baghrir (avec ou sans confiture) : l'atelier seul (20/11/2026).
   for (const p of produits.filter((x) => x.categorie === 'Oriental' && /^(Harcha|Baghrer)/.test(x.produit))) assert.deepEqual(postesDe(p.id), ['atelier'], p.id);
+  // Beignet (21/11/2026) : atelier, pâte du boulanger — pas le pâtissier de son rayon.
+  assert.deepEqual(postesDe('viennoiserie/beignet'), ['atelier', 'boulanger']);
   // Pains : le boulanger.
   assert.deepEqual(postesDe(produits.find((p) => p.categorie === 'Boulangerie')!.id), ['boulanger']);
 });

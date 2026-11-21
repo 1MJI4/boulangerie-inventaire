@@ -47,7 +47,17 @@ const GOUTS_COEURS = [
 const VIANDES_BURGER = ['Poulet tenders', 'Kefta', 'Viande hachée de poulet'] as const;
 const VIANDE: ChoixGout = { liste: 'propre', parEtage: false, gouts: VIANDES_BURGER, viande: true };
 
+// Beignet (propriétaire, 21/11/2026) : « au choix du client, soit sucré soit nature ».
+// Même mécanisme que la viande du burger : choix fermé, obligatoire, une sorte par ligne
+// (15 sucrés et 10 nature = deux lignes). C'est aussi lui qui oriente la commande vers la
+// bonne ligne du fournil (`basesFournil.ts`).
+const SORTES_BEIGNET = ['Sucré', 'Nature'] as const;
+const SORTE: ChoixGout = { liste: 'propre', parEtage: false, gouts: SORTES_BEIGNET, viande: true, sorte: true };
+
 export const GOUTS_SUR_COMMANDE: Readonly<Record<string, ChoixGout>> = {
+  // --- Beignet (comptoir) : sucré ou nature, obligatoire.
+  'viennoiserie/beignet': SORTE,
+
   // --- Burgers (comptoir et sur commande) : une viande obligatoire (R73).
   'sales/burger': VIANDE,
   'sales/mini-burger': VIANDE,

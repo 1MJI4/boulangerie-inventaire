@@ -51,7 +51,18 @@ export type ChoixGout =
        * du pâtissier » → refus (`ERR_VIANDE_MANQUANTE`), sortie = les viandes.
        */
       viande?: boolean;
+      /**
+       * 21/11/2026 : même mécanisme (choix fermé et obligatoire, une valeur par
+       * ligne) pour une SORTE — Beignet « Sucré » ou « Nature ». Ne change que les
+       * mots affichés et imprimés : « sorte » au lieu de « viande ».
+       */
+      sorte?: boolean;
     };
+
+/** Le mot du choix fermé : « viande » (burger) ou « sorte » (beignet). */
+export function motDuChoix(choix: ChoixGout | null | undefined): 'viande' | 'sorte' {
+  return choix !== null && choix !== undefined && choix.liste === 'propre' && choix.sorte === true ? 'sorte' : 'viande';
+}
 
 /** Le produit demande une viande (R73) : donnée du catalogue, jamais le nom. */
 export function demandeUneViande(choix: ChoixGout | null | undefined): choix is Extract<ChoixGout, { liste: 'propre' }> {
@@ -99,7 +110,7 @@ export function validerGouts(
     if (viande !== undefined) return succes([viande]);
     return signaler(
       'ERR_VIANDE_MANQUANTE',
-      { produit: fiche.produit.produit, viandes: [...choix.gouts] },
+      { produit: fiche.produit.produit, viandes: [...choix.gouts], objet: motDuChoix(choix) },
       { champ: 'gouts', valeurProposee: [...choix.gouts] },
     );
   }
