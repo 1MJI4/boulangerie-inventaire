@@ -76,6 +76,23 @@ export default function SaisiePrevisions() {
     return Number.isFinite(n) ? n : 0;
   };
   const partCommandee = (produitId: number) => lireEntier(commande.valeurs[produitId] ?? '');
+  /*
+   * Pièces (hors kg) : le champ principal = la quantité HABITUELLE, le « + » = la commande, le
+   * fournil lit la somme (« 12 + 5 » = 17, comme les anciennes feuilles). On tape l'habituel,
+   * la commande s'y ajoute d'elle-même (propriétaire, 21/11/2026). La base garde le total.
+   */
+  const habituelAffiche = (produit: Produit) => {
+    const brut = saisie.valeurs[produit.id] ?? '';
+    if (brut === '') return '';
+    const plus = partCommandee(produit.id);
+    const base = Math.max(0, lireEntier(brut) - plus);
+    return base === 0 && plus > 0 ? '' : String(base);
+  };
+  const definirHabituel = (produit: Produit, saisieBrute: string) => {
+    const chiffres = saisieBrute.replace(/[^0-9]/g, '');
+    const total = (chiffres === '' ? 0 : Number(chiffres)) + partCommandee(produit.id);
+    saisie.definir(produit.id, total > 0 ? String(total) : '');
+  };
   const plateauxAffiches = (produit: Produit, parPlateau: number) => {
     const brut = saisie.valeurs[produit.id] ?? '';
     if (brut === '') return '';
@@ -201,7 +218,7 @@ export default function SaisiePrevisions() {
         const plateaux = suggestionEnPlateaux(moyenne, produit.piecesParPlateau);
         if (plateaux != null) definirPlateaux(produit, produit.piecesParPlateau, String(plateaux));
       } else {
-        saisie.definir(produit.id, String(moyenne));
+        definirHabituel(produit, String(moyenne));
       }
     }
   };
@@ -424,12 +441,16 @@ export default function SaisiePrevisions() {
                               valeur={
                                 parPlateau !== null
                                   ? plateauxAffiches(produit, parPlateau)
-                                  : (saisie.valeurs[produit.id] ?? '')
+                                  : auPoids
+                                    ? (saisie.valeurs[produit.id] ?? '')
+                                    : habituelAffiche(produit)
                               }
                               onChange={(v) =>
                                 parPlateau !== null
                                   ? definirPlateaux(produit, parPlateau, v)
-                                  : saisie.definir(produit.id, v)
+                                  : auPoids
+                                    ? saisie.definir(produit.id, v)
+                                    : definirHabituel(produit, v)
                               }
                               suffixe={parPlateau !== null ? 'plateaux' : undefined}
                               signalements={
@@ -453,7 +474,7 @@ export default function SaisiePrevisions() {
                                     ? () => definirPlateaux(produit, parPlateau, String(suggestionPlateaux))
                                     : undefined
                                   : repere?.moyenneProduite != null
-                                    ? () => saisie.definir(produit.id, String(repere.moyenneProduite))
+                                    ? () => (auPoids ? saisie.definir(produit.id, String(repere.moyenneProduite)) : definirHabituel(produit, String(repere.moyenneProduite)))
                                     : undefined
                               }
                               indice={
@@ -482,6 +503,7 @@ export default function SaisiePrevisions() {
                                       <span className="chiffres font-medium text-accent">
                                         + {commandeAuto} commandé{commandeAuto > 1 ? 's' : ''} dans l&apos;application
                                         {derives !== '' ? ` (${derives})` : ''}
+                                        {partCommandee(produit.id) > 0 ? ` → ${lireEntier(saisie.valeurs[produit.id] ?? '')} à produire` : ''}
                                         {parPlateau !== null || repere?.dernier?.produite != null ? ' · ' : ''}
                                       </span>
                                     ) : null}
