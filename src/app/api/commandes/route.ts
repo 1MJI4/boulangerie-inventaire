@@ -609,12 +609,17 @@ export async function POST(request: Request) {
   const route = 'POST /api/commandes';
   try {
     const corps = (await request.json()) as Record<string, unknown>;
+    // SIMULATION (brouillons WhatsApp, 21/11/2026) : tous les contrôles du serveur sont rejoués et le
+    // total calculé, mais RIEN n'est enregistré. Un acompte symbolique de 1 centime remplace celui
+    // de la saisie : seul le paiement du brouillon (le total) deviendra l'acompte de la vraie commande.
+    const simulation = corps.simulation === true;
+    if (simulation) corps.acompteCentimes = 1;
     // File hors ligne : déjà créée sous cet identifiant → renvoyée telle quelle,
     // AVANT tout contrôle (le renvoi ne doit pas échouer sur une règle ou un
     // réglage qui a changé depuis la première réception).
     const id = lireIdClient(corps.idClient, request.headers.get('Idempotency-Key'));
     if (!id.ok) return refus(id, route);
-    const idClient = id.idClient;
+    const idClient = simulation ? null : id.idClient;
     if (idClient) {
       const existante = await commandeParIdClient(idClient);
       if (existante) return dejaRecue(existante);
@@ -658,6 +663,16 @@ export async function POST(request: Request) {
     if (jourArrivee !== prise.datePrise) {
       const encore = validerDateRetrait(resultat.donnees.dateRetrait, contexte.joursFermes, jourArrivee);
       if (!encore.ok) return refus(encore, route);
+    }
+    if (simulation) {
+      // Ce que le message de paiement doit dire, calculé par le serveur (LOI 1) — jamais enregistré.
+      return NextResponse.json({
+        simulation: true,
+        totalCentimes: resultat.donnees.totalCentimes,
+        dateRetrait: resultat.donnees.dateRetrait,
+        heureRetrait: resultat.donnees.heureRetrait,
+        lignes: resultat.donnees.lignes.map((l) => ({ quantite: l.quantite, libelle: l.libelle, unite: l.unite, basePrix: l.basePrix })),
+      });
     }
 
     const origine = corps.origine === 'telephone' ? 'telephone' : corps.origine === 'whatsapp' ? 'whatsapp' : 'comptoir';

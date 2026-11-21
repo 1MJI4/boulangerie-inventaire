@@ -13,7 +13,8 @@ import webpush from 'web-push';
 import { prisma } from '@/lib/prisma';
 import { journaliser } from '@/lib/journal';
 import { maintenantBruxelles } from '@/lib/dateProduction';
-import { rappelsDus, type Notification } from '@/domaine/notifications';
+import { alerteExpirationDue } from '@/domaine/brouillons';
+import { notifBrouillonNonPaye, rappelsDus, type Notification } from '@/domaine/notifications';
 
 const ROUTE = 'notifications';
 
@@ -132,6 +133,16 @@ export async function verifierRappels(instant: Date = new Date()): Promise<void>
       for (const n of rappelsDus({ ...c, retraitLe: c.retraitLe.toISOString().slice(0, 10) }, maintenant)) {
         await notifierManager(n);
       }
+    }
+    // Brouillons WhatsApp non payés : prévenir le manager 5 minutes après l'expiration, une seule fois.
+    const brouillons = await prisma.brouillonCommande.findMany({
+      where: { statut: 'en_attente', expireNotifieLe: null, echeanceLe: { lt: instant } },
+      select: { id: true, reference: true, echeanceLe: true, expireNotifieLe: true, statut: true },
+    });
+    for (const b of brouillons) {
+      if (!alerteExpirationDue({ statut: 'en_attente', echeanceLe: b.echeanceLe, expireNotifieLe: b.expireNotifieLe }, instant)) continue;
+      await notifierManager(notifBrouillonNonPaye(b, b.echeanceLe.getTime()));
+      await prisma.brouillonCommande.update({ where: { id: b.id }, data: { expireNotifieLe: instant } });
     }
     // Journal d'envoi : on ne garde que 3 jours.
     await prisma.notificationEnvoyee.deleteMany({ where: { envoyeLe: { lt: new Date(instant.getTime() - 3 * 86_400_000) } } });

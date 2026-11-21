@@ -278,14 +278,14 @@ function memoireValable(): boolean {
   );
 }
 
-export function FormulaireCommande({ commande }: { commande?: Commande }) {
+export function FormulaireCommande({ commande, brouillon = false }: { commande?: Commande; brouillon?: boolean }) {
   // « Nouvelle commande » après une commande gardée hors ligne : on repart d'un
   // écran vierge sans recharger la page (impossible sans réseau).
   const [tour, setTour] = useState(0);
-  return <SaisieCommande key={tour} commande={commande} onRecommencer={() => setTour((n) => n + 1)} />;
+  return <SaisieCommande key={tour} commande={commande} brouillon={brouillon} onRecommencer={() => setTour((n) => n + 1)} />;
 }
 
-function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRecommencer: () => void }) {
+function SaisieCommande({ commande, onRecommencer, brouillon = false }: { commande?: Commande; onRecommencer: () => void; brouillon?: boolean }) {
   const router = useRouter();
   // Propriétaire, 14/11/2026 : le prénom se choisit à CHAQUE commande, au-dessus
   // de « Valider », jamais présélectionné ni retenu (voir src/lib/vendeurs.ts).
@@ -304,8 +304,11 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
   const [telephone, setTelephone] = useState(commande?.telephone ?? '');
   const [dateRetrait, setDateRetrait] = useState<string | null>(commande?.retraitLe ?? null);
   const [heureRetrait, setHeureRetrait] = useState(commande?.retraitHeure ?? '');
-  const [origine, setOrigine] = useState<Origine>(commande?.origine ?? 'comptoir');
-  const [modePaiement, setModePaiement] = useState<ModePaiement>(commande?.modePaiement ?? 'especes');
+  // Brouillon WhatsApp (21/11/2026) : origine WhatsApp, virement ; l'acompte réel (le total) n'est posé
+  // qu'à la confirmation du paiement. Ici un acompte symbolique de 1 centime tient lieu de saisie.
+  const [origine, setOrigine] = useState<Origine>(commande?.origine ?? (brouillon ? 'whatsapp' : 'comptoir'));
+  const [langue, setLangue] = useState<'fr' | 'en'>('fr');
+  const [modePaiement, setModePaiement] = useState<ModePaiement>(commande?.modePaiement ?? (brouillon ? 'virement' : 'especes'));
   const [lignes, setLignesEtat] = useState<LigneEcran[]>(() => (commande ? lignesDepuisCommande(commande) : []));
   // R64 : toute modification du bon passe par ici — une ligne de supplément par
   // personne (Pâte à sucre) reprend aussitôt les parts du gâteau qu'elle accompagne.
@@ -316,7 +319,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
       ),
     [],
   );
-  const [acompte, setAcompte] = useState<number | null>(commande ? commande.acompteCentimes : null);
+  const [acompte, setAcompte] = useState<number | null>(commande ? commande.acompteCentimes : brouillon ? 1 : null);
   const [totalConvenu, setTotalConvenu] = useState<number | null>(() =>
     commande && commande.totalTarifCentimes != null && commande.totalCentimes < commande.totalTarifCentimes
       ? commande.totalCentimes
@@ -1244,7 +1247,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
   const annuler = () => {
     const aPerdre = modification ? empreinte() !== empreinteInitiale : saisieEntamee({ client, telephone, lignes, remarques });
     if (aPerdre) setAbandonOuvert(true);
-    else router.push('/commandes');
+    else router.push(brouillon ? '/brouillons' : '/commandes');
   };
 
   const valider = async () => {
@@ -1295,6 +1298,22 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
           photoModele: l.photoModele ?? null,
         })),
       };
+      if (brouillon) {
+        // Brouillon WhatsApp : le serveur rejoue tous les contrôles et calcule le total ; rien n'est gardé sur la tablette.
+        const r = await lireReponse<{ brouillon: { id: number } }>(
+          await fetch('/api/brouillons', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ corps, langue, auteur: signataire }),
+          }),
+        );
+        if (!r.ok) {
+          setRefusServeur(r);
+          return;
+        }
+        router.push('/brouillons');
+        return;
+      }
       const methode = modification ? 'PATCH' : 'POST';
       const lu = await envoyerAuServeur(methode, corps, idClient.current);
       if (aGarderSurLaTablette(lu)) {
@@ -1386,7 +1405,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
         heureRetrait={heureRetrait}
         // replace : « ← Retour » de l'impression ne ramène pas sur un formulaire vidé.
         onImprimer={() => router.replace(`/commandes/${validee.id}/imprimer`)}
-        onNouvelle={() => router.push('/commandes')}
+        onNouvelle={() => router.push(brouillon ? '/brouillons' : '/commandes')}
         // La commande est enregistrée : y revenir l'ouvre en modification (jamais un doublon).
         onRevoir={() => router.replace(`/commandes/${validee.id}/modifier`)}
       />
@@ -1762,7 +1781,32 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
   const paiement = construirePaiement(true);
   const paiementColonne = construirePaiement(false);
 
-  const libelleValider = envoi ? 'Enregistrement…' : modification ? 'Enregistrer les changements' : 'Valider la commande';
+  const libelleValider = envoi
+    ? 'Enregistrement…'
+    : brouillon
+      ? 'Créer le brouillon'
+      : modification
+        ? 'Enregistrer les changements'
+        : 'Valider la commande';
+
+  // Brouillon : langue du message envoyé au client (français ou anglais, comme les modèles du manager).
+  const choixLangue = (
+    <div className="grid gap-2">
+      <h2 className="text-base font-semibold text-ink">Langue du message au client</h2>
+      <div role="group" aria-label="Langue du message" className="flex shrink-0 gap-0.5 self-start rounded-2xl border-2 border-transparent bg-segment-fond p-0.5">
+        <Segment actif={langue === 'fr'} onClick={() => setLangue('fr')}>
+          Français
+        </Segment>
+        <Segment actif={langue === 'en'} onClick={() => setLangue('en')}>
+          English
+        </Segment>
+      </div>
+      <p className="text-sm text-ink-2">
+        Le message avec le montant à virer s’affiche à l’écran suivant, prêt à envoyer sur WhatsApp. Le paiement
+        confirmé, le brouillon devient une vraie commande.
+      </p>
+    </div>
+  );
 
   // Signature, juste au-dessus du bouton. Une commande REPRISE (gardée sur la
   // tablette) reste au nom de qui l'a prise : rien à choisir.
@@ -1894,7 +1938,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
     <FenetreAbandon
       modification={modification}
       onContinuer={() => setAbandonOuvert(false)}
-      onAbandonner={() => router.push('/commandes')}
+      onAbandonner={() => router.push(brouillon ? '/brouillons' : '/commandes')}
     />
   ) : null;
 
@@ -1910,7 +1954,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
     />
   ) : null;
 
-  const titre = modification ? `Modifier la commande ${commande.numero}` : 'Nouvelle commande';
+  const titre = modification ? `Modifier la commande ${commande.numero}` : brouillon ? 'Nouveau brouillon WhatsApp' : 'Nouvelle commande';
 
   const enTeteChargement = (
     <>
@@ -2255,6 +2299,9 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2.5">
                   {(
                     <>
+                      {brouillon ? (
+                        <section>{choixLangue}</section>
+                      ) : (
                       <section>
                         <div className="mb-1.5 flex items-center justify-between gap-2">
                           <h2 className="text-base font-semibold text-ink">Paiement</h2>
@@ -2263,6 +2310,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                         {paiementColonne}
                         {boutonPasAcompte}
                       </section>
+                      )}
                     </>
                   )}
                 </div>
@@ -2449,8 +2497,21 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
             </Carte>
 
             <Carte className="p-4">
-              <h2 className={TITRE}>Paiement</h2>
-              {montants}
+              {brouillon ? (
+                <>
+                  {choixLangue}
+                  {refusServeur ? rendre([refusServeur]) : null}
+                  {choixVendeur}
+                  <Bouton variante="principal" className="mt-3 min-h-14 w-full text-lg" disabled={envoi} onClick={() => void valider()}>
+                    {libelleValider}
+                  </Bouton>
+                </>
+              ) : (
+                <>
+                  <h2 className={TITRE}>Paiement</h2>
+                  {montants}
+                </>
+              )}
             </Carte>
             </>
             )}
@@ -2501,7 +2562,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
             </div>
             {etape === 3 ? (
               <Bouton variante="principal" className="shrink-0" disabled={envoi || acompteARepondre} onClick={() => void valider()}>
-                {envoi ? 'Envoi…' : 'Valider'}
+                {envoi ? 'Envoi…' : brouillon ? 'Créer le brouillon' : 'Valider'}
               </Bouton>
             ) : (
               <Bouton

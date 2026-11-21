@@ -91,6 +91,13 @@ export const MATRICE_ACCES: Record<string, Partial<Record<Methode, EntreeMatrice
   'src/app/api/notifications/evenement/route.ts': {
     POST: { role: 'tablette', action: 'prévenir le manager' },
   },
+  // Brouillons de commande WhatsApp (21/11/2026) : écran du profil Manager ; pas de code gérant à chaque
+  // action (décision du propriétaire) — la protection est celle des autres écrans du manager.
+  'src/app/api/brouillons/route.ts': {
+    GET: { role: 'tablette', action: 'consulter les brouillons' },
+    POST: { role: 'tablette', action: 'créer un brouillon de commande' },
+    PATCH: { role: 'tablette', action: 'modifier un brouillon de commande' },
+  },
   'src/app/api/impression/route.ts': {
     GET: { role: 'tablette', action: "suivre l'impression" },
     POST: { role: 'tablette', action: 'imprimer une commande' },

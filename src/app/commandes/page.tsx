@@ -11,6 +11,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide, LienBouton } from '@/components/ui';
 import { useEquipe } from '@/lib/vendeurs';
+import { useProfil } from '@/components/ProfilAppareil';
 import { depuisApi, typesDeCommande, type Commande, type CommandeApi } from '@/lib/commandes';
 import { dateDuJour, formatDateLong } from '@/lib/dateProduction';
 import { decalerJours, estJourFerme, type JourFerme } from '@/domaine/calendrier';
@@ -49,6 +50,7 @@ function EcranCommandes() {
   // Propriétaire, 14/11/2026 : plus de « Qui prend la commande ? » à l'entrée. Le prénom se
   // choisit à chaque commande, avant « Valider ». Ici ne reste que la liste des prénoms.
   const { equipe, prete, ajouter, retirer } = useEquipe();
+  const { profil } = useProfil();
   const [gestionEquipe, setGestionEquipe] = useState(false);
   const [gererNoms, setGererNoms] = useState(false);
   const parametres = useSearchParams();
@@ -281,6 +283,11 @@ function EcranCommandes() {
                 <path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l1.9-1.5-2-3.4-2.3.9a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5a7.6 7.6 0 0 0-2.6 1.5l-2.3-.9-2 3.4 1.9 1.5a7.6 7.6 0 0 0 0 3l-1.9 1.5 2 3.4 2.3-.9a7.6 7.6 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 2.6-1.5l2.3.9 2-3.4z" />
               </svg>
             </Link>
+            {profil === 'manager' ? (
+              <LienBouton href="/brouillons" variante="secondaire">
+                Brouillons
+              </LienBouton>
+            ) : null}
             <LienBouton href="/commandes/nouvelle" variante="principal">
               Nouvelle commande
             </LienBouton>

@@ -719,3 +719,43 @@ model NotificationEnvoyee {
 
   @@index([envoyeLe])
 }
+
+// ============================================================================
+// Brouillons de commande (21/11/2026) : commandes reçues par WhatsApp, en attente
+// du paiement. Ce n'est PAS une commande : aucun calcul (fournil, prévisions,
+// notifications) ne la lit. Elle devient une vraie commande quand le manager
+// confirme le paiement (alors `commandeId` pointe vers elle).
+//   en_attente : délai de paiement en cours — ou expiré (echeanceLe passée) ;
+//                l'expiration se DÉDUIT de l'heure du serveur, rien n'est effacé
+//   confirme   : paiement reçu, commande créée
+//   abandonne  : écartée par le manager
+// `corps` : la commande telle que saisie (même forme que POST /api/commandes) ;
+// `totalCentimes` : calculé par le SERVEUR au moment de la création (LOI 1).
+// ============================================================================
+model BrouillonCommande {
+  id            Int       @id @default(autoincrement())
+  /// Communication du virement, ex. « 21/11-727 » (jour de création + numéro).
+  reference     String    @unique
+  statut        String    @default("en_attente") // en_attente | confirme | abandonne
+  langue        String    @default("fr") // fr | en
+  client        String
+  telephone     String
+  retraitLe     DateTime  @db.Date
+  retraitHeure  String?
+  totalCentimes Int
+  corps         Json
+  /// UUID réutilisé comme identifiant d'envoi de la commande : confirmer deux fois ne crée qu'une commande.
+  idClient      String    @unique
+  auteur        String
+  creeLe        DateTime  @default(now())
+  echeanceLe    DateTime
+  /// Dernière relance du délai de paiement (null si jamais relancé).
+  relanceLe     DateTime?
+  /// Notification « non payé » envoyée au manager (5 min après l'expiration).
+  expireNotifieLe DateTime?
+  commandeId    Int?
+  confirmeLe    DateTime?
+  confirmePar   String?
+
+  @@index([statut, echeanceLe])
+}

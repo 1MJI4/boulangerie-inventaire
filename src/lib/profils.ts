@@ -63,6 +63,8 @@ export const DEFINITIONS: Record<Profil, DefinitionProfil> = {
       '/saisie-vendeur',
       '/saisie-prevue',
       '/planification-demain',
+      // Brouillons de commande WhatsApp (21/11/2026) : réservés au manager, sous « Plus ».
+      '/brouillons',
       '/inventaire',
       '/dashboard',
       '/saisie-production',
@@ -81,6 +83,7 @@ export const LIBELLES_ECRANS: Record<string, string> = {
   '/commandes': 'Commandes',
   '/commandes/reglages': 'Réglages commandes',
   '/commandes/nouvelle': 'Nouvelle commande',
+  '/brouillons': 'Brouillons',
   '/saisie-prevue': 'Prévisions',
   '/planification-demain': 'Fournil',
   '/saisie-production': 'Production',

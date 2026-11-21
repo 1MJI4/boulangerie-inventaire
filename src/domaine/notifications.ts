@@ -20,6 +20,7 @@ export type TypeNotification =
   | 'commande_creee'
   | 'commande_modifiee'
   | 'inventaire_termine'
+  | 'brouillon_non_paye'
   | 'retrait_dans_1h'
   | 'retrait_maintenant'
   | 'retrait_retard_2h';
@@ -166,6 +167,18 @@ export function notifCommandeModifiee(c: CommandeRappel, evenementId: number | s
       c.retraitHeure ? ` à ${heureCourte(minutesDeLHeure(c.retraitHeure) ?? 0)}` : ''
     }).`,
     url: '/commandes',
+    urgente: false,
+  };
+}
+
+/** Brouillon WhatsApp non payé : le délai est dépassé depuis 5 minutes (21/11/2026). `echeanceMs` : une relance fait une nouvelle clé. */
+export function notifBrouillonNonPaye(b: { id: number; reference: string }, echeanceMs: number): Notification {
+  return {
+    type: 'brouillon_non_paye',
+    cle: `brouillon:${b.id}:${echeanceMs}`,
+    titre: 'Brouillon non payé',
+    corps: `La commande ${b.reference} n’est toujours pas payée : le délai est dépassé. Relancez le client ou écartez le brouillon.`,
+    url: '/brouillons',
     urgente: false,
   };
 }
