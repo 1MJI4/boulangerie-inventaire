@@ -137,7 +137,9 @@ export function NotificationsManager() {
 
   if (etat === 'inconnu') return null;
 
-  // Activé : un petit témoin discret, qui envoie un test.
+  // Activé : rien à l'écran au quotidien. Le témoin avec le test n'apparaît que juste après une activation
+  // (jusqu'à la prochaine ouverture de l'application), puis disparaît : propriétaire, 21/11/2026.
+  if (etat === 'actif' && info === null) return null;
   if (etat === 'actif') {
     return (
       <div className="fixed bottom-24 right-3 z-40 flex max-w-xs flex-col items-end gap-1.5">
