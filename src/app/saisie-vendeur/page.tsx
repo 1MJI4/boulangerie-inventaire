@@ -77,7 +77,8 @@ import type { Niveau } from '@/domaine/resultat';
 import { classerSelonParcours, useParcours } from '@/lib/parcours';
 import { trierCategories } from '@/lib/postes';
 import { usePreferencesSaisie } from '@/lib/preferencesSaisie';
-import { useSaisieJournee, type Produit } from '@/lib/useSaisieJournee';
+import { NON_PRODUIT, useSaisieJournee, type Produit } from '@/lib/useSaisieJournee';
+import { ProposerProduit } from '@/components/inventaire/ProposerProduit';
 
 type Section = {
   cle: string;
@@ -404,10 +405,12 @@ export default function Comptage() {
 
   /** Texte affiché d'une quantité : grammes → « 1,250 kg » (LOI 2). */
   const afficherQuantite = (produit: Produit, valeur: string) =>
-    produit.unite === 'kg' && valeur !== '' ? formaterQuantite('kg', Number(valeur)) : valeur;
+    produit.unite === 'kg' && valeur !== '' && valeur !== NON_PRODUIT ? formaterQuantite('kg', Number(valeur)) : valeur;
 
   const recompter = (produit: Produit, ajout: number) => {
-    const deja = Number(saisie.valeurs[produit.id] ?? '0');
+    // « 0 barré » : rien n'était compté (0) ; on repart de zéro.
+    const brut = saisie.valeurs[produit.id] ?? '0';
+    const deja = brut === NON_PRODUIT ? 0 : Number(brut);
     const r = additionnerRecomptage(produit, deja, ajout);
     if (r.ok) compter(produit.id, String(r.donnees));
     setAvertissementsLocaux((precedent) =>
@@ -612,6 +615,7 @@ export default function Comptage() {
         peutAllerSuivant={peutValiderSuivant}
         onDernier={finDeParcours}
         libelleZero="Plus rien · 0"
+        libelleNonProduit="Pas produit aujourd’hui · Ø"
         // Plein écran : le pavé reste ouvert ; « Fermer » n'annule qu'un recomptage.
         onFermer={pleinEcran && recomptage !== produitSelectionne.id ? undefined : fermerPave}
       />
@@ -810,6 +814,8 @@ export default function Comptage() {
           </button>
         )}
 
+        <ProposerProduit court />
+
         <button
           type="button"
           onClick={() => setRechercheOuverte(true)}
@@ -987,6 +993,7 @@ export default function Comptage() {
                 onChanger={definirPreference}
                 onReinitialiser={reinitialiser}
               />
+              <ProposerProduit />
               <SelecteurJournee date={date} onChange={changerDate} libelle="Journée" />
               {/* Tablette seulement : retour au plein écran (choix mémorisé sur l'appareil). */}
               {modeFocus ? null : (

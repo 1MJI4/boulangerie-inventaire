@@ -150,6 +150,7 @@ test('écritures sensibles réservées au gérant, tout le reste ouvert à la ta
     'src/app/api/photos-modeles/gestion/route.ts POST',
     'src/app/api/photos-modeles/gestion/route.ts PATCH',
     // Notifications du manager (21/11/2026) : seul le profil manager abonne un appareil.
+    'src/app/api/produits-proposes/route.ts PATCH',
     'src/app/api/notifications/abonnement/route.ts POST',
     'src/app/api/notifications/abonnement/route.ts DELETE',
   ]);

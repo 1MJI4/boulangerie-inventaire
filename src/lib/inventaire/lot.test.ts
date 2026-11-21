@@ -132,3 +132,26 @@ test('LOI 10 : les fichiers d’inventaire n’importent jamais src/catalogue', 
     assert.doesNotMatch(source, /produitCatalogue/i, f);
   }
 });
+
+test('« 0 barré » : accepté avec un reste à 0, refusé sinon, jamais deviné', () => {
+  const ok = preparerLot([{ produitId: 1, saisieId: UUID_A, unite: 'piece', quantiteRestante: 0, nonProduit: true }], PRODUITS, JOUR);
+  assert.equal(ok.ok, true);
+  if (ok.ok) {
+    assert.equal(ok.lignes[0].valeurs.quantiteRestante, 0);
+    assert.equal(ok.lignes[0].nonProduit, true);
+  }
+  // Un nombre compté efface le drapeau (le client envoie nonProduit: false).
+  const nombre = preparerLot([{ produitId: 1, saisieId: UUID_B, unite: 'piece', quantiteRestante: 4, nonProduit: false }], PRODUITS, JOUR);
+  assert.equal(nombre.ok, true);
+  if (nombre.ok) assert.equal(nombre.lignes[0].nonProduit, false);
+  // Pas produit mais 5 restants : incohérent → refus.
+  for (const corps of [{ quantiteRestante: 5, nonProduit: true }, { nonProduit: true }, { quantiteRestante: 0, nonProduit: 'oui' }]) {
+    const r = preparerLot([{ produitId: 1, saisieId: UUID_A, unite: 'piece', ...corps }], PRODUITS, JOUR);
+    assert.equal(r.ok, false, JSON.stringify(corps));
+    if (!r.ok) assert.equal(r.code, 'ERR_SAISIE_INVALIDE');
+  }
+  // Sans le champ : rien n'est dit sur le drapeau (ancien écran).
+  const ancien = preparerLot([{ produitId: 1, saisieId: UUID_A, unite: 'piece', quantiteRestante: 3 }], PRODUITS, JOUR);
+  assert.equal(ancien.ok, true);
+  if (ancien.ok) assert.equal(ancien.lignes[0].nonProduit, undefined);
+});

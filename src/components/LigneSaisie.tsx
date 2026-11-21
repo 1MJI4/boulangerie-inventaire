@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import type { Densite, Main } from '@/lib/preferencesSaisie';
 import type { Unite } from '@/domaine/types';
 import { formaterQuantite } from '@/domaine/unites';
+import { NON_PRODUIT } from '@/lib/useSaisieJournee';
 import type { Niveau } from '@/domaine/resultat';
 import { IconeNiveau, NIVEAUX } from '@/components/signalement';
 import { POLICE_NOM_MIN, policeNomNormale } from '@/components/inventaire/dispositionGrille';
@@ -138,7 +139,7 @@ export function LigneSaisie({
   const auPoids = unite === 'kg';
   // Un produit au kilo se saisit toujours au pavé décimal, jamais au clavier.
   const viaPave = modePave || auPoids;
-  const affichee = auPoids && rempli ? formaterQuantite('kg', Number(valeur)) : valeur;
+  const affichee = auPoids && rempli && valeur !== NON_PRODUIT ? formaterQuantite('kg', Number(valeur)) : valeur;
 
   // Grille fixe : si le nom dépasse la hauteur de la ligne, réduire SA police
   // pas à pas (mesure réelle du rendu), jusqu'à 13 px. Le nom n'est jamais

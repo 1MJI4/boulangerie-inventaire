@@ -23,6 +23,8 @@ type Ligne = {
   quantitePrevue: number | null;
   quantiteProduite: number | null;
   quantiteRestante: number | null;
+  /** « 0 barré » : pas produit ce jour-là. */
+  nonProduit?: boolean;
   produit: { id: number; nom: string; categorie: string; ordre: number; unite?: Unite };
 };
 
@@ -82,7 +84,7 @@ export default function InventaireComplet() {
     const duSoir = (semaineLignes as (Ligne & { dateInventaire?: string })[]).filter((l) => String(l.dateInventaire).slice(0, 10) === iso);
     return duSoir.length === 0
       ? null
-      : bilanJournee(duSoir.map((l) => ({ nom: l.produit.nom, quantiteRestante: l.quantiteRestante, quantiteProduite: l.quantiteProduite, unite: l.produit.unite })));
+      : bilanJournee(duSoir.map((l) => ({ nom: l.produit.nom, quantiteRestante: l.quantiteRestante, quantiteProduite: l.quantiteProduite, unite: l.produit.unite, nonProduit: l.nonProduit === true })));
   };
 
   const parCategorie = useMemo(() => {
@@ -226,7 +228,7 @@ export default function InventaireComplet() {
                             <td
                               className={`px-3 py-2 text-right ${invenduFort ? 'text-attention' : 'text-ink-2'}`}
                             >
-                              {afficher(ligne.quantiteRestante, ligne.produit.unite)}
+                              {ligne.nonProduit === true ? <span title="Pas produit ce jour-là">Ø</span> : afficher(ligne.quantiteRestante, ligne.produit.unite)}
                             </td>
                             <td className="px-4 py-2 text-right font-medium text-ink">
                               {afficher(vendu, ligne.produit.unite)}

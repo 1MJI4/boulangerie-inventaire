@@ -22,6 +22,7 @@ export type TypeNotification =
   | 'inventaire_termine'
   | 'brouillon_non_paye'
   | 'inventaire_a_faire'
+  | 'produit_propose'
   | 'inventaire_incomplet'
   | 'test'
   | 'retrait_dans_1h'
@@ -224,6 +225,18 @@ export function notifInventaireIncomplet(date: string, manquants: number): Notif
     corps: `Il reste ${manquants} produit${manquants > 1 ? 's' : ''} pas compté${manquants > 1 ? 's' : ''} pour ce soir.`,
     url: '/saisie-vendeur',
     urgente: true,
+  };
+}
+
+/** Un vendeur propose un produit absent de la liste d'inventaire (21/11/2026) : au manager de décider. */
+export function notifProduitPropose(id: number, nom: string): Notification {
+  return {
+    type: 'produit_propose',
+    cle: `produit-propose:${id}`,
+    titre: 'Produit proposé',
+    corps: `Un vendeur propose « ${nom} », absent de la liste d’inventaire. À ajouter, ou simple exception ?`,
+    url: '/produits-proposes',
+    urgente: false,
   };
 }
 

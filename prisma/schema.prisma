@@ -198,6 +198,10 @@ model Inventaire {
   id               Int       @id @default(autoincrement())
   dateInventaire   DateTime  @default(now()) @db.Date // Journee de production (YYYY-MM-DD)
   quantiteRestante Int? // null = pas encore compte (a ne pas confondre avec 0)
+  // « 0 barre » (21/11/2026) : le produit n'a PAS ete produit ce jour-la. quantiteRestante vaut alors 0 (la ligne est
+  // comptee, l'inventaire peut se terminer) mais ce zero n'est ni une rupture ni un « a zero » : rien n'a ete vendu faute
+  // de produit. Remis a false des qu'un nombre est compte.
+  nonProduit       Boolean   @default(false)
   quantiteProduite Int?
   quantitePrevue   Int? // Quantite demandee par le manager pour cette journee
   quantiteCommande Int? // Part « + » due aux commandes clients (feuille 1 + 11)
@@ -758,4 +762,33 @@ model BrouillonCommande {
   confirmePar   String?
 
   @@index([statut, echeanceLe])
+}
+
+// ============================================================================
+// Produits PROPOSES par les vendeurs au comptage (21/11/2026) : un produit compte
+// ce soir mais absent de la liste d'inventaire. Ce n'est PAS un produit : tant que
+// le manager n'a pas decide, il n'entre dans aucun total (LOI 10 : la liste
+// d'inventaire reste la seule table "Produit").
+//   a_valider : en attente de la decision du manager
+//   ajoute    : devenu un produit de la liste (produitId), ou rattache a un produit existant
+//   exception : ne sera pas ajoute (cas ponctuel)
+// ============================================================================
+model ProduitPropose {
+  id             Int       @id @default(autoincrement())
+  nom            String
+  /// Nom sans accents ni casse : detecte « bagnat » / « Bagnat » / « Bàgnat ».
+  nomNormalise   String
+  /// Reste compte (pieces), null = pas donne.
+  quantite       Int?
+  unite          Unite     @default(piece)
+  journee        DateTime  @db.Date
+  propositionPar String
+  creeLe         DateTime  @default(now())
+  statut         String    @default("a_valider") // a_valider | ajoute | exception
+  produitId      Int?
+  traiteLe       DateTime?
+  traitePar      String?
+
+  @@index([statut, creeLe])
+  @@index([nomNormalise, journee])
 }

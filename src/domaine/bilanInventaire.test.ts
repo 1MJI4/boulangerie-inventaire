@@ -89,3 +89,17 @@ test('écart avec la semaine précédente : seulement si les deux journées ont 
   assert.equal(ecartDeRestes(jour, vide), null);
   assert.equal(ecartDeRestes(jour, null), null);
 });
+
+test('« 0 barré » : compté (l’inventaire peut finir) mais jamais « à zéro » ni compté dans les restes', () => {
+  const lignes: LigneBilan[] = [
+    { ...ligne('Baguette blanche', 0, null) },
+    { ...ligne('Cougnou', 0, null), nonProduit: true },
+    { ...ligne('Huit', 12, null) },
+    ligne('Torsade', null, null),
+  ];
+  const b = bilanJournee(lignes);
+  assert.equal(b.restesComptes, 3, 'le 0 barré est bien un produit compté');
+  assert.deepEqual(b.aZero, ['Baguette blanche'], 'un produit pas produit n’est pas « à zéro » (rien n’a pu se vendre)');
+  assert.deepEqual(b.nonProduits, ['Cougnou']);
+  assert.equal(b.resteTotalPieces, 12);
+});

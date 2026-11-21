@@ -264,10 +264,14 @@ export async function POST(request: Request) {
       // Un réassort l'annule ; un zéro après la fermeture (inventaire du soir)
       // ou pour une journée passée n'en est pas une.
       const comptage = valeurs.quantiteRestante;
+      // « 0 barré » (21/11/2026) : pas produit ce jour-là — un zéro qui n'est pas une rupture.
+      const nonProduit = p.nonProduit === true && comptage === 0;
       const rupture =
         comptage === undefined
           ? {}
-          : comptage === 0
+          : nonProduit
+            ? { rupturePremiereA: null }
+            : comptage === 0
             ? estUneRupture(p.date, maintenant)
               ? { rupturePremiereA: precedent?.rupture ?? maintenant }
               : {}
@@ -276,6 +280,8 @@ export async function POST(request: Request) {
       const donnees = {
         ...valeurs,
         ...rupture,
+        // Toute écriture du reste remet le drapeau à jour : un nombre compté l'efface.
+        ...(comptage !== undefined ? { nonProduit } : {}),
         ...(p.faitLe !== undefined ? { faitLe: p.faitLe } : {}),
       };
 
