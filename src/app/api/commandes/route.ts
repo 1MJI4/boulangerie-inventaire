@@ -83,6 +83,8 @@ import { idsPhotosCites, lirePhotoDeLigne } from '@/components/commande/photosGe
 import { ecrireUneFois, lireIdClient, lirePriseTablette, TOLERANCE_HORLOGE_MS } from '@/lib/serveur/envoiUnique';
 import { journaliser } from '@/lib/journal';
 import { recalculerApresCommande } from '@/lib/serveur/partCommandee';
+import { notifierManager } from '@/lib/serveur/notifications';
+import { notifCommandeCreee, notifCommandeModifiee } from '@/domaine/notifications';
 
 // Base de prix de chaque ligne (pièce / personne / kilo / forfait) : le bon imprime
 // « 1 gâteau — 20 PARTS » d'après la DONNÉE, jamais d'après le régime seul (LOI 6).
@@ -713,6 +715,12 @@ export async function POST(request: Request) {
 
     // R72 : la commande augmente ce que le fournil doit sortir ce jour-là.
     if (!rejoue) await recalculerApresCommande([jourIso(commande.retraitLe)], route);
+    // Le manager est prévenu sur ses appareils (21/11/2026) ; sans attente, sans jamais gêner la vente.
+    if (!rejoue) {
+      void notifierManager(
+        notifCommandeCreee({ id: commande.id, numero: commande.numero, retraitLe: jourIso(commande.retraitLe), retraitHeure: commande.retraitHeure }),
+      );
+    }
     return rejoue ? dejaRecue(commande) : NextResponse.json(commande, { status: 201 });
   } catch (error) {
     const { corps, statut } = traiterErreur(error, route);
@@ -1097,6 +1105,14 @@ export async function PATCH(request: Request) {
     // R72 : lignes, date de retrait ou annulation changent la part du fournil —
     // on recompte l'ancienne journée et la nouvelle.
     await recalculerApresCommande([jourIso(existante.retraitLe), jourIso(commande.retraitLe)], route);
+    if (action === 'modification') {
+      void notifierManager(
+        notifCommandeModifiee(
+          { id: commande.id, numero: commande.numero, retraitLe: jourIso(commande.retraitLe), retraitHeure: commande.retraitHeure },
+          Date.now(),
+        ),
+      );
+    }
     // Avertissements du domaine joints à la commande (vide pour les autres actions).
     return NextResponse.json(signalements.length > 0 ? { ...commande, signalements } : commande);
   } catch (error) {

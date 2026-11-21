@@ -555,7 +555,15 @@ export default function Comptage() {
   // produits manquants restent « pas compté » (jamais transformés en 0).
   const inventaireTermine =
     bilan.etat === 'termine' && (saisie.statut === 'enregistre' || termineQuandMeme);
-  if (inventaireTermine && termineLe !== date) setTermineLe(date);
+  if (inventaireTermine && termineLe !== date) {
+    setTermineLe(date);
+    // Le manager est prévenu (21/11/2026) : une fois par journée côté serveur (clé du jour).
+    void fetch('/api/notifications/evenement', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'inventaire_termine', date }),
+    }).catch(() => {});
+  }
   // La ligne en cours de saisie n'est jamais cachée par le pavé.
   // (En plein écran, toute la page est visible : rien à faire défiler.)
   const suivreLigne = paveVisible && !modeFocus && !pleinEcran;

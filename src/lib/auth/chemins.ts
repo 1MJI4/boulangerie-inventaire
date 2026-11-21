@@ -18,6 +18,8 @@ const RESSOURCE_STATIQUE_RACINE = /^\/[A-Za-z0-9._-]+\.(?:png|svg|ico|jpg|jpeg|w
  */
 export function estCheminPublic(chemin: string): boolean {
   if (chemin === CHEMIN_CONNEXION) return true;
+  // Service worker des notifications : il doit se charger sans session.
+  if (chemin === '/sw.js') return true;
   if (chemin.startsWith('/_next/')) return true;
   if (chemin.startsWith('/api/cloudprnt/')) return true;
   if (RESSOURCE_STATIQUE_RACINE.test(chemin)) return true;

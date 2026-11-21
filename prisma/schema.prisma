@@ -698,3 +698,24 @@ model PhotoModele {
   @@index([categorie, masquee, ordre])
   @@index([produitCle])
 }
+
+// ============================================================================
+// Notifications du manager (21/11/2026) : appareils (tablette, telephone) qui
+// ont accepte de recevoir les notifications, et journal des envois (une cle
+// n'est jamais envoyee deux fois, meme apres un redemarrage du serveur).
+// Aucune donnee client : seulement l'adresse technique fournie par le navigateur.
+// ============================================================================
+model AbonnementNotification {
+  id       Int      @id @default(autoincrement())
+  endpoint String   @unique
+  p256dh   String
+  auth     String
+  creeLe   DateTime @default(now())
+}
+
+model NotificationEnvoyee {
+  cle      String   @id
+  envoyeLe DateTime @default(now())
+
+  @@index([envoyeLe])
+}

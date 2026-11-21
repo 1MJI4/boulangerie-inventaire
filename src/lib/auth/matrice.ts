@@ -82,6 +82,15 @@ export const MATRICE_ACCES: Record<string, Partial<Record<Methode, EntreeMatrice
     POST: { role: 'tablette', action: 'ouvrir le profil manager' },
     DELETE: { role: 'tablette', action: 'fermer le profil manager' },
   },
+  // Notifications du manager (21/11/2026) : tout appareil lit la clé, seul le gérant abonne l'appareil.
+  'src/app/api/notifications/abonnement/route.ts': {
+    GET: { role: 'tablette', action: 'activer les notifications' },
+    POST: { role: 'gerant', action: 'recevoir les notifications du manager' },
+    DELETE: { role: 'gerant', action: 'arrêter les notifications du manager' },
+  },
+  'src/app/api/notifications/evenement/route.ts': {
+    POST: { role: 'tablette', action: 'prévenir le manager' },
+  },
   'src/app/api/impression/route.ts': {
     GET: { role: 'tablette', action: "suivre l'impression" },
     POST: { role: 'tablette', action: 'imprimer une commande' },

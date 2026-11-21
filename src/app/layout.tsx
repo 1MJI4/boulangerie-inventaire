@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { BarreNavigation } from '@/components/BarreNavigation';
 import { BarreOnglets } from '@/components/BarreOnglets';
 import { GardienProfil } from '@/components/GardienProfil';
+import { Alertes } from '@/components/alertes/Alertes';
 import { FournisseurProfil } from '@/components/ProfilAppareil';
 import { SuiviImpression } from '@/components/SuiviImpression';
 import './globals.css';
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           </main>
           <BarreOnglets />
           <SuiviImpression />
+          <Alertes />
         </FournisseurProfil>
       </body>
     </html>

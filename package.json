@@ -21,7 +21,8 @@
     "recette:arreter": "node scripts/recette.mjs arreter",
     "recette:effacer": "node scripts/recette.mjs effacer",
     "imprimante:local": "node scripts/imprimante-local.mjs",
-    "imprimante:deployer": "wrangler deploy --config cloudflare/imprimante/wrangler.jsonc"
+    "imprimante:deployer": "wrangler deploy --config cloudflare/imprimante/wrangler.jsonc",
+    "notifications:cles": "node scripts/cles-notifications.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.18.0",
@@ -31,13 +32,15 @@
     "qrcode-generator": "2.0.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "sharp": "0.34.5"
+    "sharp": "0.34.5",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20.19.23",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.0.11",
