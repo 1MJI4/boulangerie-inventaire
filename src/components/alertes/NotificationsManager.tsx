@@ -9,6 +9,7 @@
 // ajoutée à l'écran d'accueil.
 
 import { useEffect, useState } from 'react';
+import { AccesGerant } from '@/components/commande/AccesGerant';
 
 type Etat = 'inconnu' | 'indisponible' | 'inactif' | 'actif' | 'refuse';
 
@@ -28,6 +29,8 @@ export function NotificationsManager() {
   const [etat, setEtat] = useState<Etat>('inconnu');
   const [message, setMessage] = useState<string | null>(null);
   const [occupe, setOccupe] = useState(false);
+  // L'accès gérant s'éteint après 30 min sans action : on redemande le code ici, sans quitter l'écran.
+  const [codeDemande, setCodeDemande] = useState(false);
 
   useEffect(() => {
     let vivant = true;
@@ -75,13 +78,14 @@ export function NotificationsManager() {
         body: JSON.stringify({ abonnement: abonnement.toJSON() }),
       });
       if (envoi.status === 403) {
-        setMessage('Ouvrez d’abord le profil manager avec le code gérant, puis touchez « Activer » à nouveau.');
+        setCodeDemande(true);
         return;
       }
       if (!envoi.ok) {
         setMessage('Cet appareil n’a pas pu être enregistré. Réessayez dans un instant.');
         return;
       }
+      setCodeDemande(false);
       setEtat('actif');
     } catch {
       setMessage('Impossible d’activer les notifications sur cet appareil pour le moment.');
@@ -93,7 +97,7 @@ export function NotificationsManager() {
   if (etat === 'inconnu' || etat === 'actif') return null;
 
   return (
-    <div className="fixed bottom-24 right-3 z-40 max-w-xs rounded-2xl bg-surface p-3 text-sm shadow-lg">
+    <div className="fixed bottom-24 right-3 z-40 max-w-sm rounded-2xl bg-surface p-3 text-sm shadow-lg">
       {etat === 'indisponible' ? (
         <p className="text-ink-2">
           Pour recevoir les notifications, ajoutez l’application à l’écran d’accueil (Partager → « Sur l’écran d’accueil »), puis rouvrez-la.
@@ -114,6 +118,18 @@ export function NotificationsManager() {
           </button>
         </>
       )}
+      {codeDemande ? (
+        <div className="mt-3">
+          <AccesGerant
+            raison="Pour recevoir les notifications du manager sur cet appareil, saisissez le code gérant."
+            onAccorde={() => {
+              setCodeDemande(false);
+              void activer();
+            }}
+            onAnnuler={() => setCodeDemande(false)}
+          />
+        </div>
+      ) : null}
       {message ? <p className="mt-2 text-bloquant">{message}</p> : null}
     </div>
   );
