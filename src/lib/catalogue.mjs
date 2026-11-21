@@ -67,10 +67,10 @@ export const CATALOGUE = [
     'Ciabatta aux olives',
     'Pain italien (long, sésames)',
     'Pain espagnol',
-    'Pain shawarma blanc',
-    'Pain shawarma gris',
-    'Bagnat blanc',
-    'Bagnat gris',
+    // Un seul produit sur la feuille papier (« Pain Shawarma - bagnat ») : fusion du 21/11/2026,
+    // les anciens « Bagnat blanc / gris » sont retirés (migration 20261121200000), historique gardé.
+    'Pain shawarma - bagnat blanc',
+    'Pain shawarma - bagnat gris',
     // Briochés : rangés côté pain, et c'est bien le boulanger qui les fait.
     'Craquelin',
     'Cramique',
