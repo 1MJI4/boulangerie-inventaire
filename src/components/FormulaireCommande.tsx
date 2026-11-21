@@ -170,6 +170,7 @@ import { aGarderSurLaTablette, classerReponse, TEXTES_HORS_LIGNE, type CommandeE
 import { envoyerAuServeur, garderCommande, noterIssue, nouvelIdCommande, trouverCommandeEnAttente } from '@/lib/envoiHorsLigne';
 import { ChampPave } from '@/components/commande/ChampPave';
 import { AccesGerant } from '@/components/commande/AccesGerant';
+import { FeuilleDetailLigne } from '@/components/commande/FeuilleDetailLigne';
 import { BandeRetrait } from '@/components/commande/BandeRetrait';
 import { GaleriePhotos } from '@/components/commande/GaleriePhotos';
 import { ajouterAvecPhoto, ficheDePhoto, navigationPourPhoto, retirerPhoto } from '@/components/commande/galerie';
@@ -353,6 +354,10 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
   const [ligneDetail, setLigneDetail] = useState<string | null>(null);
   // Bon en accordéon (19/11/2026) : dernière ligne touchée — c'est elle qui est ouverte.
   const [ligneChoisie, setLigneChoisie] = useState<string | null>(null);
+  // Téléphone (21/11/2026) : la feuille de détails d'une ligne. `feuillePour` = ligne montrée ;
+  // `feuilleFermeePour` = ligne pour laquelle on a touché OK (elle ne se rouvre pas toute seule).
+  const [feuillePour, setFeuillePour] = useState<string | null>(null);
+  const [feuilleFermeePour, setFeuilleFermeePour] = useState<string | null>(null);
   // Étape Produits : la remarque s'écrit depuis le bon (bouton « Remarque »).
   const [remarqueOuverte, setRemarqueOuverte] = useState(false);
   // Galerie de photos de modèles (26/10/2026) : montée seulement quand elle est
@@ -1539,6 +1544,9 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
   // en haut, toujours visible ; les réglages de la ligne choisie s'affichent
   // dessous, dans leur propre zone. Rempli pendant le rendu de la liste.
   let reglagesLigne: ReactNode = null;
+  // La ligne ouverte demande encore des détails (taille, goût, quantité…) : la feuille s'ouvre d'elle-même.
+  let ligneOuverteABesoin = false;
+  let nomLigneOuverte = '';
   const bon =
     cal && catalogue ? (
       <div ref={zoneBon}>
@@ -1581,6 +1589,8 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                 blocagesLigne.length > 0 ||
                 signauxSurGateau.some((s) => s.niveau === 'bloquant');
               if (ouverte) {
+                ligneOuverteABesoin = aCorriger;
+                nomLigneOuverte = fiche ? libelleLigneEcran(ligne, fiche, LIBELLES_SELON_GOUT) : ligne.libelleLibre || 'Autre demande';
                 reglagesLigne = (
                   <div
                     id={`reglages-${ligne.cle}`}
@@ -1659,7 +1669,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
                     montant={r && r.ok ? r.donnees.totalCentimes : null}
                     aCorriger={aCorriger}
                     onglet
-                    onClick={() => { setActif(null); setLigneChoisie(ligne.cle); }}
+                    onClick={() => { setActif(null); setLigneChoisie(ligne.cle); setFeuillePour(ligne.cle); }}
                   />
                 </li>
               );
@@ -1789,20 +1799,6 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
         </Bouton>
       </div>
     ) : null;
-
-  const totalAnnonce = (
-    <div className="flex items-baseline justify-between gap-2" aria-live="polite">
-      <span className="text-sm text-ink-2">Total à annoncer</span>
-      <span
-        className={`chiffres rounded-xl px-1.5 text-4xl font-bold leading-tight transition-colors duration-500 ${
-          eclair ? 'bg-accent-doux text-accent' : 'text-ink'
-        }`}
-      >
-        {texteTotal.montant ?? <span className="text-xl font-semibold text-ink-2">{texteTotal.suite}</span>}
-        {texteTotal.montant && texteTotal.suite ? <span className="ml-1 text-sm font-medium text-ink-2">{texteTotal.suite}</span> : null}
-      </span>
-    </div>
-  );
 
   /* ------------------- Remarques, demande inhabituelle, zone pour dessiner */
   // Valent pour toute la commande (salé compris) : en bas du bon, discrètes.
@@ -2345,6 +2341,13 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
   }
 
   /* ======================================================= Rendu téléphone */
+  // Feuille de détails : elle s'ouvre toute seule quand la ligne ouverte demande encore quelque chose
+  // (une fois par ligne : après « OK » elle ne revient que d'un toucher sur la ligne, dans la bande du bas).
+  if (etape === 2 && ligneOuverteABesoin && cleOuverte && feuillePour === null && feuilleFermeePour !== cleOuverte) {
+    setFeuillePour(cleOuverte);
+  }
+  if (feuilleFermeePour !== null && cleOuverte === feuilleFermeePour && !ligneOuverteABesoin) setFeuilleFermeePour(null);
+  const feuilleVisible = etape === 2 && feuillePour !== null && feuillePour === cleOuverte && reglagesLigne !== null;
   return (
     <>
       <Entete
@@ -2373,7 +2376,7 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
 
       {cal && catalogue ? (
         <DispositionAvecPave pave={blocPave}>
-          <div className={`grid grid-cols-[minmax(0,1fr)] gap-4 ${!blocPave ? 'pb-24' : ''}`}>
+          <div className={`grid grid-cols-[minmax(0,1fr)] gap-4 ${!blocPave ? (etape === 2 ? 'pb-44' : 'pb-24') : ''}`}>
             {signauxStatut.length > 0 ? rendre(signauxStatut) : null}
             {etape !== 1 && refusClient.length > 0 ? rendre(refusClient) : null}
 
@@ -2436,11 +2439,6 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
               </Carte>
             </div>
 
-            <Carte className="p-4">
-              {totalAnnonce}
-              <div className="mt-3">{bon}</div>
-              {reglagesLigne ? <div className="mt-2">{reglagesLigne}</div> : null}
-            </Carte>
             </>
             ) : (
             <>
@@ -2464,9 +2462,30 @@ function SaisieCommande({ commande, onRecommencer }: { commande?: Commande; onRe
       {galerie}
       {fenetreAbandon}
 
+      {/* Téléphone : les réglages de la ligne dans une feuille, « OK » pour fermer (21/11/2026). */}
+      {feuilleVisible ? (
+        <FeuilleDetailLigne
+          titre={nomLigneOuverte}
+          paveOuvert={Boolean(blocPave)}
+          onOk={() => {
+            setFeuilleFermeePour(feuillePour);
+            setFeuillePour(null);
+            setActif(null);
+          }}
+        >
+          {reglagesLigne}
+        </FeuilleDetailLigne>
+      ) : null}
+
       {/* Téléphone, pavé fermé : total et validation toujours à portée de pouce. */}
       {cal && catalogue && !blocPave ? (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-4 py-2.5 backdrop-blur">
+          {/* Les lignes du bon, côte à côte, juste au-dessus du total : on glisse, on touche pour régler. */}
+          {etape === 2 && lignes.length > 0 ? (
+            <div className="mx-auto mb-2 max-w-3xl [&>div>h2]:hidden [&>div>p]:hidden [&>div>ul]:flex-nowrap [&>div>ul]:overflow-x-auto [&>div>ul]:pb-1 [&_li]:shrink-0">
+              {bon}
+            </div>
+          ) : null}
           <div className="mx-auto flex max-w-3xl items-center gap-3">
             <div className="min-w-0 flex-1">
               <div className="chiffres text-2xl font-bold leading-tight text-ink">
