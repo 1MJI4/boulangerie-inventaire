@@ -100,8 +100,15 @@ test('« Croissant aux amandes » et « Croissant au chocolat » ne sont PAS des
   assert.ok(!parts.some((p) => p.fournil === 'Croissant'));
 });
 
+test('Couque au chocolat double (au tarif depuis le 21/11) : ses commandes augmentent la Couque au chocolat', () => {
+  const parts = partCommandeeParBase([ligne(DOUBLE, 'Couque au chocolat double', 6), ligne(PAIN_CHOCOLAT, 'Pain chocolat', 2)], BASES_FOURNIL);
+  assert.deepEqual(parts.map((p) => [p.fournil, p.pieces]), [['Couque au chocolat', 8]]);
+  assert.equal(parts[0].detail.find((d) => d.libelle === 'Couque au chocolat double')?.derive, true);
+});
+
 test('une entrée « à venir » ne sert pas tant que le produit n’est pas au tarif', () => {
-  assert.deepEqual(partCommandeeParBase([ligne(DOUBLE, 'Couque au chocolat double', 6)], BASES_FOURNIL), []);
+  const liens: LienFournil[] = [{ commande: DOUBLE, fournil: 'Couque au chocolat', derive: true, aVenir: true }];
+  assert.deepEqual(partCommandeeParBase([ligne(DOUBLE, 'Couque au chocolat double', 6)], liens), []);
 });
 
 test('lignes ignorées : au kilo, sans produit du catalogue, quantité invalide', () => {
@@ -145,7 +152,10 @@ test('préremplissage : rien commandé, valeur invalide ou produit sans plateau'
   assert.deepEqual(preremplirCommandes(0, 16), { plateaux: 0, plus: 0, facultatif: 0 });
   assert.deepEqual(preremplirCommandes(-3, 16), { plateaux: 0, plus: 0, facultatif: 0 });
   assert.deepEqual(preremplirCommandes(1.5, 16), { plateaux: 0, plus: 0, facultatif: 0 });
+  // Produit sans plateau : toutes les pièces, même 1 à 4 (la tolérance ne concerne que les plateaux).
   assert.deepEqual(preremplirCommandes(9, 0), { plateaux: 0, plus: 9, facultatif: 0 });
+  assert.deepEqual(preremplirCommandes(3, 0), { plateaux: 0, plus: 3, facultatif: 0 });
+  assert.deepEqual(preremplirCommandes(5, 0), { plateaux: 0, plus: 5, facultatif: 0 });
 });
 
 test('total à produire : prévu 48 + 16 pour les commandes = 64', () => {
@@ -181,7 +191,7 @@ function clesDuTarif(fichier: string): Set<string> {
 }
 
 test('la table ne cite que des produits à la pièce du tarif (hors entrées à venir)', () => {
-  const cles = clesDuTarif('catalogue_prix_2026-11.csv');
+  const cles = clesDuTarif('catalogue_prix_2026-11-21.csv');
   assert.deepEqual(controlerLiensFournil(BASES_FOURNIL, (cle) => cles.has(cle)), []);
   assert.deepEqual(clesSuivies(), BASES_FOURNIL.filter((l) => !l.aVenir).map((l) => l.commande));
   assert.ok(clesSuivies().includes(COUQUE_BEURRE) && clesSuivies().includes(CROISSANT) && clesSuivies().includes(PAIN_CHOCOLAT));

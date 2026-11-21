@@ -10,10 +10,10 @@
 //    Le lien est une DONNÉE (src/catalogue/basesFournil.ts), jamais déduit du
 //    nom (LOI 6) : c'est la seule passerelle entre le catalogue de commande et
 //    la liste d'inventaire, qui restent deux listes séparées (LOI 10).
-// 2. Plateaux (Croissant, Couque au chocolat) — SIMPLIFIÉ le 21/11/2026 : les pièces
+// 2. Prévisions — SIMPLIFIÉ le 21/11/2026 : pour tous les produits reliés, les pièces
 //    commandées PRÉREMPLISSENT les champs du manager, qui les modifie ensuite à sa
-//    guise : 6 commandées → « + 6 » ; 7 → « + 7 » ; 16 → 1 plateau. On GARDE la
-//    tolérance de 4 : jusqu'à 4 pièces on ne remplit rien (prises sur la vente
+//    guise : 6 commandées → « + 6 » ; 7 → « + 7 » ; 16 → 1 plateau. Pour les
+//    plateaux (Croissant, Couque au chocolat) on GARDE la tolérance de 4 : jusqu'à 4 pièces on ne remplit rien (prises sur la vente
 //    normale), mais l'écran dit « 4 en commande » et propose de les ajouter
 //    (preremplirCommandes).
 // 3. Une commande annulée ne compte plus.
@@ -125,9 +125,10 @@ export function preremplirCommandes(
   tolerance: number = TOLERANCE_SANS_PLATEAU,
 ): { plateaux: number; plus: number; facultatif: number } {
   const n = Number.isSafeInteger(piecesCommandees) && piecesCommandees > 0 ? piecesCommandees : 0;
-  const valide = Number.isSafeInteger(piecesParPlateau) && piecesParPlateau > 0;
-  const reste = valide ? n % piecesParPlateau : n;
-  const plateaux = valide ? (n - reste) / piecesParPlateau : 0;
+  // Produit sans plateau (Couque au beurre…) : toutes les pièces commandées, sans tolérance.
+  if (!Number.isSafeInteger(piecesParPlateau) || piecesParPlateau <= 0) return { plateaux: 0, plus: n, facultatif: 0 };
+  const reste = n % piecesParPlateau;
+  const plateaux = (n - reste) / piecesParPlateau;
   return reste <= tolerance ? { plateaux, plus: 0, facultatif: reste } : { plateaux, plus: reste, facultatif: 0 };
 }
 

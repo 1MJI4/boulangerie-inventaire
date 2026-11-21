@@ -78,14 +78,14 @@ commande → fournil est une **donnée** (`src/catalogue/basesFournil.ts`), jama
 nom ; c'est la seule passerelle entre les deux listes (LOI 10). Une même ligne de commande peut
 viser deux produits du fournil selon son choix (Beignet « Sucré » / « Nature »). La part des
 commandes est **recalculée en entier** depuis les commandes non annulées (jamais additionnée au fil
-de l'eau). **Plateaux simplifiés (propriétaire, 21/11/2026)** : pour Croissant et Couque au
-chocolat, plus de plateau complété — les pièces commandées **préremplissent** les champs du
-manager, qui les **modifie ensuite** : 6 commandées → « + 6 », 7 → « + 7 », 16 → 1 plateau. **La
-tolérance de 4 est gardée** : jusqu'à 4 pièces rien n'est rempli (prises sur la vente normale), mais
+de l'eau). **Prévisions simplifiées (propriétaire, 21/11/2026)** : pour **tous** les produits reliés
+(Couque au beurre comme Croissant), les pièces commandées **préremplissent** les champs du
+manager (plus de plateau complété), qui les **modifie ensuite** : 6 commandées → « + 6 », 7 → « + 7 », 16 → 1 plateau. **La
+tolérance de 4 est gardée pour Croissant et Couque au chocolat (plateaux)** : jusqu'à 4 pièces rien n'est rempli (prises sur la vente normale), mais
 l'écran dit « 4 en commande » et propose de les ajouter d'un geste (20 → 1 plateau, « 4 en
-commande »). Rien n'est ajouté tout seul en base pour ces deux produits
-(`commandeAuto` / `plateauCommandes` à 0), sinon la part compterait deux fois ; les autres produits
-de la table gardent l'ajout automatique dans `Inventaire.commandeAuto` / `plateauCommandes`. Règles :
+commande »). Rien n'est plus ajouté tout seul en base
+(`commandeAuto` / `plateauCommandes` à 0), sinon la part compterait deux fois ; l'écran du pâtissier signale
+« N commandés pas encore dans la prévision » tant que le manager n'a pas ouvert les prévisions. Règles :
 `src/domaine/commandesFournil.ts` (`preremplirCommandes`).
 
 ## LOI N°3 — Le jour de fermeture

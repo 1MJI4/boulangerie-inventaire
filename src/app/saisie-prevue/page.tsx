@@ -106,13 +106,12 @@ export default function SaisiePrevisions() {
   useEffect(() => {
     if (saisie.chargement || commande.chargement) return;
     for (const produit of saisie.produits) {
-      if (!sePlanifieEnPlateaux(produit.piecesParPlateau)) continue;
       const cle = `${date}:${produit.id}`;
       if (dejaPrerempli.current.has(cle)) continue;
       const pieces = partCommandes.parProduit.get(produit.id)?.commandeAuto ?? 0;
       if (pieces <= 0 || (commande.valeurs[produit.id] ?? '') !== '') continue;
       // Jusqu'à 4 pièces (tolérance) : rien n'est rempli, la ligne propose seulement de les ajouter.
-      const { plateaux, plus } = preremplirCommandes(pieces, produit.piecesParPlateau);
+      const { plateaux, plus } = preremplirCommandes(pieces, produit.piecesParPlateau ?? 0);
       if (plateaux === 0 && plus === 0) continue;
       dejaPrerempli.current.add(cle);
       let deja = false;
@@ -124,8 +123,9 @@ export default function SaisiePrevisions() {
       }
       if (deja) continue;
       const dejaDemande = lireEntier(saisie.valeurs[produit.id] ?? '');
-      commande.definir(produit.id, plus > 0 ? String(plus) : '');
-      saisie.definir(produit.id, String(dejaDemande + piecesDePlateaux(plateaux, produit.piecesParPlateau) + plus));
+      // « 0 » (et non vide) quand le « + » reste à 0 : le préremplissage est fait, l'écran du pâtissier le sait.
+      commande.definir(produit.id, String(plus));
+      saisie.definir(produit.id, String(dejaDemande + (sePlanifieEnPlateaux(produit.piecesParPlateau) ? piecesDePlateaux(plateaux, produit.piecesParPlateau) : 0) + plus));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- une fois par produit et par journée (garde ci-dessus)
   }, [saisie.chargement, commande.chargement, saisie.produits, partCommandes.parProduit, date]);

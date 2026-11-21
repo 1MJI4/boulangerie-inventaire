@@ -18,7 +18,7 @@ import { useMemoireLocale } from '@/lib/memoireLocale';
 import { DEFINITIONS } from '@/lib/profils';
 import { DESCRIPTION_POSTE, LIBELLE_POSTE, POSTES, estPoste, type Poste } from '@/lib/postes';
 import { enPlateaux, formaterPlateaux, sePlanifieEnPlateaux } from '@/domaine/plateaux';
-import { formaterDerives, totalAProduire } from '@/domaine/commandesFournil';
+import { formaterDerives, preremplirCommandes, totalAProduire } from '@/domaine/commandesFournil';
 import { construireFeuille } from '@/domaine/feuillePrevisions';
 import type { FeuillePrevisions } from '@/domaine/feuillePrevisions';
 import { FenetreImpressionFeuille } from '@/components/FenetreImpressionFeuille';
@@ -256,6 +256,16 @@ export default function Fournil() {
   const partDe = new Map<number, PartFournil>(
     (part && part.journee === date ? part.bases : []).map((b) => [b.produitId, b])
   );
+  // Les commandes PRÉREMPLISSENT la prévision du manager (21/11/2026) : tant qu'il n'a pas ouvert
+  // « Prévisions », elles n'y sont pas. Le pâtissier le voit ici plutôt que de produire trop peu.
+  // Jusqu'à 4 pièces d'un produit à plateaux : tolérance, rien à signaler.
+  const commandesNonComptees = (l: (typeof lignes)[number]): number | null => {
+    const live = partDe.get(l.produitId)?.commandeAuto ?? 0;
+    // quantiteCommande renseignée (même à 0) = le manager a ouvert les prévisions : préremplissage fait.
+    if (live <= 0 || l.quantiteCommande != null) return null;
+    const { plateaux, plus } = preremplirCommandes(live, l.produit.piecesParPlateau ?? 0);
+    return plateaux > 0 || plus > 0 ? live : null;
+  };
   // Le plateau des commandes ne concerne que les produits de ce poste.
   const resumesCommandes =
     part && part.journee === date && lignes.some((l) => (l.commandeAuto ?? 0) > 0) ? part.resumes : [];
@@ -434,6 +444,11 @@ export default function Fournil() {
                         }`}
                       >
                         {ligne.produit.nom}
+                        {commandesNonComptees(ligne) ? (
+                          <span className="sans-impression ml-2 text-xs font-semibold text-attention">
+                            {commandesNonComptees(ligne)} commandé{(commandesNonComptees(ligne) ?? 0) > 1 ? 's' : ''} pas encore dans la prévision
+                          </span>
+                        ) : null}
                         {nouveau ? (
                           <span className="sans-impression ml-2 text-xs font-medium text-ok">
                             nouveau

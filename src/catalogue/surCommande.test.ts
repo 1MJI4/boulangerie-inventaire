@@ -27,8 +27,9 @@ function ligne(id: string) {
 test("le dossier data/ se charge sans blocage (comptoir + sur commande)", () => {
   assert.equal(charge.ok, true, JSON.stringify(charge.rapports));
   // tarif_2026-09 (comptoir) · sur-commande_2026-10 · sur-commande_2026-10-26 (Pâte à sucre)
-  // · tarif_2026-11 (comptoir, 4 prix, en vigueur le 19/11/2026).
-  assert.equal(cat.versions.length, 4);
+  // · tarif_2026-11 (comptoir, 4 prix, en vigueur le 19/11/2026)
+  // · tarif_2026-11-21 (comptoir, + Couque au chocolat double 1,90 €, en vigueur le 21/11/2026).
+  assert.equal(cat.versions.length, 5);
 });
 
 test("chaque produit sur commande porte un régime B ou C explicite", () => {

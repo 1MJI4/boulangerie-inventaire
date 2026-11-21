@@ -113,8 +113,8 @@ export async function recalculerPartCommandee(journee: string): Promise<PartComm
       produitId: p.id,
       nom: p.nom,
       commandeAuto: part?.pieces ?? 0,
-      // Un produit à plateaux : rien d'ajouté tout seul (préremplissage côté écran).
-      plateauCommandes: enPlateaux ? 0 : (part?.pieces ?? 0),
+      // Rien n'est ajouté tout seul (21/11/2026) : l'écran des prévisions préremplit le « + ».
+      plateauCommandes: 0,
       enPlateaux,
       detail: part?.detail ?? [],
     };
@@ -130,9 +130,9 @@ export async function recalculerPartCommandee(journee: string): Promise<PartComm
     const enBase = new Map(existants.map((e) => [e.produitId, e]));
     const ecritures = bases.flatMap((b) => {
       const avant = enBase.get(b.produitId);
-      // Écrit en base : la part automatique seulement pour les produits SANS plateaux.
-      const auto = b.enPlateaux ? 0 : b.commandeAuto;
-      const rien = auto === 0 && b.plateauCommandes === 0;
+      // Écrit en base : plus rien d'automatique (le préremplissage du manager le remplace).
+      const auto = 0;
+      const rien = true;
       if (!avant && rien) return [];
       if (avant && (avant.commandeAuto ?? 0) === auto && (avant.plateauCommandes ?? 0) === b.plateauCommandes) return [];
       const donnees = { commandeAuto: auto, plateauCommandes: b.plateauCommandes };

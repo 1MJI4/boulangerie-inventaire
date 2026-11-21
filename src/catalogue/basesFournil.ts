@@ -56,10 +56,9 @@ export const BASES_FOURNIL: readonly LienFournil[] = [
   // choisie sur la ligne (goutsSurCommande.ts) désigne la ligne du fournil.
   { commande: "viennoiserie/beignet", fournil: "Beignet sucré", derive: false, gout: "Sucré" },
   { commande: "viennoiserie/beignet", fournil: "Beignet nature", derive: false, gout: "Nature" },
-  // Pas encore au tarif (prix donné par le propriétaire le 19/11/2026, nom
-  // exact à confirmer) : l'entrée s'active en retirant `aVenir` quand la ligne
-  // « Couque au chocolat double » sera importée dans un tarif daté.
-  { commande: "viennoiserie/couque-au-chocolat-double", fournil: "Couque au chocolat", derive: true, aVenir: true },
+  // Couque au chocolat double : au tarif depuis le 21/11/2026 (1,90 €, prix donné par le
+  // propriétaire le 19/11) ; dérivé de la Couque au chocolat, sans ligne au fournil.
+  { commande: "viennoiserie/couque-au-chocolat-double", fournil: "Couque au chocolat", derive: true },
 ];
 
 /** Clés du catalogue de commande réellement suivies (hors entrées à venir). */

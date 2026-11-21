@@ -26,6 +26,12 @@
       "code": "tarif_2026-11",
       "fichier": "catalogue_prix_2026-11.csv",
       "valideDu": "2026-11-19"
+    },
+    {
+      "grille": "comptoir",
+      "code": "tarif_2026-11-21",
+      "fichier": "catalogue_prix_2026-11-21.csv",
+      "valideDu": "2026-11-21"
     }
   ]
 }
