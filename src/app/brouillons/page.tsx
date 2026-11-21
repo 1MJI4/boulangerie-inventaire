@@ -22,6 +22,39 @@ import type { Echec } from '@/domaine/resultat';
 
 type Onglet = 'attente' | 'expires' | 'traites';
 
+/**
+ * Copie un texte. Le presse-papiers moderne exige une page sécurisée (https) : en http — un test sur le
+ * wifi du magasin, par exemple — on passe par une zone de texte sélectionnée (secours).
+ */
+async function copierTexte(texte: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(texte);
+      return true;
+    }
+  } catch {
+    /* refusé : on tente le secours */
+  }
+  const zone = document.createElement('textarea');
+  zone.value = texte;
+  zone.setAttribute('readonly', '');
+  zone.style.position = 'fixed';
+  zone.style.top = '0';
+  zone.style.opacity = '0';
+  document.body.appendChild(zone);
+  zone.focus();
+  zone.select();
+  zone.setSelectionRange(0, texte.length);
+  let ok = false;
+  try {
+    ok = document.execCommand('copy');
+  } catch {
+    ok = false;
+  }
+  document.body.removeChild(zone);
+  return ok;
+}
+
 const LIBELLE_ONGLET: Record<Onglet, string> = {
   attente: 'En attente',
   expires: 'Expirés',
@@ -39,6 +72,7 @@ export default function Brouillons() {
   const [occupe, setOccupe] = useState<number | null>(null);
   const [par, setPar] = useState('');
   const [copie, setCopie] = useState<number | null>(null);
+  const [copieEchec, setCopieEchec] = useState<number | null>(null);
 
   const charger = useCallback(async () => {
     try {
@@ -127,13 +161,13 @@ export default function Brouillons() {
 
   const copier = async (b: BrouillonVue) => {
     if (!b.message) return;
-    try {
-      await navigator.clipboard.writeText(b.message);
-      setCopie(b.id);
-      setTimeout(() => setCopie((c) => (c === b.id ? null : c)), 2500);
-    } catch {
-      /* presse-papiers refusé : le message reste lisible dans « Voir le message » */
-    }
+    const ok = await copierTexte(b.message);
+    setCopie(ok ? b.id : null);
+    setCopieEchec(ok ? null : b.id);
+    setTimeout(() => {
+      setCopie((c) => (c === b.id ? null : c));
+      setCopieEchec((c) => (c === b.id ? null : c));
+    }, 6000);
   };
 
   const sansCompte = (liste ?? []).some((b) => b.message === null);
@@ -281,8 +315,13 @@ export default function Brouillons() {
                           Écarter
                         </Bouton>
                       </div>
+                      {copieEchec === b.id ? (
+                        <p className="mt-2 text-sm font-medium text-attention">
+                          La copie n’a pas fonctionné sur cet appareil : ouvrez « Voir le message » et gardez le doigt appuyé sur le texte pour le copier.
+                        </p>
+                      ) : null}
                       {b.message ? (
-                        <details className="mt-2">
+                        <details className="mt-2" open={copieEchec === b.id}>
                           <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium text-accent">Voir le message</summary>
                           <pre className="whitespace-pre-wrap rounded-xl bg-segment-fond p-3 text-sm text-ink">{b.message}</pre>
                         </details>
