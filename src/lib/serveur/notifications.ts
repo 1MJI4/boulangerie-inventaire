@@ -65,6 +65,11 @@ export async function enregistrerAbonnement(a: AbonnementPush): Promise<void> {
   });
 }
 
+/** Le serveur connaît-il cet appareil ? (l'appareil peut être abonné chez lui sans l'être ici : activation interrompue). */
+export async function abonnementConnu(endpoint: string): Promise<boolean> {
+  return (await prisma.abonnementNotification.count({ where: { endpoint } })) > 0;
+}
+
 export async function retirerAbonnement(endpoint: string): Promise<void> {
   await prisma.abonnementNotification.deleteMany({ where: { endpoint } });
 }

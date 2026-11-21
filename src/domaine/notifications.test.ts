@@ -7,6 +7,7 @@ import {
   notifCommandeCreee,
   notifCommandeModifiee,
   notifInventaireTermine,
+  notifTest,
   rappelsDus,
   sonneEnSalle,
 } from './notifications.ts';
@@ -83,4 +84,12 @@ test('dates : format strict', () => {
   assert.equal(dateIsoValide('2026-11-21'), true);
   assert.equal(dateIsoValide('21/11/2026'), false);
   assert.equal(dateIsoValide(null), false);
+});
+
+test('notification de test : clé unique à chaque envoi, texte en français, rien de personnel', () => {
+  const a = notifTest(1);
+  assert.notEqual(a.cle, notifTest(2).cle);
+  assert.equal(a.type, 'test');
+  assert.match(a.corps, /cet appareil/);
+  assert.equal(a.urgente, false);
 });

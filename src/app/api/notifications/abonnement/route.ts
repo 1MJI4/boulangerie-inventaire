@@ -2,12 +2,15 @@
 // Réservé au gérant : seul le profil manager reçoit ces notifications.
 import { NextResponse } from 'next/server';
 import { exigerRole } from '@/lib/auth/garde';
-import { cleVapidPublique, enregistrerAbonnement, lireAbonnement, retirerAbonnement } from '@/lib/serveur/notifications';
+import { abonnementConnu, cleVapidPublique, enregistrerAbonnement, lireAbonnement, retirerAbonnement } from '@/lib/serveur/notifications';
 
 export async function GET(request: Request) {
   const garde = exigerRole(request, 'tablette', 'activer les notifications');
   if (!garde.ok) return garde.reponse;
-  return NextResponse.json({ cle: cleVapidPublique() }, { headers: { 'Cache-Control': 'no-store' } });
+  // Avec ?endpoint=… : cet appareil est-il enregistré sur le serveur ? (aucun droit gérant nécessaire)
+  const endpoint = new URL(request.url).searchParams.get('endpoint');
+  const connu = endpoint && endpoint.length < 1000 ? await abonnementConnu(endpoint) : undefined;
+  return NextResponse.json({ cle: cleVapidPublique(), connu }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 export async function POST(request: Request) {

@@ -21,6 +21,7 @@ export type TypeNotification =
   | 'commande_modifiee'
   | 'inventaire_termine'
   | 'brouillon_non_paye'
+  | 'test'
   | 'retrait_dans_1h'
   | 'retrait_maintenant'
   | 'retrait_retard_2h';
@@ -179,6 +180,18 @@ export function notifBrouillonNonPaye(b: { id: number; reference: string }, eche
     titre: 'Brouillon non payé',
     corps: `La commande ${b.reference} n’est toujours pas payée : le délai est dépassé. Relancez le client ou écartez le brouillon.`,
     url: '/brouillons',
+    urgente: false,
+  };
+}
+
+/** Notification de test : vérifier d'un toucher qu'un appareil reçoit bien les alertes. */
+export function notifTest(instantMs: number): Notification {
+  return {
+    type: 'test',
+    cle: `test:${instantMs}`,
+    titre: 'Test des notifications',
+    corps: 'Ça marche : cet appareil reçoit bien les alertes du manager.',
+    url: '/commandes',
     urgente: false,
   };
 }

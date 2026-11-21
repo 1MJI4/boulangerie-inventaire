@@ -4,14 +4,20 @@
 //
 // Profil manager : active les notifications sur CET appareil (tablette ou
 // téléphone) — nouvelle commande, commande modifiée, inventaire terminé,
-// retrait dans 1 h / à l'heure / 2 h après. Notification système : arrive aussi
-// application fermée. Sur iPhone et iPad, l'application doit d'abord être
-// ajoutée à l'écran d'accueil.
+// retrait dans 1 h / à l'heure / 2 h après, brouillon non payé. Notification
+// système : arrive aussi application fermée. Sur iPhone et iPad, l'application
+// doit d'abord être ajoutée à l'écran d'accueil.
+//
+// L'état « activé » ne se déduit pas de l'appareil seul : une activation
+// interrompue (code gérant expiré) laisse l'appareil abonné chez lui sans que le
+// serveur le sache. On demande donc au serveur s'il connaît l'appareil ; sinon on
+// propose de l'enregistrer. Une fois activé : un petit témoin « Alertes activées »
+// qui envoie une notification de test d'un toucher.
 
 import { useEffect, useState } from 'react';
 import { AccesGerant } from '@/components/commande/AccesGerant';
 
-type Etat = 'inconnu' | 'indisponible' | 'inactif' | 'actif' | 'refuse';
+type Etat = 'inconnu' | 'indisponible' | 'inactif' | 'a_enregistrer' | 'actif' | 'refuse';
 
 function versOctets(base64url: string): Uint8Array<ArrayBuffer> {
   const base64 = (base64url + '='.repeat((4 - (base64url.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/');
@@ -31,6 +37,7 @@ export function NotificationsManager() {
   const [occupe, setOccupe] = useState(false);
   // L'accès gérant s'éteint après 30 min sans action : on redemande le code ici, sans quitter l'écran.
   const [codeDemande, setCodeDemande] = useState(false);
+  const [info, setInfo] = useState<string | null>(null);
 
   useEffect(() => {
     let vivant = true;
@@ -42,7 +49,19 @@ export function NotificationsManager() {
       try {
         const reg = await navigator.serviceWorker.getRegistration('/sw.js');
         const abonne = reg ? await reg.pushManager.getSubscription() : null;
-        if (vivant) setEtat(abonne && Notification.permission === 'granted' ? 'actif' : 'inactif');
+        if (!abonne || Notification.permission !== 'granted') {
+          if (vivant) setEtat('inactif');
+          return;
+        }
+        // Abonné sur l'appareil : le serveur le sait-il ? (sans réseau, on ne gêne pas : « actif »)
+        let connu = true;
+        try {
+          const r = await fetch(`/api/notifications/abonnement?endpoint=${encodeURIComponent(abonne.endpoint)}`, { cache: 'no-store' });
+          if (r.ok) connu = ((await r.json()) as { connu?: boolean }).connu !== false;
+        } catch {
+          /* réseau faible */
+        }
+        if (vivant) setEtat(connu ? 'actif' : 'a_enregistrer');
       } catch {
         if (vivant) setEtat('inactif');
       }
@@ -87,6 +106,7 @@ export function NotificationsManager() {
       }
       setCodeDemande(false);
       setEtat('actif');
+      setInfo('Cet appareil est enregistré. Touchez « Alertes activées » pour envoyer un test.');
     } catch {
       setMessage('Impossible d’activer les notifications sur cet appareil pour le moment.');
     } finally {
@@ -94,7 +114,45 @@ export function NotificationsManager() {
     }
   };
 
-  if (etat === 'inconnu' || etat === 'actif') return null;
+  const tester = async () => {
+    setOccupe(true);
+    setInfo(null);
+    try {
+      const r = await fetch('/api/notifications/evenement', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'test' }),
+      });
+      setInfo(
+        r.ok
+          ? 'Test envoyé : une notification doit arriver dans quelques secondes. Si rien n’arrive, touchez-la de nouveau ou vérifiez les réglages de l’appareil.'
+          : 'Le test n’a pas pu partir. Réessayez dans un instant.',
+      );
+    } catch {
+      setInfo('Le test n’a pas pu partir : vérifiez le réseau.');
+    } finally {
+      setOccupe(false);
+    }
+  };
+
+  if (etat === 'inconnu') return null;
+
+  // Activé : un petit témoin discret, qui envoie un test.
+  if (etat === 'actif') {
+    return (
+      <div className="fixed bottom-24 right-3 z-40 flex max-w-xs flex-col items-end gap-1.5">
+        {info ? <p className="rounded-2xl bg-surface p-3 text-sm text-ink shadow-lg">{info}</p> : null}
+        <button
+          type="button"
+          disabled={occupe}
+          onClick={() => void tester()}
+          className="min-h-11 rounded-full bg-surface px-3 text-xs font-medium text-ink-2 shadow-lg disabled:opacity-60"
+        >
+          Alertes activées ✓ · envoyer un test
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed bottom-24 right-3 z-40 max-w-sm rounded-2xl bg-surface p-3 text-sm shadow-lg">
@@ -106,7 +164,9 @@ export function NotificationsManager() {
         <p className="text-ink-2">Les notifications sont bloquées pour cette application : autorisez-les dans les réglages de l’appareil.</p>
       ) : (
         <>
-          <p className="mb-2 font-medium text-ink">Recevoir les alertes sur cet appareil ?</p>
+          <p className="mb-2 font-medium text-ink">
+            {etat === 'a_enregistrer' ? 'Cet appareil n’est pas encore enregistré pour les alertes.' : 'Recevoir les alertes sur cet appareil ?'}
+          </p>
           <p className="mb-2 text-ink-2">Commandes, modifications, inventaire terminé, retraits à l’heure et en retard.</p>
           <button
             type="button"
@@ -114,7 +174,7 @@ export function NotificationsManager() {
             onClick={activer}
             className="min-h-11 w-full rounded-xl bg-accent px-4 font-semibold text-accent-texte disabled:opacity-60"
           >
-            Activer les notifications
+            {etat === 'a_enregistrer' ? 'Enregistrer cet appareil' : 'Activer les notifications'}
           </button>
         </>
       )}
