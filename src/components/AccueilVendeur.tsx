@@ -21,6 +21,7 @@ import { CelluleCommande, ListeGroupee, Segmente } from '@/components/fiche/Elem
 import { useMaintenant } from '@/components/fiche/useMaintenant';
 import { compterParType, filtrerParType, majusculeInitiale, trierParHeure, TYPES_FILTRE } from '@/components/fiche/presentationCommande';
 import { IconeNiveau } from '@/components/signalement';
+import { niveauRetard } from '@/domaine/retard';
 import { depuisApi, LIBELLE_TYPE, resteAFaire, typesDeCommande, type Commande, type CommandeApi, type TypeCommande } from '@/lib/commandes';
 import { dateDuJour, formatDateCourt, formatDateLong } from '@/lib/dateProduction';
 import { decalerJours, estJourFerme, type JourFerme } from '@/domaine/calendrier';
@@ -40,7 +41,7 @@ export function AccueilVendeur({ libelleProfil, onChangerProfil }: { libelleProf
   const [commandes, setCommandes] = useState<Commande[] | null>(null);
   const [joursFermes, setJoursFermes] = useState<JourFerme[]>([]);
   const [aujourdhui, setAujourdhui] = useState(dateDuJour());
-  // En retard dès l'heure de retrait passée, rouge à 19h (29/10/2026).
+  // En retard dès l'heure de retrait passée, urgent après 2 h de retard (21/11/2026).
   const { minutes } = useMaintenant();
   const [debutSemaine, setDebutSemaine] = useState(0);
   const [jourChoisi, setJourChoisi] = useState<string | null>(null);
@@ -78,15 +79,26 @@ export function AccueilVendeur({ libelleProfil, onChangerProfil }: { libelleProf
     };
   }, [charger]);
 
+  // Urgentes : 2 h de retard atteintes (21/11/2026). Notification en tête, jamais filtrée par type ;
+  // elles ne figurent plus dans la liste du jour (plus « en retard » : urgentes).
+  const urgentes = useMemo(
+    () =>
+      (commandes ?? [])
+        .filter((c) => resteAFaire(c) && niveauRetard(c.retraitLe, c.retraitHeure, { date: aujourdhui, minutes }) === 'urgent')
+        .sort((a, b) => a.retraitLe.localeCompare(b.retraitLe) || (a.retraitHeure ?? '').localeCompare(b.retraitHeure ?? '')),
+    [commandes, aujourdhui, minutes],
+  );
+
   const parJour = useMemo(() => {
     const m = new Map<string, Commande[]>();
-    for (const c of (commandes ?? []).filter(resteAFaire)) {
+    const idsUrgentes = new Set(urgentes.map((c) => c.id));
+    for (const c of (commandes ?? []).filter((x) => resteAFaire(x) && !idsUrgentes.has(x.id))) {
       const j = c.retraitLe.slice(0, 10);
       m.set(j, [...(m.get(j) ?? []), c]);
     }
     for (const [j, liste] of m) m.set(j, trierParHeure(liste));
     return m;
-  }, [commandes]);
+  }, [commandes, urgentes]);
 
   const type = filtre === 'tout' ? null : filtre;
   const semaine = Array.from({ length: 7 }, (_, k) => decalerJours(aujourdhui, debutSemaine + k));
@@ -94,13 +106,6 @@ export function AccueilVendeur({ libelleProfil, onChangerProfil }: { libelleProf
   const tousDuJour = parJour.get(choisi) ?? [];
   const comptes = compterParType(tousDuJour);
   const duJour = filtrerParType(tousDuJour, type);
-  // Commandes dont la date est passée mais jamais retirées : à ne pas oublier.
-  const enRetard = filtrerParType(
-    trierParHeure((commandes ?? []).filter((c) => resteAFaire(c) && c.retraitLe.slice(0, 10) < aujourdhui)).sort((a, b) =>
-      a.retraitLe.localeCompare(b.retraitLe),
-    ),
-    type,
-  );
   const ouverte = (commandes ?? []).find((c) => c.id === ouverteId) ?? null;
   const titreJour = formatDateCourt(aujourdhui);
 
@@ -111,6 +116,29 @@ export function AccueilVendeur({ libelleProfil, onChangerProfil }: { libelleProf
         <p className="text-sm font-medium text-ink-2">Aujourd’hui</p>
         <h1 className="text-[34px] font-bold leading-tight tracking-tight text-ink">{majusculeInitiale(titreJour)}</h1>
       </header>
+
+      {/* ------------------------------------------------- Notification urgente : 2 h de retard et plus */}
+      {urgentes.length > 0 ? (
+        <section className="mb-6" aria-live="polite">
+          <h2 className="mb-1.5 flex items-center gap-1.5 px-4 text-sm font-semibold text-bloquant">
+            <IconeNiveau niveau="bloquant" className="h-4 w-4" />
+            Urgent · plus de 2 h de retard · {urgentes.length}
+          </h2>
+          <ListeGroupee>
+            {urgentes.map((c) => (
+              <CelluleCommande
+                key={c.id}
+                commande={c}
+                types={typesDeCommande(c)}
+                aujourdhui={aujourdhui}
+                minutes={minutes}
+                avecDate
+                onOuvrir={(x) => setOuverteId(x.id)}
+              />
+            ))}
+          </ListeGroupee>
+        </section>
+      ) : null}
 
       {/* ------------------------------------------------- Les deux gestes */}
       <div className="mb-7 grid gap-3 sm:grid-cols-2">
@@ -266,28 +294,6 @@ export function AccueilVendeur({ libelleProfil, onChangerProfil }: { libelleProf
           </ListeGroupee>
         )}
       </section>
-
-      {enRetard.length > 0 ? (
-        <section className="mb-7">
-          <h3 className="mb-1.5 flex items-center gap-1.5 px-4 text-sm font-semibold text-bloquant">
-            <IconeNiveau niveau="bloquant" className="h-4 w-4" />
-            Date passée, pas encore retirées · {enRetard.length}
-          </h3>
-          <ListeGroupee>
-            {enRetard.map((c) => (
-              <CelluleCommande
-                key={c.id}
-                commande={c}
-                types={typesDeCommande(c)}
-                aujourdhui={aujourdhui}
-                minutes={minutes}
-                avecDate
-                onOuvrir={(x) => setOuverteId(x.id)}
-              />
-            ))}
-          </ListeGroupee>
-        </section>
-      ) : null}
 
       <ListeGroupee className="mb-8">
         <li>

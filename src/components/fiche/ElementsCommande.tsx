@@ -110,7 +110,7 @@ export function CelluleCommande({
   aujourdhui: string;
   avecDate?: boolean;
   avecStatut?: boolean;
-  /** Minutes depuis minuit à Bruxelles : « En retard » dès l'heure passée, rouge à 19h. */
+  /** Minutes depuis minuit à Bruxelles : « En retard » dès l'heure passée, « Urgent » après 2 h de retard. */
   minutes?: number;
 }) {
   const reste = resteDu(commande.totalCentimes, commande.acompteCentimes);
@@ -131,7 +131,7 @@ export function CelluleCommande({
         <span className="w-16 shrink-0 pt-px">
           <span
             className={`chiffres block text-lg font-semibold leading-tight ${
-              retard === 'retard-rouge' ? 'text-bloquant' : retard === 'retard' ? 'text-avertissement' : 'text-ink'
+              retard === 'urgent' ? 'text-bloquant' : retard === 'retard' ? 'text-avertissement' : 'text-ink'
             }`}
           >
             {heure ?? '—'}
@@ -146,7 +146,11 @@ export function CelluleCommande({
           </span>
           <ResumeArticles commande={commande} />
           <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            {retard ? <Pastille ton={retard === 'retard-rouge' ? 'alerte' : 'avertissement'}>En retard</Pastille> : null}
+            {retard ? (
+              <Pastille ton={retard === 'urgent' ? 'alerte' : 'avertissement'}>
+                {retard === 'urgent' ? 'Urgent' : 'En retard'}
+              </Pastille>
+            ) : null}
             {avecStatut || commande.statut === 'a_imprimer' ? <PastilleStatut commande={commande} /> : null}
             {(types ?? []).map((t) => (
               <EtiquetteType key={t} type={t} />

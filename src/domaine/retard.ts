@@ -1,17 +1,20 @@
 // src/domaine/retard.ts
 //
-// Retrait en retard (décision du propriétaire, 29/10/2026) :
+// Retrait en retard (décisions du propriétaire, 29/10/2026 puis 21/11/2026) :
 //  - dès que l'heure de retrait est passée, la commande est EN RETARD (orange) ;
-//  - à 19h, une commande prévue AVANT 19h et toujours pas retirée passe en
-//    ROUGE (le magasin ferme à 20h : il reste une heure pour l'appeler) ;
-//  - une commande d'un jour précédent, pas retirée, est en rouge.
+//  - après 2 h de retard, elle n'est plus « en retard » : elle devient URGENTE
+//    (rouge) — notification en tête de l'accueil, à traiter (appeler le client).
+//    L'application ne montre ainsi que ce qui demande une action.
 // Propriétaire : agent `regles-metier`. Fonction pure : l'instant est donné
 // par l'appelant (heure de Bruxelles), jamais lu ici.
 
-/** Heure à partir de laquelle un retard du jour devient rouge (minutes depuis minuit). */
-export const HEURE_RETARD_ROUGE = 19 * 60;
+/** Retard au bout duquel la commande devient urgente (minutes). Réglage, pas une constante de composant. */
+export const DELAI_URGENT_MINUTES = 2 * 60;
 
-export type NiveauRetard = 'retard' | 'retard-rouge';
+/** Sans heure de retrait : urgente à cette heure le jour même (minutes depuis minuit). HYPOTHÈSE À VALIDER, question 94. */
+export const HEURE_URGENT_SANS_HEURE = 19 * 60;
+
+export type NiveauRetard = 'retard' | 'urgent';
 
 /** « 14:30 » / « 14h30 » → 870 ; null si illisible ou absent. */
 export function minutesDeLHeure(heure: string | null | undefined): number | null {
@@ -22,10 +25,15 @@ export function minutesDeLHeure(heure: string | null | undefined): number | null
   return h < 24 && min < 60 ? h * 60 + min : null;
 }
 
+/** Nombre de jours entre deux dates « AAAA-MM-JJ » (positif si `a` est après `b`). */
+export function ecartJours(a: string, b: string): number {
+  return Math.round((Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / 86_400_000);
+}
+
 /**
  * Niveau de retard d'une commande pas encore retirée, à l'instant donné.
- * null : pas en retard. Sans heure de retrait, la commande est comptée « avant
- * 19h » : en rouge à 19h le jour même (HYPOTHÈSE À VALIDER, question 94).
+ * null : pas en retard. 'retard' : de l'heure de retrait à 2 h après.
+ * 'urgent' : 2 h de retard atteintes (compté à travers minuit).
  */
 export function niveauRetard(
   retraitLe: string,
@@ -33,10 +41,14 @@ export function niveauRetard(
   maintenant: { date: string; minutes: number },
 ): NiveauRetard | null {
   const jour = retraitLe.slice(0, 10);
-  if (jour < maintenant.date) return 'retard-rouge';
-  if (jour > maintenant.date) return null;
+  const ecart = ecartJours(maintenant.date, jour);
+  if (ecart < 0) return null;
   const prevue = minutesDeLHeure(retraitHeure);
-  if (prevue === null) return maintenant.minutes >= HEURE_RETARD_ROUGE ? 'retard-rouge' : null;
-  if (maintenant.minutes < prevue) return null;
-  return prevue < HEURE_RETARD_ROUGE && maintenant.minutes >= HEURE_RETARD_ROUGE ? 'retard-rouge' : 'retard';
+  if (prevue === null) {
+    if (ecart > 0) return 'urgent';
+    return maintenant.minutes >= HEURE_URGENT_SANS_HEURE ? 'urgent' : null;
+  }
+  const retard = ecart * 24 * 60 + maintenant.minutes - prevue;
+  if (retard < 0) return null;
+  return retard >= DELAI_URGENT_MINUTES ? 'urgent' : 'retard';
 }
