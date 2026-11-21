@@ -21,6 +21,8 @@ export type TypeNotification =
   | 'commande_modifiee'
   | 'inventaire_termine'
   | 'brouillon_non_paye'
+  | 'inventaire_a_faire'
+  | 'inventaire_incomplet'
   | 'test'
   | 'retrait_dans_1h'
   | 'retrait_maintenant'
@@ -181,6 +183,47 @@ export function notifBrouillonNonPaye(b: { id: number; reference: string }, eche
     corps: `La commande ${b.reference} n’est toujours pas payée : le délai est dépassé. Relancez le client ou écartez le brouillon.`,
     url: '/brouillons',
     urgente: false,
+  };
+}
+
+/** Heure du rappel « l'inventaire du soir approche » (minutes depuis minuit) : 19h30, propriétaire 21/11/2026. */
+export const HEURE_RAPPEL_INVENTAIRE_MINUTES = 19 * 60 + 30;
+/** Heure à laquelle un inventaire encore incomplet est signalé : 20h30 (le magasin ferme à 20h). */
+export const HEURE_ALERTE_INVENTAIRE_MINUTES = 20 * 60 + 30;
+/** Un rappel manqué (serveur arrêté) n'est plus envoyé passé ce délai (minutes). */
+const PEREMPTION_INVENTAIRE_MINUTES = 60;
+
+/**
+ * Quel rappel d'inventaire est dû maintenant ? Ne dépend PAS des quantités déjà saisies : des zéros se posent
+ * pendant la journée (produit épuisé), ils ne prouvent pas que le comptage du soir est commencé ni fini.
+ * 'rappel' dès 19h30 ; 'alerte' dès 20h30. null le reste du temps.
+ */
+export function rappelInventaireDu(maintenant: { minutes: number }): 'rappel' | 'alerte' | null {
+  const m = maintenant.minutes;
+  if (m >= HEURE_ALERTE_INVENTAIRE_MINUTES && m < HEURE_ALERTE_INVENTAIRE_MINUTES + PEREMPTION_INVENTAIRE_MINUTES) return 'alerte';
+  if (m >= HEURE_RAPPEL_INVENTAIRE_MINUTES && m < HEURE_ALERTE_INVENTAIRE_MINUTES) return 'rappel';
+  return null;
+}
+
+export function notifInventaireARappeler(date: string, manquants: number): Notification {
+  return {
+    type: 'inventaire_a_faire',
+    cle: `inventaire-rappel:${date}`,
+    titre: 'Inventaire du soir',
+    corps: `L'inventaire du soir approche : ${manquants} produit${manquants > 1 ? 's' : ''} à compter (à faire à 20h, pas avant).`,
+    url: '/saisie-vendeur',
+    urgente: false,
+  };
+}
+
+export function notifInventaireIncomplet(date: string, manquants: number): Notification {
+  return {
+    type: 'inventaire_incomplet',
+    cle: `inventaire-alerte:${date}`,
+    titre: 'Inventaire pas terminé',
+    corps: `Il reste ${manquants} produit${manquants > 1 ? 's' : ''} pas compté${manquants > 1 ? 's' : ''} pour ce soir.`,
+    url: '/saisie-vendeur',
+    urgente: true,
   };
 }
 

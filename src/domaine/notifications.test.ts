@@ -7,7 +7,10 @@ import {
   notifCommandeCreee,
   notifCommandeModifiee,
   notifInventaireTermine,
+  notifInventaireARappeler,
+  notifInventaireIncomplet,
   notifTest,
+  rappelInventaireDu,
   rappelsDus,
   sonneEnSalle,
 } from './notifications.ts';
@@ -92,4 +95,26 @@ test('notification de test : clé unique à chaque envoi, texte en français, ri
   assert.equal(a.type, 'test');
   assert.match(a.corps, /cet appareil/);
   assert.equal(a.urgente, false);
+});
+
+test('inventaire du soir : rappel dès 19h30, alerte dès 20h30, rien en journée ni trop tard', () => {
+  const m = (h: number, min = 0) => ({ minutes: h * 60 + min });
+  assert.equal(rappelInventaireDu(m(14)), null);
+  assert.equal(rappelInventaireDu(m(19, 29)), null);
+  assert.equal(rappelInventaireDu(m(19, 30)), 'rappel');
+  assert.equal(rappelInventaireDu(m(20, 29)), 'rappel');
+  assert.equal(rappelInventaireDu(m(20, 30)), 'alerte');
+  assert.equal(rappelInventaireDu(m(21, 29)), 'alerte');
+  assert.equal(rappelInventaireDu(m(21, 30)), null);
+});
+
+test('inventaire du soir : textes en français, une clé par jour et par rappel, l’alerte est urgente', () => {
+  const a = notifInventaireARappeler('2026-11-21', 1);
+  const b = notifInventaireIncomplet('2026-11-21', 12);
+  assert.match(a.corps, /1 produit à compter/);
+  assert.match(b.corps, /12 produits pas comptés/);
+  assert.notEqual(a.cle, b.cle);
+  assert.equal(a.urgente, false);
+  assert.equal(b.urgente, true);
+  assert.equal(a.url, '/saisie-vendeur');
 });

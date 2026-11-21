@@ -14,7 +14,9 @@ import { prisma } from '@/lib/prisma';
 import { journaliser } from '@/lib/journal';
 import { maintenantBruxelles } from '@/lib/dateProduction';
 import { alerteExpirationDue } from '@/domaine/brouillons';
-import { notifBrouillonNonPaye, rappelsDus, type Notification } from '@/domaine/notifications';
+import { notifBrouillonNonPaye, notifInventaireARappeler, notifInventaireIncomplet, rappelInventaireDu, rappelsDus, type Notification } from '@/domaine/notifications';
+import { estJourFerme } from '@/domaine/calendrier';
+import { lireJoursFermes } from '@/lib/serveur/joursFermes';
 
 const ROUTE = 'notifications';
 
@@ -137,6 +139,22 @@ export async function verifierRappels(instant: Date = new Date()): Promise<void>
     for (const c of [...commandes, ...demain]) {
       for (const n of rappelsDus({ ...c, retraitLe: c.retraitLe.toISOString().slice(0, 10) }, maintenant)) {
         await notifierManager(n);
+      }
+    }
+    // Inventaire du soir (21/11/2026) : rappel à 19h30, alerte à 20h30 s'il reste des produits pas comptés.
+    // Basé sur l'HEURE, pas sur les zéros posés dans la journée ; jamais un jour de fermeture.
+    const rappel = rappelInventaireDu(maintenant);
+    if (rappel && !estJourFerme(maintenant.date, await lireJoursFermes(prisma))) {
+      const jour = new Date(`${maintenant.date}T12:00:00.000Z`);
+      const [total, comptes] = await Promise.all([
+        prisma.produit.count({ where: { actif: true } }),
+        prisma.inventaire.count({ where: { dateInventaire: jour, quantiteRestante: { not: null }, produit: { actif: true } } }),
+      ]);
+      const manquants = Math.max(0, total - comptes);
+      if (manquants > 0) {
+        await notifierManager(
+          rappel === 'rappel' ? notifInventaireARappeler(maintenant.date, manquants) : notifInventaireIncomplet(maintenant.date, manquants),
+        );
       }
     }
     // Brouillons WhatsApp non payés : prévenir le manager 5 minutes après l'expiration, une seule fois.
