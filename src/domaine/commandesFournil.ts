@@ -10,10 +10,12 @@
 //    Le lien est une DONNÉE (src/catalogue/basesFournil.ts), jamais déduit du
 //    nom (LOI 6) : c'est la seule passerelle entre le catalogue de commande et
 //    la liste d'inventaire, qui restent deux listes séparées (LOI 10).
-// 2. Plateaux (Croissant, Couque au chocolat) — SIMPLIFIÉ le 21/11/2026 : plus de tolérance
-//    ni de plateau complété. Les pièces commandées PRÉREMPLISSENT les champs du
-//    manager, qui les modifie ensuite à sa guise : 6 commandées → « + 6 » ; 7 →
-//    « + 7 » ; 16 → 1 plateau ; 20 → 1 plateau et « + 4 » (preremplirCommandes).
+// 2. Plateaux (Croissant, Couque au chocolat) — SIMPLIFIÉ le 21/11/2026 : les pièces
+//    commandées PRÉREMPLISSENT les champs du manager, qui les modifie ensuite à sa
+//    guise : 6 commandées → « + 6 » ; 7 → « + 7 » ; 16 → 1 plateau. On GARDE la
+//    tolérance de 4 : jusqu'à 4 pièces on ne remplit rien (prises sur la vente
+//    normale), mais l'écran dit « 4 en commande » et propose de les ajouter
+//    (preremplirCommandes).
 // 3. Une commande annulée ne compte plus.
 //
 // LOI 2 : tout reste en PIÈCES. Fonctions pures, aucun accès base.
@@ -104,21 +106,29 @@ export function partCommandeeParBase(
   });
 }
 
+/** Pièces en trop tolérées sans rien ajouter (« jusqu'à 4 on prend sur la vente normale »). */
+export const TOLERANCE_SANS_PLATEAU = 4;
+
 /**
  * Préremplissage des champs du manager pour un produit à plateaux (21/11/2026) :
  * chaque tranche entière de `piecesParPlateau` pièces commandées = 1 plateau, le
- * reste va dans le « + » (en pièces). Jamais de tolérance ni de complément :
- *   6 → 0 plateau, + 6   ·   7 → + 7   ·   10 → + 10   ·   16 → 1 plateau   ·   20 → 1 plateau, + 4
+ * reste va dans le « + » (en pièces) — SAUF un reste de 4 pièces ou moins (tolérance) :
+ * il n'est pas ajouté, il est seulement SIGNALÉ (`facultatif`) pour que le manager
+ * l'ajoute d'un geste s'il le veut.
+ *   3 → rien, 3 en commande   ·   6 → + 6   ·   10 → + 10   ·   16 → 1 plateau
+ *   20 → 1 plateau, 4 en commande   ·   21 → 1 plateau, + 5
  * Ce n'est qu'un PRÉREMPLISSAGE : le manager corrige ensuite les deux champs.
  */
 export function preremplirCommandes(
   piecesCommandees: number,
   piecesParPlateau: number,
-): { plateaux: number; plus: number } {
+  tolerance: number = TOLERANCE_SANS_PLATEAU,
+): { plateaux: number; plus: number; facultatif: number } {
   const n = Number.isSafeInteger(piecesCommandees) && piecesCommandees > 0 ? piecesCommandees : 0;
-  if (!Number.isSafeInteger(piecesParPlateau) || piecesParPlateau <= 0) return { plateaux: 0, plus: n };
-  const plus = n % piecesParPlateau;
-  return { plateaux: (n - plus) / piecesParPlateau, plus };
+  const valide = Number.isSafeInteger(piecesParPlateau) && piecesParPlateau > 0;
+  const reste = valide ? n % piecesParPlateau : n;
+  const plateaux = valide ? (n - reste) / piecesParPlateau : 0;
+  return reste <= tolerance ? { plateaux, plus: 0, facultatif: reste } : { plateaux, plus: reste, facultatif: 0 };
 }
 
 /**

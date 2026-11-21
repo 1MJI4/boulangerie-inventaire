@@ -79,9 +79,11 @@ nom ; c'est la seule passerelle entre les deux listes (LOI 10). Une même ligne 
 viser deux produits du fournil selon son choix (Beignet « Sucré » / « Nature »). La part des
 commandes est **recalculée en entier** depuis les commandes non annulées (jamais additionnée au fil
 de l'eau). **Plateaux simplifiés (propriétaire, 21/11/2026)** : pour Croissant et Couque au
-chocolat, plus de tolérance ni de plateau complété — les pièces commandées **préremplissent** les
-champs du manager, qui les **modifie ensuite** : 6 commandées → « + 6 », 7 → « + 7 », 16 → 1
-plateau, 20 → 1 plateau et « + 4 ». Rien n'est ajouté tout seul en base pour ces deux produits
+chocolat, plus de plateau complété — les pièces commandées **préremplissent** les champs du
+manager, qui les **modifie ensuite** : 6 commandées → « + 6 », 7 → « + 7 », 16 → 1 plateau. **La
+tolérance de 4 est gardée** : jusqu'à 4 pièces rien n'est rempli (prises sur la vente normale), mais
+l'écran dit « 4 en commande » et propose de les ajouter d'un geste (20 → 1 plateau, « 4 en
+commande »). Rien n'est ajouté tout seul en base pour ces deux produits
 (`commandeAuto` / `plateauCommandes` à 0), sinon la part compterait deux fois ; les autres produits
 de la table gardent l'ajout automatique dans `Inventaire.commandeAuto` / `plateauCommandes`. Règles :
 `src/domaine/commandesFournil.ts` (`preremplirCommandes`).

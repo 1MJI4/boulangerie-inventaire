@@ -97,7 +97,8 @@ export default function SaisiePrevisions() {
    * Commandes de croissants et de couques au chocolat (propriétaire, 21/11/2026) : elles
    * PRÉREMPLISSENT les champs du manager — 6 commandées → « + 6 », 7 → « + 7 », 16 → 1
    * plateau, 20 → 1 plateau et « + 4 » — puis il modifie comme il veut (domaine :
-   * preremplirCommandes). Une seule fois par produit et par journée, et seulement si le
+   * preremplirCommandes), sauf jusqu'à 4 pièces : « 4 en commande » est dit, avec un bouton pour
+   * les ajouter. Une seule fois par produit et par journée, et seulement si le
    * « + » est encore vide : ce qu'il a tapé n'est jamais écrasé. Les pièces s'ajoutent à
    * ce qu'il avait déjà demandé.
    */
@@ -109,7 +110,10 @@ export default function SaisiePrevisions() {
       const cle = `${date}:${produit.id}`;
       if (dejaPrerempli.current.has(cle)) continue;
       const pieces = partCommandes.parProduit.get(produit.id)?.commandeAuto ?? 0;
-      if (pieces <= 0) continue;
+      if (pieces <= 0 || (commande.valeurs[produit.id] ?? '') !== '') continue;
+      // Jusqu'à 4 pièces (tolérance) : rien n'est rempli, la ligne propose seulement de les ajouter.
+      const { plateaux, plus } = preremplirCommandes(pieces, produit.piecesParPlateau);
+      if (plateaux === 0 && plus === 0) continue;
       dejaPrerempli.current.add(cle);
       let deja = false;
       try {
@@ -118,8 +122,7 @@ export default function SaisiePrevisions() {
       } catch {
         /* stockage indisponible : le « + » vide suffit comme garde */
       }
-      if ((commande.valeurs[produit.id] ?? '') !== '' || deja) continue;
-      const { plateaux, plus } = preremplirCommandes(pieces, produit.piecesParPlateau);
+      if (deja) continue;
       const dejaDemande = lireEntier(saisie.valeurs[produit.id] ?? '');
       commande.definir(produit.id, plus > 0 ? String(plus) : '');
       saisie.definir(produit.id, String(dejaDemande + piecesDePlateaux(plateaux, produit.piecesParPlateau) + plus));
@@ -389,6 +392,10 @@ export default function SaisiePrevisions() {
                           const partAuto = partCommandes.parProduit.get(produit.id);
                           const commandeAuto = partAuto?.commandeAuto ?? 0;
                           const derives = formaterDerives(partAuto?.detail ?? []);
+                          const { plus: plusAuto, facultatif } =
+                            sePlanifieEnPlateaux(produit.piecesParPlateau)
+                              ? preremplirCommandes(commandeAuto, produit.piecesParPlateau)
+                              : { plus: 0, facultatif: 0 };
                           const refus = saisie.refus.get(produit.id) ?? commande.refus.get(produit.id);
                           const parPlateau = sePlanifieEnPlateaux(produit.piecesParPlateau)
                             ? produit.piecesParPlateau
@@ -456,6 +463,19 @@ export default function SaisiePrevisions() {
                                       <span className="chiffres text-sm font-semibold text-ink">
                                         Reste {formatDateCourt(restes.jour).split(' ').slice(0, 2).join(' ')} : {afficher(produit, reste)}
                                         {commandeAuto > 0 || parPlateau !== null || repere?.dernier?.produite != null ? ' · ' : ''}
+                                      </span>
+                                    ) : null}
+                                    {parPlateau !== null && facultatif > 0 && partCommandee(produit.id) < plusAuto + facultatif ? (
+                                      <span className="chiffres font-medium text-accent">
+                                        {facultatif} en commande, pas ajouté{facultatif > 1 ? 's' : ''}{' '}
+                                        <button
+                                          type="button"
+                                          onClick={() => ajusterCommande(produit.id, String(partCommandee(produit.id) + facultatif))}
+                                          className="min-h-11 rounded-lg bg-accent-doux px-2 font-semibold underline underline-offset-2"
+                                        >
+                                          Ajouter {facultatif}
+                                        </button>
+                                        {' · '}
                                       </span>
                                     ) : null}
                                     {commandeAuto > 0 ? (

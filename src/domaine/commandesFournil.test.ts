@@ -9,6 +9,7 @@ import {
   totalAProduire,
   partCommandeeParBase,
   preremplirCommandes,
+  TOLERANCE_SANS_PLATEAU,
   type LienFournil,
   type LigneCommandee,
 } from './commandesFournil.ts';
@@ -118,24 +119,33 @@ test('lignes ignorées : au kilo, sans produit du catalogue, quantité invalide'
 
 /* ------------------------------------------------------------ plateaux */
 
-test('préremplissage : 6 → + 6, 7 → + 7, 10 → + 10, rien de complété ni de toléré', () => {
-  assert.deepEqual(preremplirCommandes(6, 16), { plateaux: 0, plus: 6 });
-  assert.deepEqual(preremplirCommandes(7, 16), { plateaux: 0, plus: 7 });
-  assert.deepEqual(preremplirCommandes(10, 16), { plateaux: 0, plus: 10 });
-  assert.deepEqual(preremplirCommandes(15, 16), { plateaux: 0, plus: 15 });
+test('préremplissage : 5 et plus → « + N » (6, 7, 10, 15), rien de complété', () => {
+  assert.deepEqual(preremplirCommandes(5, 16), { plateaux: 0, plus: 5, facultatif: 0 });
+  assert.deepEqual(preremplirCommandes(6, 16), { plateaux: 0, plus: 6, facultatif: 0 });
+  assert.deepEqual(preremplirCommandes(7, 16), { plateaux: 0, plus: 7, facultatif: 0 });
+  assert.deepEqual(preremplirCommandes(10, 16), { plateaux: 0, plus: 10, facultatif: 0 });
+  assert.deepEqual(preremplirCommandes(15, 16), { plateaux: 0, plus: 15, facultatif: 0 });
 });
 
-test('préremplissage : 16 → directement 1 plateau ; 20 → 1 plateau et + 4 ; 32 → 2 plateaux', () => {
-  assert.deepEqual(preremplirCommandes(16, 16), { plateaux: 1, plus: 0 });
-  assert.deepEqual(preremplirCommandes(20, 16), { plateaux: 1, plus: 4 });
-  assert.deepEqual(preremplirCommandes(32, 16), { plateaux: 2, plus: 0 });
+test('tolérance de 4 : jusqu’à 4 pièces rien n’est rempli, mais « N en commande » est signalé', () => {
+  assert.equal(TOLERANCE_SANS_PLATEAU, 4);
+  assert.deepEqual(preremplirCommandes(3, 16), { plateaux: 0, plus: 0, facultatif: 3 });
+  assert.deepEqual(preremplirCommandes(4, 16), { plateaux: 0, plus: 0, facultatif: 4 });
+  assert.deepEqual(preremplirCommandes(20, 16), { plateaux: 1, plus: 0, facultatif: 4 });
+  assert.deepEqual(preremplirCommandes(21, 16), { plateaux: 1, plus: 5, facultatif: 0 });
+});
+
+test('préremplissage : 16 → directement 1 plateau ; 32 → 2 plateaux ; 37 → 2 plateaux et + 5', () => {
+  assert.deepEqual(preremplirCommandes(16, 16), { plateaux: 1, plus: 0, facultatif: 0 });
+  assert.deepEqual(preremplirCommandes(32, 16), { plateaux: 2, plus: 0, facultatif: 0 });
+  assert.deepEqual(preremplirCommandes(37, 16), { plateaux: 2, plus: 5, facultatif: 0 });
 });
 
 test('préremplissage : rien commandé, valeur invalide ou produit sans plateau', () => {
-  assert.deepEqual(preremplirCommandes(0, 16), { plateaux: 0, plus: 0 });
-  assert.deepEqual(preremplirCommandes(-3, 16), { plateaux: 0, plus: 0 });
-  assert.deepEqual(preremplirCommandes(1.5, 16), { plateaux: 0, plus: 0 });
-  assert.deepEqual(preremplirCommandes(9, 0), { plateaux: 0, plus: 9 });
+  assert.deepEqual(preremplirCommandes(0, 16), { plateaux: 0, plus: 0, facultatif: 0 });
+  assert.deepEqual(preremplirCommandes(-3, 16), { plateaux: 0, plus: 0, facultatif: 0 });
+  assert.deepEqual(preremplirCommandes(1.5, 16), { plateaux: 0, plus: 0, facultatif: 0 });
+  assert.deepEqual(preremplirCommandes(9, 0), { plateaux: 0, plus: 9, facultatif: 0 });
 });
 
 test('total à produire : prévu 48 + 16 pour les commandes = 64', () => {
