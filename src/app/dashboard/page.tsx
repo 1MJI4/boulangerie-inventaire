@@ -37,8 +37,6 @@ interface Inventaire {
   id: number;
   dateInventaire: string;
   quantiteRestante: number | null;
-  /** « 0 barré » : pas produit ce jour-là (compté, mais pas « à zéro »). */
-  nonProduit?: boolean;
   quantiteProduite: number | null;
   quantitePrevue: number | null;
   /** 'kg' : quantités en grammes (LOI 2). */
@@ -51,7 +49,6 @@ const versLigne = (inv: Inventaire): LigneBilan & { id: number } => ({
   id: inv.id,
   nom: inv.produit?.nom ?? '',
   quantiteRestante: inv.quantiteRestante,
-  nonProduit: inv.nonProduit === true,
   quantiteProduite: inv.quantiteProduite,
   unite: inv.unite,
 });
@@ -217,7 +214,7 @@ export default function DashboardInventaires() {
   const selonEtat = (inv: Inventaire) =>
     filtreEtat === 'tous' ||
     (filtreEtat === 'reste' && (inv.quantiteRestante ?? 0) > 0) ||
-    (filtreEtat === 'zero' && inv.quantiteRestante === 0 && inv.nonProduit !== true) ||
+    (filtreEtat === 'zero' && inv.quantiteRestante === 0) ||
     (filtreEtat === 'vide' && inv.quantiteRestante == null);
   const visibles = detailRayon.filter((inv) => selonEtat(inv) && (!filtre || inv.produit.nom.toLowerCase().includes(filtre)));
   const nombrePar: Record<Filtre, number> = {
@@ -572,11 +569,7 @@ export default function DashboardInventaires() {
                             <li key={inv.id} className={`${COLONNES_DETAIL} min-h-11 border-t border-line py-1.5 text-base`}>
                               <span className="min-w-0 truncate text-ink">{inv.produit.nom}</span>
                               <span className={`chiffres text-right ${reste ? 'font-semibold text-ink' : 'text-ink-2'}`}>
-                                {inv.nonProduit === true ? (
-                                  <span title="Pas produit ce jour-là">Ø</span>
-                                ) : (
-                                  quantite(reste, inv.unite)
-                                )}
+                                {quantite(reste, inv.unite)}
                               </span>
                             </li>
                           );

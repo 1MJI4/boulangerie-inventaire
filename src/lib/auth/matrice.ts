@@ -98,13 +98,6 @@ export const MATRICE_ACCES: Record<string, Partial<Record<Methode, EntreeMatrice
     POST: { role: 'tablette', action: 'créer un brouillon de commande' },
     PATCH: { role: 'tablette', action: 'modifier un brouillon de commande' },
   },
-  // Produits proposés par les vendeurs au comptage (21/11/2026) : tout vendeur propose, le gérant décide
-  // (ajouter un produit à la liste est déjà réservé au gérant).
-  'src/app/api/produits-proposes/route.ts': {
-    GET: { role: 'tablette', action: 'consulter les produits proposés' },
-    POST: { role: 'tablette', action: 'proposer un produit au manager' },
-    PATCH: { role: 'gerant', action: 'décider d’un produit proposé' },
-  },
   'src/app/api/impression/route.ts': {
     GET: { role: 'tablette', action: "suivre l'impression" },
     POST: { role: 'tablette', action: 'imprimer une commande' },

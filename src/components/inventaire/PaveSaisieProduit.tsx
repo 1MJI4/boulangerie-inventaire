@@ -31,7 +31,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { SaisieQuantite } from '@/components/saisie';
 import type { Unite } from '@/domaine/types';
-import { NON_PRODUIT } from '@/lib/useSaisieJournee';
 
 export type PropsPaveSaisieProduit = {
   produit: { id: number; nom: string; unite: Unite };
@@ -57,14 +56,9 @@ export type PropsPaveSaisieProduit = {
    * absent → pas de bouton (production : « rien produit » n'est pas un cas courant).
    */
   libelleZero?: string;
-  /**
-   * « 0 barré » (21/11/2026) : le produit n'a PAS été produit aujourd'hui (le vendeur le sait
-   * parfois). Compte comme fait, mais n'est ni une rupture ni un « à zéro ». Absent → pas de bouton.
-   */
-  libelleNonProduit?: string;
 };
 
-const versNombre = (v: string): number | null => (v === '' || v === NON_PRODUIT ? null : Number(v));
+const versNombre = (v: string): number | null => (v === '' ? null : Number(v));
 const versTexte = (n: number | null): string => (n === null ? '' : String(n));
 
 export function PaveSaisieProduit({
@@ -78,7 +72,6 @@ export function PaveSaisieProduit({
   onFermer,
   onDernier,
   libelleZero,
-  libelleNonProduit,
 }: PropsPaveSaisieProduit) {
   const [ajout, setAjout] = useState<number | null>(null);
   const racine = useRef<HTMLDivElement>(null);
@@ -190,21 +183,6 @@ export function PaveSaisieProduit({
         >
           {libelleZero}
         </button>
-      ) : null}
-      {libelleNonProduit && !enAjout ? (
-        <button
-          type="button"
-          onClick={() => {
-            onChange(NON_PRODUIT);
-            avancer();
-          }}
-          className="mt-2 min-h-12 w-full rounded-2xl border-2 border-transparent bg-segment-fond text-base font-semibold text-ink active:bg-surface-2"
-        >
-          {libelleNonProduit}
-        </button>
-      ) : null}
-      {valeur === NON_PRODUIT && !enAjout ? (
-        <p className="mt-1.5 text-center text-sm font-medium text-ink">Marqué « pas produit aujourd’hui » (0 barré).</p>
       ) : null}
       {sousTitre ? <p className="mt-1.5 text-center text-sm text-ink-2">{sousTitre}</p> : null}
     </div>

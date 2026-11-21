@@ -23,8 +23,6 @@ export type LigneBilan = {
   quantiteProduite: number | null;
   /** 'kg' : quantités en grammes, jamais additionnées à des pièces (LOI 2). Absent = pièce. */
   unite?: string | null;
-  /** « 0 barré » : pas produit ce jour-là — compté, mais ce zéro n'est pas un « à zéro » (rien n'a pu se vendre). */
-  nonProduit?: boolean;
 };
 
 export type EtatLigne = 'complet' | 'production_manquante' | 'reste_manquant' | 'rien';
@@ -63,10 +61,8 @@ export type BilanJournee = {
   productionsSaisies: number;
   /** Somme des restes comptés, en pièces (produits au poids exclus). null si aucun reste compté. */
   resteTotalPieces: number | null;
-  /** Produits comptés à zéro : tout est parti, peut-être avant la fermeture. Hors « 0 barré ». */
+  /** Produits comptés à zéro : tout est parti, peut-être avant la fermeture. */
   aZero: string[];
-  /** Produits marqués « 0 barré » : pas produits ce jour-là. */
-  nonProduits: string[];
   /** Production et vendu : seulement sur les produits où les deux valeurs sont connues, en pièces. */
   produitTotalPieces: number | null;
   venduTotalPieces: number | null;
@@ -85,8 +81,7 @@ export function bilanJournee(lignes: readonly LigneBilan[]): BilanJournee {
     restesComptes: comptees.length,
     productionsSaisies: lignes.filter((l) => l.quantiteProduite != null).length,
     resteTotalPieces: enPieces.length > 0 ? enPieces.reduce((s, l) => s + (l.quantiteRestante ?? 0), 0) : null,
-    aZero: comptees.filter((l) => l.quantiteRestante === 0 && l.nonProduit !== true).map((l) => l.nom),
-    nonProduits: comptees.filter((l) => l.nonProduit === true).map((l) => l.nom),
+    aZero: comptees.filter((l) => l.quantiteRestante === 0).map((l) => l.nom),
     produitTotalPieces: completes.length > 0 ? produit : null,
     venduTotalPieces: completes.length > 0 ? vendu : null,
     tauxVente: completes.length > 0 && produit > 0 ? Math.round((vendu / produit) * 100) : null,

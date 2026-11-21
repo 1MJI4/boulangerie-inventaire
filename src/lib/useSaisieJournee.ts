@@ -44,12 +44,7 @@ export type Produit = {
   piecesParPlateau?: number | null;
 };
 
-/** « 0 barré » (21/11/2026) : valeur du champ « reste » d'un produit PAS PRODUIT ce jour-là (envoyée comme 0 + nonProduit). */
-export const NON_PRODUIT = 'Ø';
-
 export type LigneInventaire = {
-  /** « 0 barré » : pas produit ce jour-là. */
-  nonProduit?: boolean;
   produitId: number;
   quantiteRestante: number | null;
   quantiteProduite: number | null;
@@ -225,14 +220,8 @@ export function useSaisieJournee({
       // permet de reprendre un comptage interrompu au lieu de tout refaire.
       const depuisServeur: Record<string, string> = {};
       for (const produit of listeProduits) {
-        const ligne = parProduit.get(produit.id);
-        const valeur = ligne?.[champ];
-        depuisServeur[produit.id] =
-          champ === 'quantiteRestante' && ligne?.nonProduit === true
-            ? NON_PRODUIT
-            : valeur === null || valeur === undefined
-              ? ''
-              : String(valeur);
+        const valeur = parProduit.get(produit.id)?.[champ];
+        depuisServeur[produit.id] = valeur === null || valeur === undefined ? '' : String(valeur);
       }
 
       // Un brouillon local plus récent l'emporte sur ce que dit le serveur :
@@ -311,15 +300,8 @@ export function useSaisieJournee({
               unite: unites.current.get(id) ?? 'piece',
               saisieId: geste?.id,
               saisiLe: geste ? new Date(geste.le).toISOString() : undefined,
-              ...(champ === 'quantiteRestante' && instantane.get(id) === NON_PRODUIT
-                ? // « 0 barré » : reste 0 (compté) + drapeau « pas produit ».
-                  { quantiteRestante: 0, nonProduit: true }
-                : {
-                    // Chaîne vide => null : la valeur est effacée, pas remise à zéro.
-                    [champ]: instantane.get(id) === '' ? null : Number(instantane.get(id)),
-                    // Un nombre compté efface le « 0 barré ».
-                    ...(champ === 'quantiteRestante' ? { nonProduit: false } : {}),
-                  }),
+              // Chaîne vide => null : la valeur est effacée, pas remise à zéro.
+              [champ]: instantane.get(id) === '' ? null : Number(instantane.get(id)),
             };
           }),
         }),
@@ -393,10 +375,7 @@ export function useSaisieJournee({
 
   const definir = useCallback(
     (produitId: number, saisie: string) => {
-      const valeur =
-        champ === 'quantiteRestante' && saisie === NON_PRODUIT
-          ? NON_PRODUIT
-          : nettoyerQuantite(saisie, unites.current.get(produitId) ?? 'piece');
+      const valeur = nettoyerQuantite(saisie, unites.current.get(produitId) ?? 'piece');
       if (valeursRef.current[produitId] === valeur) return;
 
       // Un nouveau geste commence si le précédent sur ce produit est enregistré,

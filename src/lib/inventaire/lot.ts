@@ -39,8 +39,6 @@ export type LigneEntrante = {
   faitLe?: unknown;
   /** Horodatage du geste sur la tablette (ISO), pour l'heure du relevé (R57). */
   saisiLe?: unknown;
-  /** « 0 barré » : produit pas produit ce jour-là (n'a de sens qu'avec quantiteRestante = 0). */
-  nonProduit?: unknown;
 } & Partial<Record<ChampQuantite, unknown>>;
 
 export type LignePreparee = {
@@ -53,8 +51,6 @@ export type LignePreparee = {
   saisieIds: string[];
   valeurs: Partial<Record<ChampQuantite, number | null>>;
   faitLe?: Date | null;
-  /** Présent seulement si la ligne écrit le reste : true = « 0 barré ». */
-  nonProduit?: boolean;
 };
 
 export type LotPrepare = {
@@ -152,16 +148,6 @@ export function preparerLot(
       faitLe = d;
     }
 
-    // « 0 barré » : un booléen, et seulement avec un reste à zéro (sinon incohérent → refus, jamais deviné).
-    let nonProduit: boolean | undefined;
-    if (ligne.nonProduit !== undefined) {
-      const reste = ligne.quantiteRestante;
-      if (typeof ligne.nonProduit !== 'boolean' || (ligne.nonProduit && lireNombre(reste) !== 0)) {
-        return signaler('ERR_SAISIE_INVALIDE', { champLibelle: 'produit pas produit' }, { champ: champProduit(id) });
-      }
-      nonProduit = ligne.nonProduit;
-    }
-
     const cle = `${id}|${date}`;
     let preparee = parLigne.get(cle);
     let aDesValeurs = false;
@@ -201,7 +187,6 @@ export function preparerLot(
       if (!preparee.saisieIds.includes(saisieId)) preparee.saisieIds.push(saisieId);
     }
     if (faitLe !== undefined) preparee.faitLe = faitLe;
-    if (nonProduit !== undefined) preparee.nonProduit = nonProduit;
   }
 
   for (const { cle, champ } of effacements) {
