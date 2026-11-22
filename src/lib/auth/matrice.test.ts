@@ -145,6 +145,7 @@ test('écritures sensibles réservées au gérant, tout le reste ouvert à la ta
     'src/app/api/gateaux/route.ts POST',
     'src/app/api/gateaux/route.ts PATCH',
     'src/app/api/reglages/route.ts PUT',
+    'src/app/api/reglages/previsions/route.ts PUT',
     // Gestion des photos modèles par le gérant (26/10/2026), lecture comprise (masquées).
     'src/app/api/photos-modeles/gestion/route.ts GET',
     'src/app/api/photos-modeles/gestion/route.ts POST',

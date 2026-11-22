@@ -50,6 +50,21 @@ export default function SaisiePrevisions() {
   const [rayonChoisi, setRayonChoisi] = useState(RAYON_PRINCIPAL);
 
   const saisie = useSaisieJournee({ date, champ: 'quantitePrevue' });
+  // Rayons masqués par le gérant (Réglages → Prévisions, 22/11/2026) : seulement un affichage.
+  const [masques, setMasques] = useState<string[]>([]);
+  useEffect(() => {
+    let vivant = true;
+    fetch('/api/reglages/previsions')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { masques?: string[] } | null) => {
+        if (vivant && Array.isArray(j?.masques)) setMasques(j.masques);
+      })
+      .catch(() => {});
+    return () => {
+      vivant = false;
+    };
+  }, []);
+  const produitsAffiches = useMemo(() => saisie.produits.filter((p) => !masques.includes(p.categorie)), [saisie.produits, masques]);
   // Le « 1 + 11 » des anciennes feuilles : ce qui sort normalement du four, et
   // ce qu'une commande client ajoute. Le fournil produit la somme ; les
   // statistiques pourront écarter la part commandée, qui ne se reproduira pas
@@ -174,7 +189,7 @@ export default function SaisiePrevisions() {
     const groupes = new Map<string, Produit[]>();
     const terme = recherche.trim().toLowerCase();
 
-    for (const produit of saisie.produits) {
+    for (const produit of produitsAffiches) {
       if (terme && !produit.nom.toLowerCase().includes(terme)) continue;
       const liste = groupes.get(produit.categorie) ?? [];
       liste.push(produit);
@@ -186,15 +201,15 @@ export default function SaisiePrevisions() {
       const remplis = produits.filter((p) => (saisie.valeurs[p.id] ?? '') !== '').length;
       return { categorie, produits, remplis };
     });
-  }, [saisie.produits, saisie.valeurs, recherche]);
+  }, [produitsAffiches, saisie.valeurs, recherche]);
 
   // Les boutons du haut : la viennoiserie d'abord, puis les autres rayons dans l'ordre habituel.
   const nomsRayons = useMemo(() => {
-    const tous = new Set(saisie.produits.map((p) => p.categorie));
+    const tous = new Set(produitsAffiches.map((p) => p.categorie));
     return [...tous].sort((a, b) =>
       a === RAYON_PRINCIPAL ? -1 : b === RAYON_PRINCIPAL ? 1 : trierCategories([a, b])[0] === a ? -1 : 1,
     );
-  }, [saisie.produits]);
+  }, [produitsAffiches]);
   // Rayon choisi absent de la liste (liste vide, rayon renommé) : le premier existant.
   const rayonActif = nomsRayons.includes(rayonChoisi) ? rayonChoisi : (nomsRayons[0] ?? rayonChoisi);
   // La recherche traverse tous les rayons ; sinon, un seul rayon à la fois.

@@ -44,7 +44,7 @@ type Reglages = {
   delaiGateauEtagesJours: number;
 };
 type Calendrier = { aujourdhui: string; joursFermes: JourFerme[]; gerant: boolean };
-type Onglet = 'heures' | 'tailles' | 'mots' | 'signales';
+type Onglet = 'heures' | 'tailles' | 'previsions' | 'mots' | 'signales';
 type Envoyer = (url: string, methode: 'POST' | 'PATCH' | 'PUT', corps: Record<string, unknown>) => Promise<boolean>;
 
 const CHAMP = 'min-h-12 rounded-2xl border-2 border-transparent bg-segment-fond px-3 text-base text-ink placeholder:text-ink-3';
@@ -197,6 +197,7 @@ export default function ReglagesCommandes() {
   const onglets: { id: Onglet; libelle: string }[] = [
     { id: 'heures', libelle: 'Heures d’ouverture' },
     { id: 'tailles', libelle: 'Gâteaux' },
+    { id: 'previsions', libelle: 'Prévisions' },
     { id: 'mots', libelle: 'Goûts, entremets, garnitures' },
     { id: 'signales', libelle: `Signalés${signales.length > 0 ? ` (${signales.length})` : ''}` },
   ];
@@ -248,6 +249,8 @@ export default function ReglagesCommandes() {
           <TaillesGateau tailles={reglages.taillesGateau} enregistrer={enregistrerReglages} />
           <DelaiEtages jours={reglages.delaiGateauEtagesJours} enregistrer={enregistrerReglages} />
         </div>
+      ) : onglet === 'previsions' ? (
+        <RayonsPrevisions />
       ) : onglet === 'mots' ? (
         <div className="grid gap-4 lg:grid-cols-3">
           <ListeOptions titre="Goûts" detail="Un goût obligatoire par gâteau sur commande (un par étage). Les 8 premiers sont en gros boutons." genre="parfum" liste={options.parfums} envoyer={envoyer} />
@@ -622,6 +625,78 @@ function ListeOptions({
           <Bouton type="submit">Ajouter</Bouton>
         </form>
       </Carte>
+    </section>
+  );
+}
+
+/**
+ * Rayons proposés sur l'écran des prévisions (22/11/2026) : on coupe ceux qu'on
+ * ne prévoit pas (ex. seulement la viennoiserie). Un rayon coupé n'est qu'un
+ * affichage — rien n'est effacé. Au moins un rayon reste actif.
+ */
+function RayonsPrevisions() {
+  const [etat, setEtat] = useState<{ rayons: string[]; masques: string[] } | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  useEffect(() => {
+    let vivant = true;
+    fetch('/api/reglages/previsions')
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((j) => vivant && setEtat(j))
+      .catch(() => vivant && setErreur('Impossible de charger les rayons.'));
+    return () => {
+      vivant = false;
+    };
+  }, []);
+
+  async function basculer(rayon: string) {
+    if (!etat) return;
+    const masques = etat.masques.includes(rayon) ? etat.masques.filter((m) => m !== rayon) : [...etat.masques, rayon];
+    setErreur(null);
+    try {
+      const r = await fetch('/api/reglages/previsions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ masques }),
+      });
+      if (!r.ok) {
+        const c = (await r.json().catch(() => null)) as { message?: string } | null;
+        setErreur(c?.message ?? 'Réglage refusé.');
+        return;
+      }
+      setEtat(await r.json());
+    } catch {
+      setErreur('Pas de connexion : rien n’a changé.');
+    }
+  }
+
+  if (!etat) return erreur ? <p className="text-base text-ink-2">{erreur}</p> : <Chargement />;
+  const actifs = etat.rayons.length - etat.masques.length;
+  return (
+    <section>
+      <h2 className="text-base font-semibold text-ink">Rayons proposés dans les prévisions</h2>
+      <p className="mb-2 mt-0.5 text-sm text-ink-2">
+        Décochez les rayons que vous ne prévoyez pas : ils disparaissent de l’écran des prévisions. Rien n’est effacé,
+        et un rayon recoché revient avec ses quantités. Au moins un rayon reste coché.
+      </p>
+      <Carte className="grid gap-1 p-3">
+        {etat.rayons.map((rayon) => {
+          const actif = !etat.masques.includes(rayon);
+          return (
+            <label key={rayon} className="flex min-h-12 items-center gap-3 border-b border-line py-1 last:border-b-0">
+              <input
+                type="checkbox"
+                checked={actif}
+                disabled={actif && actifs <= 1}
+                onChange={() => void basculer(rayon)}
+                className="h-6 w-6 accent-[var(--accent)]"
+              />
+              <span className="text-base text-ink">{rayon}</span>
+            </label>
+          );
+        })}
+      </Carte>
+      {erreur ? <p className="mt-2 text-sm text-alerte">{erreur}</p> : null}
     </section>
   );
 }

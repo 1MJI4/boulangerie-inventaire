@@ -41,6 +41,11 @@ export const MATRICE_ACCES: Record<string, Partial<Record<Methode, EntreeMatrice
     GET: { role: 'tablette', action: 'consulter le calendrier' },
   },
   'src/app/api/reglages/route.ts': { GET: { role: 'tablette', action: 'consulter les réglages' }, PUT: { role: 'gerant', action: 'modifier les réglages' } },
+  // Rayons proposés sur l'écran des prévisions (22/11/2026).
+  'src/app/api/reglages/previsions/route.ts': {
+    GET: { role: 'tablette', action: 'consulter les rayons des prévisions' },
+    PUT: { role: 'gerant', action: 'régler les rayons des prévisions' },
+  },
   'src/app/api/inventaires/route.ts': {
     GET: { role: 'tablette', action: 'consulter un inventaire' },
     POST: { role: 'tablette', action: 'saisir un inventaire' },
