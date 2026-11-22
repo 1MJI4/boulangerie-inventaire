@@ -20,8 +20,8 @@ const g = (categorie, poste, noms) => noms.map((nom) => ({ nom, categorie, poste
  * @type {Record<string, number>}
  */
 export const PIECES_PAR_PLATEAU = {
-  Croissant: 16,
-  'Couque au chocolat': 16,
+  Croissant: 36,
+  'Couque au chocolat': 36,
 };
 
 /** @type {ArticleCatalogue[]} */

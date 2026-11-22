@@ -258,7 +258,7 @@ export default function Fournil() {
   );
   // Les commandes PRÉREMPLISSENT la prévision du manager (21/11/2026) : tant qu'il n'a pas ouvert
   // « Prévisions », elles n'y sont pas. Le pâtissier le voit ici plutôt que de produire trop peu.
-  // Jusqu'à 4 pièces d'un produit à plateaux : tolérance, rien à signaler.
+  // Jusqu'à 9 pièces d'un produit à plateaux : tolérance, rien à signaler.
   const commandesNonComptees = (l: (typeof lignes)[number]): number | null => {
     const live = partDe.get(l.produitId)?.commandeAuto ?? 0;
     // quantiteCommande renseignée (même à 0) = le manager a ouvert les prévisions : préremplissage fait.

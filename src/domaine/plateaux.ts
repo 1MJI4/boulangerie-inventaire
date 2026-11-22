@@ -6,7 +6,7 @@
 // Certains produits d'inventaire se sortent par plateau entier : le manager
 // demande « 3 plateaux » de croissants, le pâtissier lit « 3 plateaux ».
 // La contenance d'un plateau est une DONNÉE du produit (`Produit.piecesParPlateau`,
-// 16 pour Croissant et Couque au chocolat), jamais déduite du nom.
+// 36 pour Croissant et Couque au chocolat), jamais déduite du nom.
 //
 // Ce qui ne change pas :
 //   - la base garde des PIÈCES (prévue = plateaux × contenance + part commandée) :
@@ -49,7 +49,7 @@ export function estEnPlateauxEntiers(pieces: number, piecesParPlateau: number): 
  * plateaux : arrondi au plateau le PLUS PROCHE, au moins 1 dès qu'il y a eu
  * une production.
  * HYPOTHÈSE À VALIDER : plus proche plutôt que supérieur (un plateau de trop
- * = 16 invendus possibles ; un de moins = rupture possible). Ce n'est qu'une
+ * = 36 invendus possibles ; un de moins = rupture possible). Ce n'est qu'une
  * suggestion, le manager la corrige d'un geste.
  */
 export function suggestionEnPlateaux(moyennePieces: number | null | undefined, piecesParPlateau: number): number | null {

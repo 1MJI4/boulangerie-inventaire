@@ -112,9 +112,9 @@ export default function SaisiePrevisions() {
 
   /*
    * Commandes de croissants et de couques au chocolat (propriétaire, 21/11/2026) : elles
-   * PRÉREMPLISSENT les champs du manager — 6 commandées → « + 6 », 7 → « + 7 », 16 → 1
-   * plateau, 20 → 1 plateau et « + 4 » — puis il modifie comme il veut (domaine :
-   * preremplirCommandes), sauf jusqu'à 4 pièces : « 4 en commande » est dit, avec un bouton pour
+   * PRÉREMPLISSENT les champs du manager — 10 commandées → « + 10 », 36 → 1
+   * plateau, 46 → 1 plateau et « + 10 » — puis il modifie comme il veut (domaine :
+   * preremplirCommandes), sauf jusqu'à 9 pièces : « 9 en commande » est dit, avec un bouton pour
    * les ajouter. Une seule fois par produit et par journée, et seulement si le
    * « + » est encore vide : ce qu'il a tapé n'est jamais écrasé. Les pièces s'ajoutent à
    * ce qu'il avait déjà demandé.

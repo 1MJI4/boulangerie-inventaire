@@ -12,9 +12,9 @@
 //    la liste d'inventaire, qui restent deux listes séparées (LOI 10).
 // 2. Prévisions — SIMPLIFIÉ le 21/11/2026 : pour tous les produits reliés, les pièces
 //    commandées PRÉREMPLISSENT les champs du manager, qui les modifie ensuite à sa
-//    guise : 6 commandées → « + 6 » ; 7 → « + 7 » ; 16 → 1 plateau. Pour les
-//    plateaux (Croissant, Couque au chocolat) on GARDE la tolérance de 4 : jusqu'à 4 pièces on ne remplit rien (prises sur la vente
-//    normale), mais l'écran dit « 4 en commande » et propose de les ajouter
+//    guise : 6 commandées → « + 6 » ; 7 → « + 7 » ; 36 → 1 plateau. Pour les
+//    plateaux (Croissant, Couque au chocolat) on GARDE la tolérance de 9 : jusqu'à 9 pièces on ne remplit rien (prises sur la vente
+//    normale), mais l'écran dit « 9 en commande » et propose de les ajouter
 //    (preremplirCommandes).
 // 3. Une commande annulée ne compte plus.
 //
@@ -106,17 +106,17 @@ export function partCommandeeParBase(
   });
 }
 
-/** Pièces en trop tolérées sans rien ajouter (« jusqu'à 4 on prend sur la vente normale »). */
-export const TOLERANCE_SANS_PLATEAU = 4;
+/** Pièces en trop tolérées sans rien ajouter (« jusqu'à 9 (25 % d'un plateau de 36) on prend sur la vente normale »). */
+export const TOLERANCE_SANS_PLATEAU = 9;
 
 /**
  * Préremplissage des champs du manager pour un produit à plateaux (21/11/2026) :
  * chaque tranche entière de `piecesParPlateau` pièces commandées = 1 plateau, le
- * reste va dans le « + » (en pièces) — SAUF un reste de 4 pièces ou moins (tolérance) :
+ * reste va dans le « + » (en pièces) — SAUF un reste de 9 pièces ou moins (25 % d'un plateau) (tolérance) :
  * il n'est pas ajouté, il est seulement SIGNALÉ (`facultatif`) pour que le manager
  * l'ajoute d'un geste s'il le veut.
- *   3 → rien, 3 en commande   ·   6 → + 6   ·   10 → + 10   ·   16 → 1 plateau
- *   20 → 1 plateau, 4 en commande   ·   21 → 1 plateau, + 5
+ *   3 ou 9 → rien, « N en commande »   ·   10 → + 10   ·   36 → 1 plateau
+ *   45 → 1 plateau, 9 en commande   ·   46 → 1 plateau, + 10
  * Ce n'est qu'un PRÉREMPLISSAGE : le manager corrige ensuite les deux champs.
  */
 export function preremplirCommandes(

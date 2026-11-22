@@ -63,7 +63,7 @@ Un produit `kg` compté à la pièce est une erreur silencieuse — exactement c
 dispositif existe pour empêcher.
 
 **Plateaux** (décision du propriétaire, 17/11/2026, R69) : Croissant et Couque au chocolat
-se **demandent au fournil en plateaux entiers** de 16 pièces (prévisions manager + feuille
+se **demandent au fournil en plateaux entiers** de 36 pièces (prévisions manager + feuille
 pâtissier). Ce n'est **pas une troisième unité** : la base garde des **pièces**
 (plateaux × contenance + part commandée), la part commandée reste en pièces, et le
 **comptage des restes reste en pièces**. Contenance = donnée du produit
@@ -80,9 +80,9 @@ viser deux produits du fournil selon son choix (Beignet « Sucré » / « Nature
 commandes est **recalculée en entier** depuis les commandes non annulées (jamais additionnée au fil
 de l'eau). **Prévisions simplifiées (propriétaire, 21/11/2026)** : pour **tous** les produits reliés
 (Couque au beurre comme Croissant), les pièces commandées **préremplissent** les champs du
-manager (plus de plateau complété), qui les **modifie ensuite** : 6 commandées → « + 6 », 7 → « + 7 », 16 → 1 plateau. **La
-tolérance de 4 est gardée pour Croissant et Couque au chocolat (plateaux)** : jusqu'à 4 pièces rien n'est rempli (prises sur la vente normale), mais
-l'écran dit « 4 en commande » et propose de les ajouter d'un geste (20 → 1 plateau, « 4 en
+manager (plus de plateau complété), qui les **modifie ensuite** : 10 commandées → « + 10 », 36 → 1 plateau. **La
+tolérance de 9 (25 % d’un plateau de 36) est gardée pour Croissant et Couque au chocolat (plateaux)** : jusqu'à 9 pièces rien n'est rempli (prises sur la vente normale), mais
+l'écran dit « 9 en commande » et propose de les ajouter d'un geste (45 → 1 plateau, « 9 en
 commande »). Rien n'est plus ajouté tout seul en base
 (`commandeAuto` / `plateauCommandes` à 0), sinon la part compterait deux fois ; l'écran du pâtissier signale
 « N commandés pas encore dans la prévision » tant que le manager n'a pas ouvert les prévisions. Règles :
