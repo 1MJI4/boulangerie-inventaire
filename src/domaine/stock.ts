@@ -23,3 +23,50 @@ export function validerQuantiteStock(valeur: unknown, champ: string): Resultat<n
   }
   return succes(n);
 }
+
+// ---------------------------------------------------------------------------
+// Feuille à envoyer (PDF pour WhatsApp) : mise en page pure, deux colonnes par
+// page comme la feuille papier. Une catégorie = une barre titre ; un titre
+// n'est jamais la dernière ligne d'une colonne (pas de titre orphelin).
+// ---------------------------------------------------------------------------
+
+export type LigneFeuilleStock =
+  | { genre: 'titre'; texte: string }
+  | { genre: 'article'; texte: string; quantite: number | null };
+
+export type ArticleAImprimer = { nom: string; categorie: string; quantite: number | null };
+
+/** pages → colonnes (2 par page) → lignes. `parColonne` ≥ 2. */
+export function mettreEnPageStock(articles: readonly ArticleAImprimer[], parColonne: number): LigneFeuilleStock[][][] {
+  const max = Math.max(2, Math.floor(parColonne));
+  const lignes: LigneFeuilleStock[] = [];
+  let derniere: string | null = null;
+  for (const a of articles) {
+    if (a.categorie !== derniere) {
+      lignes.push({ genre: 'titre', texte: a.categorie });
+      derniere = a.categorie;
+    }
+    lignes.push({ genre: 'article', texte: a.nom, quantite: a.quantite });
+  }
+
+  const pages: LigneFeuilleStock[][][] = [];
+  let colonnes: LigneFeuilleStock[][] = [];
+  let courante: LigneFeuilleStock[] = [];
+  const fermerColonne = () => {
+    if (courante.length === 0) return;
+    colonnes.push(courante);
+    courante = [];
+    if (colonnes.length === 2) {
+      pages.push(colonnes);
+      colonnes = [];
+    }
+  };
+  for (const l of lignes) {
+    if (l.genre === 'titre' && courante.length >= max - 1) fermerColonne();
+    courante.push(l);
+    if (courante.length >= max) fermerColonne();
+  }
+  fermerColonne();
+  if (colonnes.length > 0) pages.push(colonnes);
+  return pages;
+}

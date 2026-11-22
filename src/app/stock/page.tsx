@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide } from '@/components/ui';
 import { dateDuJour, formatDateLong } from '@/lib/dateProduction';
+import { partagerPdfStock } from '@/lib/stockPdf';
 
 type Article = { id: number; nom: string; categorie: string; ordre: number; quantite: number | null };
 
@@ -19,6 +20,8 @@ export default function StockPage() {
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [enregistre, setEnregistre] = useState(false);
+  const [partage, setPartage] = useState<string | null>(null);
+  const [preparation, setPreparation] = useState(false);
   const date = dateDuJour();
 
   const charger = useCallback(async () => {
@@ -69,6 +72,25 @@ export default function StockPage() {
       setErreur("Pas de connexion : rien n'a été enregistré. Réessayez.");
     } finally {
       setEnvoi(false);
+    }
+  }
+
+  /** PDF propre de TOUT le stock (cases tapées comprises, même pas encore enregistrées). */
+  async function envoyer() {
+    setPreparation(true);
+    setErreur(null);
+    setPartage(null);
+    try {
+      const liste = articles.map((a) => {
+        const t = (saisies[a.id] ?? '').trim();
+        return { nom: a.nom, categorie: a.categorie, quantite: t === '' ? null : Number(t) };
+      });
+      const r = await partagerPdfStock(liste, date, formatDateLong(date));
+      if (r === 'telecharge') setPartage('PDF téléchargé : joignez-le dans WhatsApp.');
+    } catch {
+      setErreur("Impossible de préparer le PDF. Réessayez.");
+    } finally {
+      setPreparation(false);
     }
   }
 
@@ -134,11 +156,15 @@ export default function StockPage() {
             </ul>
           </Carte>
 
-          <div className="mt-4 flex items-center gap-3 pb-28">
+          <div className="mt-4 flex flex-wrap items-center gap-3 pb-28">
             <Bouton variante="principal" onClick={() => void enregistrer()} disabled={envoi || modifies.length === 0}>
               {envoi ? 'Enregistrement…' : modifies.length > 0 ? `Enregistrer (${modifies.length})` : 'Enregistrer'}
             </Bouton>
+            <Bouton onClick={() => void envoyer()} disabled={preparation}>
+              {preparation ? 'Préparation…' : 'Envoyer par WhatsApp'}
+            </Bouton>
             {enregistre ? <span className="text-sm text-ok">Enregistré ✓</span> : null}
+            {partage ? <span className="text-sm text-ink-2">{partage}</span> : null}
           </div>
         </>
       )}

@@ -28,3 +28,30 @@ test('stock : négatif, décimal, texte, trop grand → refus typé en français
     }
   }
 });
+
+import { mettreEnPageStock } from './stock.ts';
+
+const art = (c: string, n: number) => Array.from({ length: n }, (_, i) => ({ nom: `${c}${i}`, categorie: c, quantite: i === 0 ? 3 : null }));
+
+test('feuille : une barre titre par catégorie, quantités gardées', () => {
+  const pages = mettreEnPageStock([...art('A', 2), ...art('B', 1)], 10);
+  assert.equal(pages.length, 1);
+  assert.deepEqual(pages[0][0].map((l) => l.genre), ['titre', 'article', 'article', 'titre', 'article']);
+  const premier = pages[0][0][1];
+  assert.ok(premier.genre === 'article' && premier.quantite === 3);
+});
+
+test('feuille : deux colonnes par page, jamais de titre orphelin en bas de colonne', () => {
+  const pages = mettreEnPageStock([...art('A', 3), ...art('B', 5)], 5);
+  for (const p of pages) for (const col of p) {
+    assert.ok(col.length <= 5);
+    assert.notEqual(col[col.length - 1].genre, 'titre');
+  }
+  const total = pages.flat(2).filter((l) => l.genre === 'article').length;
+  assert.equal(total, 8);
+  assert.ok(pages.every((p) => p.length <= 2));
+});
+
+test('feuille : liste vide → aucune page', () => {
+  assert.deepEqual(mettreEnPageStock([], 10), []);
+});
