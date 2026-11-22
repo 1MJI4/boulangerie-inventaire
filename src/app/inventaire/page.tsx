@@ -26,6 +26,17 @@ type Ligne = {
   produit: { id: number; nom: string; categorie: string; ordre: number; unite?: Unite };
 };
 
+/** Colonnes qu'on peut afficher (22/11/2026) : seul « Restant » au départ — les ventes viendront plus tard. */
+const COLONNES = [
+  { id: 'demande', libelle: 'Demandé' },
+  { id: 'produit', libelle: 'Produit' },
+  { id: 'restant', libelle: 'Restant' },
+  { id: 'vendu', libelle: 'Vendu' },
+] as const;
+type IdColonne = (typeof COLONNES)[number]['id'];
+const COLONNES_PAR_DEFAUT: Record<IdColonne, boolean> = { demande: false, produit: false, restant: true, vendu: false };
+const CLE_STOCKAGE = 'inventaire-journee:colonnes';
+
 const afficher = (v: number | null, unite: Unite = 'piece') =>
   v === null ? (
     <span className="text-ink-3">—</span>
@@ -45,6 +56,31 @@ export default function InventaireComplet() {
   const jours = Array.from({ length: 7 }, (_, k) => decalerJours(aujourdhui, debutSemaine * 7 - 6 + k));
   const premierJour = jours[0];
   const dernierJour = jours[6];
+  // Colonnes choisies : retenues sur la tablette (jamais bloquant si le stockage est refusé).
+  const [colonnes, setColonnes] = useState<Record<IdColonne, boolean>>(COLONNES_PAR_DEFAUT);
+  useEffect(() => {
+    try {
+      const brut = window.localStorage.getItem(CLE_STOCKAGE);
+      if (!brut) return;
+      const lu = JSON.parse(brut) as Partial<Record<IdColonne, unknown>>;
+      const suite = { ...COLONNES_PAR_DEFAUT };
+      for (const c of COLONNES) if (typeof lu[c.id] === 'boolean') suite[c.id] = lu[c.id] as boolean;
+      if (COLONNES.some((c) => suite[c.id])) setColonnes(suite);
+    } catch {
+      /* rien : on garde le choix par défaut */
+    }
+  }, []);
+  const basculer = (id: IdColonne) => {
+    const suite = { ...colonnes, [id]: !colonnes[id] };
+    if (!COLONNES.some((c) => suite[c.id])) return; // au moins une colonne
+    setColonnes(suite);
+    try {
+      window.localStorage.setItem(CLE_STOCKAGE, JSON.stringify(suite));
+    } catch {
+      /* stockage refusé : le choix vaut pour cette visite */
+    }
+  };
+  const nbColonnes = COLONNES.filter((c) => colonnes[c.id]).length;
   const auPoids = lignes.some((l) => l.produit.unite === 'kg');
 
   const charger = useCallback(async () => {
@@ -162,13 +198,30 @@ export default function InventaireComplet() {
         </Carte>
       ) : (
         <>
-          <div className="mb-4 grid grid-cols-3 gap-3">
+          <fieldset className="mb-4">
+            <legend className="mb-2 text-sm font-semibold text-ink-2">Colonnes à voir</legend>
+            <div className="flex flex-wrap gap-2">
+              {COLONNES.map((c) => (
+                <label
+                  key={c.id}
+                  className={`flex min-h-12 cursor-pointer items-center gap-2.5 rounded-2xl px-4 text-base font-medium ${colonnes[c.id] ? 'bg-accent-doux text-accent' : 'bg-segment-fond text-ink-2'}`}
+                >
+                  <input type="checkbox" checked={colonnes[c.id]} onChange={() => basculer(c.id)} className="h-5 w-5 accent-[var(--accent)]" />
+                  {c.libelle}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <div className="mb-4 flex gap-3">
             {[
-              { libelle: 'Produit', valeur: totaux.produit },
-              { libelle: 'Vendu', valeur: totaux.vendu, accent: true },
-              { libelle: 'Restant', valeur: totaux.restant },
-            ].map(({ libelle, valeur, accent }) => (
-              <Carte key={libelle} className="px-4 py-3">
+              { id: 'produit', libelle: 'Produit', valeur: totaux.produit },
+              { id: 'vendu', libelle: 'Vendu', valeur: totaux.vendu, accent: true },
+              { id: 'restant', libelle: 'Restant', valeur: totaux.restant },
+            ]
+              .filter((c) => colonnes[c.id as IdColonne])
+              .map(({ libelle, valeur, accent }) => (
+              <Carte key={libelle} className="flex-1 px-4 py-3">
                 <div className="text-xs uppercase tracking-wide text-ink-3">
                   {libelle}
                   {auPoids ? <span className="normal-case"> · pièces</span> : null}
@@ -190,14 +243,14 @@ export default function InventaireComplet() {
                 </h2>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[26rem] text-sm">
+                  <table className="w-full text-base">
                     <thead>
                       <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-3">
                         <th scope="col" className="px-4 py-2 text-left font-medium">Produit</th>
-                        <th scope="col" className="px-3 py-2 text-right font-medium">Demandé</th>
-                        <th scope="col" className="px-3 py-2 text-right font-medium">Produit</th>
-                        <th scope="col" className="px-3 py-2 text-right font-medium">Restant</th>
-                        <th scope="col" className="px-4 py-2 text-right font-medium">Vendu</th>
+                        {colonnes.demande ? <th scope="col" className="px-3 py-2 text-right font-medium">Demandé</th> : null}
+                        {colonnes.produit ? <th scope="col" className="px-3 py-2 text-right font-medium">Produit</th> : null}
+                        {colonnes.restant ? <th scope="col" className="px-3 py-2 text-right font-medium">Restant</th> : null}
+                        {colonnes.vendu ? <th scope="col" className="px-4 py-2 text-right font-medium">Vendu</th> : null}
                       </tr>
                     </thead>
                     <tbody>
@@ -214,23 +267,21 @@ export default function InventaireComplet() {
 
                         return (
                           <tr key={ligne.produitId} className="border-b border-line last:border-b-0">
-                            <td className="max-w-[14rem] truncate px-4 py-2 text-ink">
-                              {ligne.produit.nom}
-                            </td>
-                            <td className="px-3 py-2 text-right text-ink-2">
-                              {afficher(ligne.quantitePrevue, ligne.produit.unite)}
-                            </td>
-                            <td className="px-3 py-2 text-right text-ink-2">
-                              {afficher(ligne.quantiteProduite, ligne.produit.unite)}
-                            </td>
-                            <td
-                              className={`px-3 py-2 text-right ${invenduFort ? 'text-attention' : 'text-ink-2'}`}
-                            >
-                              {afficher(ligne.quantiteRestante, ligne.produit.unite)}
-                            </td>
-                            <td className="px-4 py-2 text-right font-medium text-ink">
-                              {afficher(vendu, ligne.produit.unite)}
-                            </td>
+                            <td className="px-4 py-3 text-ink">{ligne.produit.nom}</td>
+                            {colonnes.demande ? (
+                              <td className="px-3 py-3 text-right text-ink-2">{afficher(ligne.quantitePrevue, ligne.produit.unite)}</td>
+                            ) : null}
+                            {colonnes.produit ? (
+                              <td className="px-3 py-3 text-right text-ink-2">{afficher(ligne.quantiteProduite, ligne.produit.unite)}</td>
+                            ) : null}
+                            {colonnes.restant ? (
+                              <td className={`px-3 py-3 text-right text-lg font-medium ${invenduFort ? 'text-attention' : 'text-ink'}`}>
+                                {afficher(ligne.quantiteRestante, ligne.produit.unite)}
+                              </td>
+                            ) : null}
+                            {colonnes.vendu ? (
+                              <td className="px-4 py-3 text-right font-medium text-ink">{afficher(vendu, ligne.produit.unite)}</td>
+                            ) : null}
                           </tr>
                         );
                       })}
