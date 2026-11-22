@@ -62,6 +62,12 @@ const ICONES: Record<string, ReactNode> = {
       <rect x="4" y="14" width="16" height="6" rx="1.500" />
     </>
   ),
+  '/stock': (
+    <>
+      <path d="M4 8.500 12 4l8 4.500v7L12 20l-8-4.500z" />
+      <path d="M4 8.500 12 13l8-4.500M12 13v7" />
+    </>
+  ),
   '/dashboard': <path d="M5 20V11M12 20V5M19 20v-7" />,
   '/historique-previsions': (
     <>

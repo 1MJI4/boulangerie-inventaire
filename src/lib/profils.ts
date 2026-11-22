@@ -60,9 +60,12 @@ export const DEFINITIONS: Record<Profil, DefinitionProfil> = {
     // rarement : ils sont au fond (propriétaire, 20/11/2026).
     ecrans: [
       '/commandes',
-      '/saisie-vendeur',
+      // Stock de la feuille de commande (22/11/2026) : en deuxième onglet. Le comptage
+      // des invendus (« Comptage ») passe sous « Plus ».
+      '/stock',
       '/saisie-prevue',
       '/planification-demain',
+      '/saisie-vendeur',
       // Brouillons de commande WhatsApp (21/11/2026) : réservés au manager, sous « Plus ».
       '/brouillons',
       '/inventaire',
@@ -88,6 +91,7 @@ export const LIBELLES_ECRANS: Record<string, string> = {
   '/planification-demain': 'Fournil',
   '/saisie-production': 'Production',
   '/saisie-vendeur': 'Comptage',
+  '/stock': 'Stock',
   '/inventaire': 'Inventaire',
   '/dashboard': 'Tableau de bord',
   '/historique-previsions': 'Historique',

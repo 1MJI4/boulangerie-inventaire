@@ -48,6 +48,11 @@ export const MATRICE_ACCES: Record<string, Partial<Record<Methode, EntreeMatrice
   'src/app/api/inventaires/commandes/route.ts': {
     GET: { role: 'tablette', action: 'consulter un inventaire' },
   },
+  // Stock de la feuille de commande (22/11/2026) : farines, emballages, entretien…
+  'src/app/api/stock/route.ts': {
+    GET: { role: 'tablette', action: 'consulter le stock' },
+    PUT: { role: 'tablette', action: 'compter le stock' },
+  },
   'src/app/api/releves/route.ts': {
     GET: { role: 'tablette', action: 'consulter les relevés' },
   },

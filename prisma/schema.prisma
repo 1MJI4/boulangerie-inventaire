@@ -759,3 +759,31 @@ model BrouillonCommande {
 
   @@index([statut, echeanceLe])
 }
+
+// ============================================================================
+//  STOCK DE LA FEUILLE DE COMMANDE (22/11/2026) — farines, congele, sacs,
+//  emballages, entretien. Liste PROPRE (LOI 10) : aucun lien avec Produit ni
+//  ProduitCatalogue. Un comptage (quantite restante) par article et par jour ;
+//  pas de ligne = pas encore compte.
+// ============================================================================
+model ArticleStock {
+  id        Int     @id @default(autoincrement())
+  nom       String  @unique
+  categorie String
+  ordre     Int
+  actif     Boolean @default(true)
+
+  comptages ComptageStock[]
+}
+
+model ComptageStock {
+  id        Int      @id @default(autoincrement())
+  journee   DateTime @db.Date
+  quantite  Int
+  compteLe  DateTime @default(now())
+  articleId Int
+  article   ArticleStock @relation(fields: [articleId], references: [id], onDelete: Restrict)
+
+  @@unique([articleId, journee])
+  @@index([journee])
+}
