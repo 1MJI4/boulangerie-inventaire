@@ -774,6 +774,18 @@ model ArticleStock {
   actif     Boolean @default(true)
 
   comptages ComptageStock[]
+  photos    PhotoArticleStock[]
+}
+
+// Photos de reference d'un article du stock (22/11/2026) : plusieurs angles par
+// article, fichier sur disque DOSSIER_PHOTOS_MODELES/stock/<id>.jpg.
+model PhotoArticleStock {
+  id        Int          @id @default(autoincrement())
+  articleId Int
+  article   ArticleStock @relation(fields: [articleId], references: [id], onDelete: Restrict)
+  ajouteLe  DateTime     @default(now())
+
+  @@index([articleId])
 }
 
 model ComptageStock {

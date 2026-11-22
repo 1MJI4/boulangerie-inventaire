@@ -9,8 +9,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide } from '@/components/ui';
 import { dateDuJour, formatDateLong } from '@/lib/dateProduction';
 import { partagerPdfStock } from '@/lib/stockPdf';
+import { useProfil } from '@/components/ProfilAppareil';
+import { PopupPhotos } from './PopupPhotos';
 
-type Article = { id: number; nom: string; categorie: string; ordre: number; quantite: number | null };
+type Article = { id: number; nom: string; categorie: string; ordre: number; quantite: number | null; photos: number[] };
 
 export default function StockPage() {
   const [articles, setArticles] = useState<Article[]>([]);
@@ -23,6 +25,12 @@ export default function StockPage() {
   const [partage, setPartage] = useState<string | null>(null);
   const [preparation, setPreparation] = useState(false);
   const date = dateDuJour();
+  // Photos de référence : tout le monde les voit, le manager les prend (22/11/2026).
+  const { profil } = useProfil();
+  const peutPhotographier = profil === 'manager';
+  const [photoDe, setPhotoDe] = useState<number | null>(null);
+  const changerPhotos = (articleId: number, photos: number[]) =>
+    setArticles((liste) => liste.map((a) => (a.id === articleId ? { ...a, photos } : a)));
 
   const charger = useCallback(async () => {
     setChargement(true);
@@ -109,6 +117,15 @@ export default function StockPage() {
         </Alerte>
       ) : null}
 
+      {photoDe !== null ? (
+        <PopupPhotos
+          article={articles.find((a) => a.id === photoDe) ?? null}
+          peutPhotographier={peutPhotographier}
+          onFermer={() => setPhotoDe(null)}
+          onChange={changerPhotos}
+        />
+      ) : null}
+
       {chargement ? (
         <Chargement />
       ) : articles.length === 0 ? (
@@ -135,6 +152,31 @@ export default function StockPage() {
             <ul className="divide-y divide-line">
               {visibles.map((a) => (
                 <li key={a.id} className="flex min-h-14 items-center gap-3 px-4 py-2">
+                  {a.photos.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setPhotoDe(a.id)}
+                      aria-label={`Voir la photo : ${a.nom}`}
+                      className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-segment-fond"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={`/api/stock/photos/${a.photos[0]}`} alt="" loading="lazy" className="h-full w-full object-cover" />
+                    </button>
+                  ) : peutPhotographier ? (
+                    <button
+                      type="button"
+                      onClick={() => setPhotoDe(a.id)}
+                      aria-label={`Ajouter une photo : ${a.nom}`}
+                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-segment-fond text-ink-3"
+                    >
+                      <svg aria-hidden viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 8h3l1.5-2h7L17 8h3v11H4z" />
+                        <circle cx="12" cy="13" r="3.5" />
+                      </svg>
+                    </button>
+                  ) : (
+                    <span className="h-12 w-12 shrink-0" aria-hidden />
+                  )}
                   <label htmlFor={`stock-${a.id}`} className="min-w-0 flex-1 text-[16px] text-ink">
                     {a.nom}
                   </label>

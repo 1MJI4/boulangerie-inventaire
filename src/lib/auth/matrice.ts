@@ -58,6 +58,15 @@ export const MATRICE_ACCES: Record<string, Partial<Record<Methode, EntreeMatrice
     GET: { role: 'tablette', action: 'consulter le stock' },
     PUT: { role: 'tablette', action: 'compter le stock' },
   },
+  // Photos de référence des articles du stock (22/11/2026). Le profil « manager » est le
+  // filtre d'écran (comme pour tout l'appareil) : côté serveur, une tablette installée suffit.
+  'src/app/api/stock/photos/route.ts': {
+    POST: { role: 'tablette', action: 'ajouter une photo de stock' },
+  },
+  'src/app/api/stock/photos/[id]/route.ts': {
+    GET: { role: 'tablette', action: 'voir une photo de stock' },
+    DELETE: { role: 'tablette', action: 'retirer une photo de stock' },
+  },
   'src/app/api/releves/route.ts': {
     GET: { role: 'tablette', action: 'consulter les relevés' },
   },

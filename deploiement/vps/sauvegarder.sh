@@ -79,7 +79,7 @@ sudo -u postgres dropdb --if-exists "$VERIF"
 
 if [ -n "$PHOTOS_TAR" ]; then
   echo "== Vérification : relecture de l'archive des photos"
-  DANS_DOSSIER="$(find "$PHOTOS" -maxdepth 1 -type f | wc -l)"
+  DANS_DOSSIER="$(find "$PHOTOS" -type f | wc -l)"
   if LISTE="$(tar -tzf "$PHOTOS_TAR")"; then
     DANS_ARCHIVE="$(printf '%s\n' "$LISTE" | grep -v '/$' | grep -c . || true)"
     if [ "$DANS_DOSSIER" = "$DANS_ARCHIVE" ]; then

@@ -25,11 +25,11 @@ export async function GET(request: Request) {
     const articles = await prisma.articleStock.findMany({
       where: { actif: true },
       orderBy: { ordre: 'asc' },
-      select: { id: true, nom: true, categorie: true, ordre: true, comptages: { where: { journee: versDatePg(date) }, select: { quantite: true } } },
+      select: { id: true, nom: true, categorie: true, ordre: true, comptages: { where: { journee: versDatePg(date) }, select: { quantite: true } }, photos: { orderBy: { id: 'asc' }, select: { id: true } } },
     });
     return NextResponse.json({
       date,
-      articles: articles.map((a) => ({ id: a.id, nom: a.nom, categorie: a.categorie, ordre: a.ordre, quantite: a.comptages[0]?.quantite ?? null })),
+      articles: articles.map((a) => ({ id: a.id, nom: a.nom, categorie: a.categorie, ordre: a.ordre, quantite: a.comptages[0]?.quantite ?? null, photos: a.photos.map((p) => p.id) })),
     });
   } catch (error) {
     const { corps, statut } = traiterErreur(error, 'GET /api/stock');
