@@ -12,7 +12,8 @@ import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide, Progression } from
 import { IndicateurSauvegarde } from '@/components/IndicateurSauvegarde';
 import { LigneSaisie } from '@/components/LigneSaisie';
 import { SelecteurJournee } from '@/components/SelecteurJournee';
-import { formatDateLong, journeeProduction } from '@/lib/dateProduction';
+import { formatDateLong } from '@/lib/dateProduction';
+import { useJourneeProduction } from '@/lib/useJourneeProduction';
 import { useProfil } from '@/components/ProfilAppareil';
 import { controlesProduction, type SignalementLigne } from '@/lib/inventaire/controles';
 import { PaveSaisieProduit } from '@/components/inventaire/PaveSaisieProduit';
@@ -26,7 +27,7 @@ import { DEFINITIONS } from '@/lib/profils';
 import { useSaisieJournee } from '@/lib/useSaisieJournee';
 
 export default function SaisieProduction() {
-  const [date, setDate] = useState(() => journeeProduction());
+  const [date, setDate] = useJourneeProduction();
   const { profil } = useProfil();
   const posteImpose = profil ? DEFINITIONS[profil].posteImpose : undefined;
   const [posteChoisi, setPoste] = useState<Poste>('patissier');

@@ -18,7 +18,8 @@ import { IndicateurSauvegarde } from '@/components/IndicateurSauvegarde';
 import { LigneSaisie } from '@/components/LigneSaisie';
 import { SelecteurJournee } from '@/components/SelecteurJournee';
 import { BandeauCommandes } from '@/components/BandeauCommandes';
-import { formatDateCourt, formatDateLong, journeeProduction } from '@/lib/dateProduction';
+import { formatDateCourt, formatDateLong } from '@/lib/dateProduction';
+import { useJourneeProduction } from '@/lib/useJourneeProduction';
 import { useRestesVeille } from '@/lib/useRestesVeille';
 import { Segmente } from '@/components/fiche/ElementsCommande';
 import { LIBELLE_POSTE, trierCategories } from '@/lib/postes';
@@ -44,7 +45,7 @@ import { usePartCommandee } from '@/lib/usePartCommandee';
 const RAYON_PRINCIPAL = 'Viennoiserie';
 
 export default function SaisiePrevisions() {
-  const [date, setDate] = useState(() => journeeProduction());
+  const [date, setDate] = useJourneeProduction();
   const [recherche, setRecherche] = useState('');
   // Le rayon affiché : la viennoiserie à chaque arrivée, les autres au toucher.
   const [rayonChoisi, setRayonChoisi] = useState(RAYON_PRINCIPAL);

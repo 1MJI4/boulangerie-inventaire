@@ -12,7 +12,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alerte, Bouton, Carte, Chargement, Entete, EtatVide, Progression, Puce } from '@/components/ui';
 import { SelecteurJournee } from '@/components/SelecteurJournee';
-import { formatDateLong, journeeProduction } from '@/lib/dateProduction';
+import { formatDateLong } from '@/lib/dateProduction';
+import { useJourneeProduction } from '@/lib/useJourneeProduction';
 import { useProfil } from '@/components/ProfilAppareil';
 import { useMemoireLocale } from '@/lib/memoireLocale';
 import { DEFINITIONS } from '@/lib/profils';
@@ -91,7 +92,7 @@ type LigneFournil = {
 const INTERVALLE_RAFRAICHISSEMENT_MS = 45_000;
 
 export default function Fournil() {
-  const [date, setDate] = useState(() => journeeProduction());
+  const [date, setDate] = useJourneeProduction();
   const { profil } = useProfil();
   const [posteMemorise, setPosteMemorise] = useMemoireLocale<string>(
     'boulangerie:poste-fournil',

@@ -12,7 +12,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { useProfil } from '@/components/ProfilAppareil';
-import { dateDuJour, formatDateLong, journeeProduction } from '@/lib/dateProduction';
+import { dateDuJour, formatDateLong } from '@/lib/dateProduction';
+import { useJourneeProduction } from '@/lib/useJourneeProduction';
 import { DEFINITIONS, LIBELLES_ECRANS } from '@/lib/profils';
 import { CarteCommandes } from '@/components/CarteCommandes';
 import { AccueilVendeur } from '@/components/AccueilVendeur';
@@ -91,7 +92,7 @@ function ListeEcrans({ titre, ecrans, avecMoment }: { titre: string; ecrans: rea
 
 export default function Accueil() {
   const { profil, prete, ouvrirSelecteur } = useProfil();
-  const journee = journeeProduction();
+  const [journee] = useJourneeProduction();
   const aujourdhui = dateDuJour();
   const routeur = useRouter();
   // Le manager n'a pas d'autre accueil que les commandes.
@@ -122,7 +123,7 @@ export default function Accueil() {
           <h1 className="text-2xl font-semibold tracking-tight text-ink first-letter:uppercase">{formatDateLong(aujourdhui)}</h1>
           <p className="mt-1 text-base text-ink-2">
             Prochaine fournée&nbsp;: <span className="font-medium text-ink first-letter:uppercase">{formatDateLong(journee)}</span>
-            {journee !== aujourdhui ? ' — la journée bascule à 14h' : null}
+            {journee !== aujourdhui ? ' — prochain jour ouvert, la journée bascule à 14h' : null}
           </p>
         </div>
         <button

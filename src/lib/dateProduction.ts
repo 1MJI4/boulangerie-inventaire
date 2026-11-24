@@ -13,6 +13,8 @@
 // c'est déjà celle de demain. Le manager à 18h et le pâtissier à 4h du matin
 // désignent ainsi la même journée.
 
+import { prochainJourOuvert, type JourFerme } from '../domaine/calendrier.ts';
+
 export const FUSEAU = 'Europe/Brussels';
 
 /** Heure (locale Bruxelles) à laquelle on bascule sur la journée suivante. */
@@ -97,10 +99,17 @@ export function decalerJours(date: DateISO, jours: number): DateISO {
  *   lundi 11h00 -> lundi      (la journée en cours n'est pas finie)
  *   lundi 18h00 -> mardi      (le manager prépare le lendemain)
  *   mardi 04h00 -> mardi      (le pâtissier travaille sur la journée en cours)
+ *
+ * Avec la liste des fermetures (LOI 3, une DONNÉE lue sur /api/calendrier), on ne
+ * désigne jamais un jour fermé : on prend le prochain jour OUVERT. Lundi 18h,
+ * mardi fermé → mercredi ; mardi ouvert exceptionnellement → mardi. Sans liste
+ * (pas encore chargée), comportement d'origine : jour calendaire.
  */
-export function journeeProduction(instant: Date = new Date()): DateISO {
+export function journeeProduction(instant: Date = new Date(), joursFermes?: readonly JourFerme[]): DateISO {
   const { date, heure } = partsBruxelles(instant);
-  return heure >= HEURE_BASCULE ? decalerJours(date, 1) : date;
+  const jour = heure >= HEURE_BASCULE ? decalerJours(date, 1) : date;
+  if (!joursFermes) return jour;
+  return prochainJourOuvert(jour, joursFermes) ?? jour;
 }
 
 /** true si l'on est dans la fenêtre où le manager prépare le lendemain. */

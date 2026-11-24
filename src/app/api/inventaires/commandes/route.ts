@@ -13,6 +13,8 @@ import { traiterErreur } from '@/lib/erreurBase';
 import { exigerRole } from '@/lib/auth/garde';
 import { journeeProduction } from '@/lib/dateProduction';
 import { lireDate } from '@/lib/inventaire/lot';
+import { prisma } from '@/lib/prisma';
+import { lireJoursFermes } from '@/lib/serveur/joursFermes';
 import { recalculerPartCommandee } from '@/lib/serveur/partCommandee';
 
 export async function GET(request: Request) {
@@ -20,7 +22,9 @@ export async function GET(request: Request) {
   if (!garde.ok) return garde.reponse;
   try {
     const { searchParams } = new URL(request.url);
-    const journee = lireDate(searchParams.get('date') ?? undefined) ?? journeeProduction();
+    // Sans date demandée : la journée de production = prochain jour OUVERT (LOI 3).
+    const journee =
+      lireDate(searchParams.get('date') ?? undefined) ?? journeeProduction(new Date(), await lireJoursFermes(prisma));
     return NextResponse.json(await recalculerPartCommandee(journee));
   } catch (error) {
     const { corps, statut } = traiterErreur(error, 'GET /api/inventaires/commandes');
