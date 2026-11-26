@@ -16,6 +16,7 @@ import { niveauRetard } from '../../domaine/retard.ts';
 import { LIBELLES_FORME } from '../../domaine/messages.ts';
 import { formaterHeure, lireHeure } from '../../domaine/reglement.ts';
 import { formaterQuantite } from '../../domaine/unites.ts';
+import { quantiteAvecUnite } from '../../domaine/commande.ts';
 import { typesDeCommande, type Commande, type LigneCommande, type StatutCommande, type TypeCommande } from '../../lib/commandes.ts';
 import { lectureQuantite } from '../../lib/ticketCanvas.ts';
 
@@ -85,7 +86,10 @@ export function ligneAffichee(ligne: LigneCommande): LigneAffichee {
     lecture === 'kg'
       ? formaterQuantite('kg', ligne.quantite)
       : lecture === 'piece'
-        ? `${formaterQuantite('piece', ligne.quantite)} ×`
+        ? // « Autre demande » : « 8 personnes » (le vendeur a dit 8 quoi), jamais un « 8 × » muet.
+          ligne.uniteLibre?.trim()
+          ? quantiteAvecUnite(ligne.quantite, ligne.uniteLibre.trim())
+          : `${formaterQuantite('piece', ligne.quantite)} ×`
         : lecture === 'gateau-par-personne'
           ? // UN gâteau de N parts : « N parts » seul se lit comme N individuels (propriétaire, 19/11/2026).
             `1 gâteau · ${formaterQuantite('piece', ligne.quantite)} personnes`

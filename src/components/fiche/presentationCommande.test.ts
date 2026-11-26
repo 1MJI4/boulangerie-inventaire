@@ -236,3 +236,8 @@ test('photo à imprimer sur un gâteau (lot 2) : dite sur sa ligne ; infos par g
   assert.equal(infosParGateau(commande({ lignes: [avecPhoto] })), true);
   assert.equal(infosParGateau(commande({ lignes: [layer] })), false);
 });
+
+test('« Autre demande » : la fiche écrit « 8 personnes », jamais « 8 × » ; ancienne ligne sans unité inchangée', () => {
+  assert.equal(ligneAffichee(ligne({ libelle: 'Plateau fruits', quantite: 8, uniteLibre: 'personnes' })).quantite, '8 personnes');
+  assert.equal(ligneAffichee(ligne({ libelle: 'Plateau fruits', quantite: 8 })).quantite, '8 ×');
+});

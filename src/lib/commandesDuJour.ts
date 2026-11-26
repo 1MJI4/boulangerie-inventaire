@@ -11,6 +11,7 @@
 import type { LigneCommande } from './commandes.ts';
 import { formaterLigneTicket, lectureQuantite } from './ticketCanvas.ts';
 import { formaterQuantite } from '../domaine/unites.ts';
+import { quantiteAvecUnite } from '../domaine/commande.ts';
 
 export type LigneDuJour = {
   /** « 6 × », « 1,250 kg », « 1 gâteau », « 2 gâteaux ». */
@@ -20,7 +21,7 @@ export type LigneDuJour = {
 };
 
 export function resumeCommandesDuJour(commandes: readonly { lignes: readonly LigneCommande[] }[]): LigneDuJour[] {
-  type Groupe = { sorte: 'piece' | 'kg' | 'gateau' | 'supplement'; nom: string; personnes: number; total: number; gateaux: number };
+  type Groupe = { sorte: 'piece' | 'kg' | 'gateau' | 'supplement' | 'libre'; nom: string; personnes: number; total: number; gateaux: number; unite?: string };
   const groupes = new Map<string, Groupe>();
 
   for (const commande of commandes) {
@@ -34,6 +35,15 @@ export function resumeCommandesDuJour(commandes: readonly { lignes: readonly Lig
         const cle = `gateau|${nom}|${ligne.quantite}`;
         const g = groupes.get(cle) ?? { sorte: 'gateau', nom, personnes: ligne.quantite, total: 0, gateaux: 0 };
         g.gateaux += 1;
+        groupes.set(cle, g);
+        continue;
+      }
+      // « Autre demande » : « 8 personnes » à part, jamais additionnée à des pièces (unités différentes).
+      const uniteLibre = lecture === 'piece' ? ligne.uniteLibre?.trim() || null : null;
+      if (uniteLibre) {
+        const cle = `libre|${surLeBon.libelle}|${uniteLibre}`;
+        const g = groupes.get(cle) ?? { sorte: 'libre', nom: surLeBon.libelle, personnes: 0, total: 0, gateaux: 0, unite: uniteLibre };
+        g.total += ligne.quantite;
         groupes.set(cle, g);
         continue;
       }
@@ -52,6 +62,7 @@ export function resumeCommandesDuJour(commandes: readonly { lignes: readonly Lig
         ? { quantite: '1 gâteau', libelle: `${g.nom} — ${personnes}` }
         : { quantite: `${g.gateaux} gâteaux`, libelle: `${g.nom} — ${personnes} chacun` };
     }
+    if (g.sorte === 'libre') return { quantite: '', libelle: `${g.nom} — ${quantiteAvecUnite(g.total, g.unite ?? '')}` };
     if (g.sorte === 'kg') return { quantite: formaterQuantite('kg', g.total), libelle: g.nom };
     if (g.sorte === 'supplement') return { quantite: '', libelle: `${g.nom} — ${formaterQuantite('piece', g.total)} personnes` };
     return { quantite: `${formaterQuantite('piece', g.total)} ×`, libelle: g.nom };

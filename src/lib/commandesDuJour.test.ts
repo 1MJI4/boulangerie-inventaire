@@ -52,3 +52,14 @@ test('le goût qui donne son nom au gâteau est gardé : deux goûts = deux lign
   );
   assert.deepEqual(r, ['1 gâteau Entremet (Saint-Michel) — 10 personnes', '1 gâteau Entremet (Javanais) — 10 personnes']);
 });
+
+test('« Autre demande » : « 8 personnes » à part, jamais additionné à des pièces ni écrit « 8 × »', () => {
+  const r = lu(
+    resumeCommandesDuJour([
+      commande(ligne('Plateau fruits', 8, 'piece', { uniteLibre: 'personnes' })),
+      commande(ligne('Plateau fruits', 4, 'piece', { uniteLibre: 'personnes' })),
+      commande(ligne('Plateau fruits', 3, 'piece', { uniteLibre: 'pièces' })),
+    ]),
+  );
+  assert.deepEqual(r, ['Plateau fruits — 12 personnes', 'Plateau fruits — 3 pièces']);
+});

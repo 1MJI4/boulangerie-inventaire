@@ -11,6 +11,7 @@
 
 import { formaterEuros } from '../../domaine/argent.ts';
 import { formaterQuantite } from '../../domaine/unites.ts';
+import { quantiteAvecUnite } from '../../domaine/commande.ts';
 import { LIBELLES_FORME } from '../../domaine/messages.ts';
 import { estForme } from '../../domaine/formes.ts';
 import { HEURE_A_FIXER, texteHeure } from './saisieEnCours.ts';
@@ -21,6 +22,8 @@ export type LigneTexte = {
   quantite: number;
   prixCentimes: number;
   unite: string;
+  /** Ligne libre : « 8 quoi ? » (pièces, personnes…). */
+  uniteLibre?: string | null;
   forme?: string | null;
   photoModele?: string | null;
   /** R62 : goût(s), un par étage. */
@@ -104,7 +107,8 @@ export function ligneEnTexte(l: LigneTexte): string {
     l.photoImprimee === true ? 'photo à imprimer' : '',
   ].filter(Boolean);
   const suite = details.length ? ` [${details.join(' ; ')}]` : '';
-  return `${formaterQuantite(l.unite === 'kg' ? 'kg' : 'piece', l.quantite)} × ${l.libelle}${forme}${photo}${suite} à ${formaterEuros(l.prixCentimes)}`;
+  const quantite = vide(l.uniteLibre) ? `${quantiteAvecUnite(l.quantite, vide(l.uniteLibre))} ` : `${formaterQuantite(l.unite === 'kg' ? 'kg' : 'piece', l.quantite)} × `;
+  return `${quantite}${l.libelle}${forme}${photo}${suite} à ${formaterEuros(l.prixCentimes)}`;
 }
 
 /**
