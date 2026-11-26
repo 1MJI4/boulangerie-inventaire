@@ -56,6 +56,8 @@ export type LigneCommande = {
   /** R62 : décorations facultatives. */
   decorations?: string[];
   nbObjets?: number | null;
+  /** Ligne libre (« Autre demande ») : « 8 quoi ? » — pièces, personnes, parts ou mot du vendeur. null : ligne catalogue ou ancienne. */
+  uniteLibre?: string | null;
   /**
    * Galerie (26/10/2026) : identifiant de la photo de modèle choisie (« G043 »),
    * imprimé « Photo sélectionnée : G043 » sur le bon. null / absent : pas de photo.

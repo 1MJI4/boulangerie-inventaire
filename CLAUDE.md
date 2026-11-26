@@ -207,6 +207,12 @@ viande par ligne** : 15 kefta et 15 tenders font deux lignes, jamais signalées 
 Le minimum de 10 se compte alors sur le **total des lignes** du même burger (15 + 5 = accepté).
 Liste et produits = donnée (`src/catalogue/goutsSurCommande.ts`).
 
+« Autre demande » : 8 quoi ? (propriétaire, 26/11/2026) : une ligne libre qui n'est pas un gâteau
+porte **l'unité choisie par le vendeur** — Pièces · Personnes · « Autre… » (un mot à écrire) — jamais
+présélectionnée, sinon `ERR_CHAMP_OBLIGATOIRE`. Un gâteau libre reste en **parts**. Le bon écrit
+« Plateau fruits — 8 personnes » au lieu d'un « 8 × » muet. Règle : `validerUniteLibre`
+(`src/domaine/commande.ts`) ; colonne `LigneCommande.uniteLibre` (anciennes lignes : NULL, « N × »).
+
 Postes de production (R74, décision du propriétaire 19/11/2026) : en plus des bons CLIENT
 et MAGASIN (**plus de bon BUREAU**), il sort **un papier par poste concerné** — PÂTISSIER, ATELIER, BOULANGER —
 avec ses seules lignes, **sans prix**. Pain des burgers et du batbout farci, pâte du msemen et

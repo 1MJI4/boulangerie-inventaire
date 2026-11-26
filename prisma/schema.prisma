@@ -438,6 +438,11 @@ model LigneCommande {
   // R14 — pain surprise : nombre de sandwichs demandes au total (> 0). Le
   // maximum par pain est un avertissement : pas de contrainte.
   nbObjets     Int?
+  // Ligne libre (« Autre demande »), 26/11/2026 : DE QUOI on parle — « pièces »,
+  // « personnes », « parts » ou le mot ecrit par le vendeur. Choisi a chaque ligne,
+  // jamais devine. NULL pour toute ligne catalogue et pour l'historique (le bon
+  // garde alors « N × »). Texte court, vide interdit.
+  uniteLibre   String?
   // Lot 2 — UNE ECRITURE PAR GATEAU (decision du proprietaire, 28/10/2026 :
   // « ca doit etre clair quelle ecriture pour quel gateau »). Renseignes sur
   // une ligne GATEAU seulement (domaine : nbGateaux > 0), NULL ailleurs et

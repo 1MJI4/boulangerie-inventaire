@@ -111,6 +111,12 @@ export type LigneSaisie = {
    * true : la ligne est UN gâteau — quantité = PARTS, prix par part, goût exigé.
    */
   gateauLibre?: boolean | null;
+  /**
+   * Ligne libre qui n'est pas un gâteau : DE QUOI on parle (« pièces »,
+   * « personnes », ou le mot du vendeur) — choisi à chaque ligne, jamais deviné.
+   * Obligatoire (`ERR_CHAMP_OBLIGATOIRE`) ; un gâteau libre est toujours en parts.
+   */
+  uniteLibre?: string | null;
   /** Pain surprise : nombre de sandwichs demandés au total. */
   nbObjets?: number | null;
   /** R62 : goût (ou recette d'entremet) du gâteau, un par étage. */
@@ -169,6 +175,8 @@ export type LigneControlee = {
   delaiJoursOuvres: number;
   /** Gâteaux apportés par la ligne, pour les suppléments au forfait (R7, supplements.ts). */
   nbGateaux: number;
+  /** Ligne libre : « parts » (gâteau) ou le mot choisi par le vendeur ; absent hors ligne libre. */
+  uniteLibre?: string;
   versionCode?: string;
   /** Prix sous plancher ou ligne libre : qui a autorisé, quand (à tracer en base). */
   autorisation?: Deverrouillage;  /** Taille hors standard : qui a autorisé, quand (à tracer en base). */
@@ -593,6 +601,39 @@ export function gateauxDeLigneLibre(gateauLibre: boolean | null | undefined): nu
   return gateauLibre === true ? 1 : 0;
 }
 
+/** Unité d'un gâteau libre : toujours des parts (la quantité est un nombre de parts). */
+export const UNITE_GATEAU_LIBRE = 'parts';
+/** Longueur maximale du mot d'unité d'une ligne libre (même borne que la contrainte en base). */
+export const LONGUEUR_MAX_UNITE_LIBRE = 30;
+/** Unités proposées en boutons pour une ligne libre ; « Autre » = un mot à écrire (donnée, pas déduit du libellé). */
+export const UNITES_LIBRES_PROPOSEES = ['pièces', 'personnes'] as const;
+
+/**
+ * « 8 personnes », « 1 pièce », « 3 boîtes » : la quantité suivie de SON unité
+ * (insécable). Singulier à 1 pour les unités proposées seulement — un mot écrit
+ * par le vendeur reste tel quel (jamais de pluriel deviné).
+ */
+export function quantiteAvecUnite(quantite: number, unite: string): string {
+  const connue = [...UNITES_LIBRES_PROPOSEES, UNITE_GATEAU_LIBRE] as readonly string[];
+  const mot = quantite === 1 && connue.includes(unite) ? unite.replace(/s$/, '') : unite;
+  return `${quantite} ${mot}`;
+}
+export const CHAMP_UNITE_LIBRE ='Unité de la demande (pièces, personnes…)';
+
+/**
+ * « 8 quoi ? » d'une ligne libre non gâteau : le mot choisi par le vendeur,
+ * nettoyé. Absent → `ERR_CHAMP_OBLIGATOIRE` (jamais « pièces » par défaut) ;
+ * trop long → `ERR_SAISIE_INVALIDE`.
+ */
+export function validerUniteLibre(brut: string | null | undefined): Resultat<string> {
+  const unite = (brut ?? '').replace(/\s+/g, ' ').trim();
+  if (unite === '') return signaler('ERR_CHAMP_OBLIGATOIRE', { champLibelle: CHAMP_UNITE_LIBRE }, { champ: 'uniteLibre' });
+  if (unite.length > LONGUEUR_MAX_UNITE_LIBRE) {
+    return signaler('ERR_SAISIE_INVALIDE', { champLibelle: CHAMP_UNITE_LIBRE }, { champ: 'uniteLibre' });
+  }
+  return succes(unite);
+}
+
 /**
  * Ligne libre (« Autre demande ? Merci de contacter le gérant » — affiche).
  * HYPOTHÈSE À VALIDER (QUESTIONS-GERANT n°3) : son prix n'est pas au
@@ -614,6 +655,9 @@ function controlerLigneLibre(saisie: LigneSaisie, libelle: string, delais: Delai
   const gateau = saisie.gateauLibre;
   const q = validerQuantite('piece', saisie.quantite);
   if (!q.ok) return q;
+  // « 8 quoi ? » : un gâteau est en parts ; sinon le vendeur le dit (pièces, personnes, autre).
+  const uniteChoisie = gateau ? succes(UNITE_GATEAU_LIBRE) : validerUniteLibre(saisie.uniteLibre);
+  if (!uniteChoisie.ok) return uniteChoisie;
   if (gateau && !(saisie.gouts ?? []).some((g) => String(g ?? '').trim() !== '')) {
     return signaler(
       'ERR_GOUT_MANQUANT',
@@ -646,6 +690,7 @@ function controlerLigneLibre(saisie: LigneSaisie, libelle: string, delais: Delai
     // Gâteau libre : UN gâteau (écriture, photo) ; autre demande : contenu
     // inconnu, ne porte pas de supplément (le plus sûr).
     nbGateaux: gateauxDeLigneLibre(gateau),
+    uniteLibre: uniteChoisie.donnees,
     autorisation: { par: saisie.deverrouillage.par.trim(), le: saisie.deverrouillage.le },
   });
 }

@@ -12,7 +12,7 @@
 import type { Echec, Resultat } from '../../domaine/resultat.ts';
 import type { DateISO, Deverrouillage, FicheTarifee, Forme, PrixRegle, ProduitRegle, RegimePrix, SortieRemplacement } from '../../domaine/types.ts';
 import type { CommandeSaisie, LigneSaisie, ResoudreProduit } from '../../domaine/commande.ts';
-import { gateauxDeLigneLibre, resoudreDepuisCatalogue } from '../../domaine/commande.ts';
+import { gateauxDeLigneLibre, quantiteAvecUnite, resoudreDepuisCatalogue } from '../../domaine/commande.ts';
 import { signaler } from '../../domaine/messages.ts';
 import { estGateauDuComptoir, gateauxDeLigne, porteUneEcriture, porteUnePhoto } from '../../domaine/supplements.ts';
 import { estGateauSimpleSurCommande, symbolesDuTexte } from '../../domaine/minimums.ts';
@@ -307,9 +307,17 @@ export function resoudreLocal(catalogue: CatalogueCommande): ResoudreProduit {
  * confond avec 10 individuels (propriétaire, 19/11/2026). Un supplément par
  * personne suit son gâteau : « 24 personnes ».
  */
-export function quantiteDuCarnet(l: { quantite: number | null; unite: 'piece' | 'kg'; parPersonne: boolean; supplement: boolean }): string {
+export function quantiteDuCarnet(l: {
+  quantite: number | null;
+  unite: 'piece' | 'kg';
+  parPersonne: boolean;
+  supplement: boolean;
+  /** Ligne libre : « 8 quoi ? » choisi par le vendeur → « 8 personnes » à la place de « 8 × ». */
+  uniteLibre?: string | null;
+}): string {
   if (l.quantite === null) return '—';
   if (l.unite === 'kg') return formaterQuantite('kg', l.quantite);
+  if (l.uniteLibre) return quantiteAvecUnite(l.quantite, l.uniteLibre);
   if (!l.parPersonne) return `${l.quantite} ×`;
   return l.supplement ? `${l.quantite} personnes` : `1 gâteau · ${l.quantite} personnes`;
 }
@@ -345,6 +353,11 @@ export type LigneEcran = {
    * refusé par le domaine). Jamais déduite du libellé (LOI 6).
    */
   gateauLibre?: boolean | null;
+  /**
+   * Ligne libre non gâteau : « 8 quoi ? » — « pièces », « personnes » ou le mot
+   * écrit par le vendeur ('' / absent = pas encore choisi, refusé par le domaine).
+   */
+  uniteLibre?: string | null;
   /** R62 : goût (ou recette d'entremet) du gâteau, un par étage ('' = pas encore choisi). */
   gouts: string[];
   /** R62 : décorations facultatives (Oreo, Kinder…). */
@@ -462,6 +475,7 @@ export function versLigneSaisie(l: LigneEcran, fiche: FicheTarifee | null): Lign
       ligneLibre: true,
       prixUnitaireCentimes: l.prixUnitaireCentimes,
       gateauLibre: l.gateauLibre ?? null,
+      uniteLibre: l.gateauLibre === true ? null : l.uniteLibre?.trim() || null,
     };
   }
   if (!fiche) return base;

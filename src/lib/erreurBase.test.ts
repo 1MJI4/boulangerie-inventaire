@@ -433,6 +433,8 @@ const CAS_CHECK: CasCheck[] = [
     message: messagePour('ERR_SAISIE_INVALIDE', { champLibelle: 'nom du manager' }), statut: 422 },
   { contrainte: 'LigneCommande_nbObjets_positif', code: 'ERR_QUANTITE_INVALIDE', champ: 'nbObjets',
     message: messagePour('ERR_QUANTITE_INVALIDE', { unite: 'piece' }), statut: 422 },
+  { contrainte: 'LigneCommande_uniteLibre_valide', code: 'ERR_SAISIE_INVALIDE', champ: 'uniteLibre',
+    message: messagePour('ERR_SAISIE_INVALIDE', { champLibelle: 'unité de la demande' }), statut: 422 },
   { contrainte: 'LigneCommande_nbSymboles_positif', code: 'ERR_SAISIE_INVALIDE', champ: 'nbSymboles',
     message: messagePour('ERR_SAISIE_INVALIDE', { champLibelle: 'chiffres ou lettres' }), statut: 422 },
   { contrainte: 'LigneCommande_gout_trace', code: 'ERR_DROIT_INSUFFISANT', champ: 'goutAutorisePar',

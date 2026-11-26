@@ -277,6 +277,8 @@ const CHECKS: Record<string, CibleCheck> = {
   LigneCommande_deverrouillage_trace: { code: 'ERR_DROIT_INSUFFISANT', champ: 'prixCentimes' },
   LigneCommande_deverrouillage_nom_non_vide: { code: 'ERR_SAISIE_INVALIDE', champ: 'sousPlancherAutorisePar', champLibelle: 'nom du manager' },
   LigneCommande_nbObjets_positif: { code: 'ERR_QUANTITE_INVALIDE', champ: 'nbObjets' },
+  // « 8 quoi ? » d'une ligne libre (migration 20261126100000) : 1 à 30 caractères.
+  LigneCommande_uniteLibre_valide: { code: 'ERR_SAISIE_INVALIDE', champ: 'uniteLibre', champLibelle: 'unité de la demande' },
   LigneCommande_nbSymboles_positif: { code: 'ERR_SAISIE_INVALIDE', champ: 'nbSymboles', champLibelle: 'chiffres ou lettres' },
   // Accord du gérant pour une taille de gâteau hors liste (migration 20261015150000).
   LigneCommande_taille_trace: { code: 'ERR_DROIT_INSUFFISANT', champ: 'tailleAutoriseePar' },

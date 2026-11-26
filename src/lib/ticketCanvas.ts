@@ -17,6 +17,7 @@
 import type { Commande, LigneCommande } from './commandes';
 import { lignesSurLeGateau } from './commandes.ts';
 import { formaterEuros, mentionPaiementSurPlace } from '../domaine/argent.ts';
+import { quantiteAvecUnite } from '../domaine/commande.ts';
 import { formaterQuantite, totalLigne } from '../domaine/unites.ts';
 import { formaterHeure, lireHeure, nomJour } from '../domaine/reglement.ts';
 import { LIBELLES_FORME } from '../domaine/messages.ts';
@@ -425,15 +426,23 @@ export function formaterLigneTicket(ligne: LigneCommande, destination: Destinati
   // Bavarois goût Fraisier → « Fraisier » (propriétaire, 28/10/2026) : le nom
   // dit le goût, pas de « GOÛT : FRAISIER » en plus. Donnée explicite.
   const nomSelonGout = libelleSelonGout(ligne.produitCatalogue?.cleCatalogue, ligne.gouts, LIBELLES_SELON_GOUT);
+  // « Autre demande » : le vendeur a dit « 8 QUOI » → « Plateau fruits — 8 personnes »
+  // (même présentation que le supplément par personne), jamais un « 8 × » muet.
+  const uniteLibre = lecture === 'piece' ? ligne.uniteLibre?.trim() || null : null;
   return {
     quantite:
       lecture === 'kg'
         ? formaterQuantite('kg', ligne.quantite)
-        : lecture === 'piece'
+        : lecture === 'piece' && !uniteLibre
           ? `${formaterQuantite('piece', ligne.quantite)} ×`
           : '',
     libelle: nomSelonGout ?? ligne.libelle,
-    complementLibelle: lecture === 'supplement-par-personne' ? `—${INSECABLE}${parts}${INSECABLE}personnes` : null,
+    complementLibelle:
+      lecture === 'supplement-par-personne'
+        ? `—${INSECABLE}${parts}${INSECABLE}personnes`
+        : uniteLibre
+          ? `—${INSECABLE}${quantiteAvecUnite(ligne.quantite, uniteLibre)}`
+          : null,
     parts: lecture === 'gateau-par-personne' ? ['1', 'gâteau', '—', parts, 'PERSONNES'].join(INSECABLE) : null,
     // Prix unitaire FIGÉ sur la ligne (prixCentimes), seulement formaté : le
     // bon montre « 20 PARTS · … € par personne », jamais un total nu.

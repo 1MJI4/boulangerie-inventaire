@@ -87,6 +87,16 @@ test('ligne libre : « à confirmer par le pâtissier » sur les exemplaires int
   assert.equal(MENTION_LIGNE_LIBRE, 'à confirmer par le pâtissier');
 });
 
+test('ligne libre « 8 personnes » : l’unité du vendeur remplace le « × » muet', () => {
+  const l = formaterLigneTicket(ligne({ libelle: 'Plateau de fruits', quantite: 8, ligneLibreAutoriseePar: 'Gérant', uniteLibre: 'personnes' }), 'CLIENT');
+  assert.equal(l.quantite, '');
+  assert.equal(lu(l.complementLibelle), '— 8 personnes');
+  // Ancienne ligne libre (sans unité enregistrée) : imprimée comme avant.
+  const ancienne = formaterLigneTicket(ligne({ libelle: 'Plateau de fruits', quantite: 8, ligneLibreAutoriseePar: 'Gérant' }), 'CLIENT');
+  assert.equal(lu(ancienne.quantite), '8 ×');
+  assert.equal(ancienne.complementLibelle, null);
+});
+
 test('heure de retrait null ou vide : aucune mention (ni « à null » ni « à  »)', () => {
   assert.equal(mentionHeureRetrait(null), null);
   assert.equal(mentionHeureRetrait(undefined), null);

@@ -60,8 +60,11 @@ import {
   blocagesCommande,
   controlerCommande,
   controlerLigne,
+  LONGUEUR_MAX_UNITE_LIBRE,
   libelleProduit,
   totalEnCours,
+  UNITE_GATEAU_LIBRE,
+  UNITES_LIBRES_PROPOSEES,
   type CommandeControlee,
   type ContexteCommande,
   type LigneControlee,
@@ -182,9 +185,11 @@ const CHAMP_TEXTE =
 const TITRE = 'mb-2 text-base font-semibold text-ink';
 
 /** Unité affichée d'une quantité en pièces : parts pour un prix par personne (donnée du catalogue). */
-function uniteDe(fiche: FicheTarifee | null, ligne?: Pick<LigneEcran, 'produitId' | 'gateauLibre'>): string {
+function uniteDe(fiche: FicheTarifee | null, ligne?: Pick<LigneEcran, 'produitId' | 'gateauLibre' | 'uniteLibre'>): string {
   // Ligne libre déclarée gâteau (« C'est un gâteau ? » : oui) : la quantité est en parts.
   if (ligne && ligne.produitId === null && ligne.gateauLibre === true) return 'parts';
+  // Ligne libre : le mot choisi par le vendeur (« personnes », « boîtes »…).
+  if (ligne && ligne.produitId === null && ligne.uniteLibre?.trim()) return ligne.uniteLibre.trim();
   return fiche?.prix.basePrix === 'personne' ? 'parts' : 'pièces';
 }
 
@@ -895,7 +900,7 @@ function SaisieCommande({ commande, onRecommencer, brouillon = false }: { comman
       return majLigne(i, { gouts: Array.from({ length: n }, (_, k) => ligne.gouts[k] || GOUT_AU_CHOIX) });
     }
     // Ligne libre : « C'est un gâteau ? » se répond sur la ligne (jamais la retirer).
-    if (i !== null && ligne && champ === 'gateauLibre') return montrerLigne(i);
+    if (i !== null && ligne && (champ === 'gateauLibre' || champ === 'uniteLibre')) return montrerLigne(i);
     // Écriture / photo à imprimer sans son supplément (28/10/2026) : la sortie
     // met le supplément au bon, une fois par gâteau qui en porte.
     if (s.code === 'ERR_ECRITURE_SANS_SUPPLEMENT' || s.code === 'ERR_PHOTO_SANS_SUPPLEMENT') {
@@ -2630,7 +2635,15 @@ function lignesDepuisCommande(c: Commande): LigneEcran[] {
       formesLibres: formesLibresEnregistrees(l.formes),
       // Ligne libre : un gâteau libre porte toujours un goût (exigé) ; sans goût,
       // la question est reposée (jamais deviné « non », LOI 6 / règle de doute).
-      gateauLibre: produitId ? null : (l.gouts ?? []).some((g) => g.trim() !== '') ? true : null,
+      gateauLibre: produitId
+        ? null
+        : (l.gouts ?? []).some((g) => g.trim() !== '') || l.uniteLibre === UNITE_GATEAU_LIBRE
+          ? true
+          : l.uniteLibre
+            ? false
+            : null,
+      // « 8 quoi ? » enregistré (pièces, personnes…) : relu tel quel ; un gâteau est en parts, sans choix.
+      uniteLibre: produitId || l.uniteLibre === UNITE_GATEAU_LIBRE ? null : (l.uniteLibre ?? null),
       gouts: l.gouts ?? [],
       decorations: l.decorations ?? [],
       nbObjets: l.nbObjets ?? null,
@@ -3294,6 +3307,9 @@ function LigneDuBon({
   const id = (champ: string) => `${ligne.cle}.${champ}`;
   const basculer = (champ: string) => setActif(actif === id(champ) ? null : id(champ));
   const libre = ligne.produitId === null;
+  // « Autre… » choisi (mot à écrire) : une unité non vide qui n'est pas un bouton ; ' ' = choisi mais pas encore écrit.
+  const uniteSaisie = ligne.uniteLibre ?? '';
+  const uniteAutre = uniteSaisie !== '' && !(UNITES_LIBRES_PROPOSEES as readonly string[]).includes(uniteSaisie.trim());
   const regime = fiche?.produit.regimePrix ?? null;
   const plancher = regime === 'C' && fiche?.prix.prixEstPlancher === true;
   const auKilo = fiche?.produit.unite === 'kg';
@@ -3410,6 +3426,49 @@ function LigneDuBon({
               {v ? 'Oui' : 'Non'}
             </button>
           ))}
+        </div>
+      ) : null}
+
+      {libre && ligne.gateauLibre === false ? (
+        // « 8 quoi ? » : le vendeur dit de quoi on parle (pièces, personnes ou son mot) —
+        // jamais présélectionné, jamais deviné ; le bon l'écrit à côté du nombre.
+        <div role="group" aria-label="8 quoi ?" className="mt-2">
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="mr-1 text-sm font-semibold text-ink">Quantité en&nbsp;?</span>
+            {UNITES_LIBRES_PROPOSEES.map((u) => (
+              <button
+                key={u}
+                type="button"
+                aria-pressed={(ligne.uniteLibre ?? '') === u}
+                onClick={() => onChange({ uniteLibre: u })}
+                className={`min-h-11 rounded-xl border-2 px-3 text-base font-semibold ${
+                  (ligne.uniteLibre ?? '') === u ? 'border-transparent bg-accent-doux text-accent' : 'border-transparent bg-segment-fond text-ink'
+                }`}
+              >
+                {u.charAt(0).toUpperCase() + u.slice(1)}
+              </button>
+            ))}
+            <button
+              type="button"
+              aria-pressed={uniteAutre}
+              onClick={() => onChange({ uniteLibre: uniteAutre ? '' : ' ' })}
+              className={`min-h-11 rounded-xl border-2 px-3 text-base font-semibold ${
+                uniteAutre ? 'border-transparent bg-accent-doux text-accent' : 'border-transparent bg-segment-fond text-ink'
+              }`}
+            >
+              Autre…
+            </button>
+          </div>
+          {uniteAutre ? (
+            <input
+              value={ligne.uniteLibre === ' ' ? '' : (ligne.uniteLibre ?? '')}
+              onChange={(e) => onChange({ uniteLibre: e.target.value.slice(0, LONGUEUR_MAX_UNITE_LIBRE) || ' ' })}
+              aria-label="Unité de la quantité (boîtes, plateaux, tranches…)"
+              placeholder="boîtes, plateaux, tranches…"
+              maxLength={LONGUEUR_MAX_UNITE_LIBRE}
+              className={`${CHAMP_TEXTE} mt-1`}
+            />
+          ) : null}
         </div>
       ) : null}
 
@@ -4032,6 +4091,8 @@ function LigneCarnet({
     unite: fiche?.produit.unite === 'kg' ? 'kg' : 'piece',
     parPersonne,
     supplement: fiche ? estSupplement(fiche) : false,
+    // « Autre demande » : « 8 personnes », « 12 parts » — le × ne dit pas 8 quoi.
+    uniteLibre: l.produitId !== null ? null : l.gateauLibre === true ? UNITE_GATEAU_LIBRE : l.uniteLibre?.trim() || null,
   });
   const gouts = (l.gouts ?? []).map((x) => x.trim()).filter(Boolean);
   // R73 : la viande fait partie du nom — « 15 × Mini burger · Kefta », pour

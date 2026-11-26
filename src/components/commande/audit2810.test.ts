@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { blocagesCommande, controlerCommande, controlerLigne, type CommandeSaisie, type ContexteCommande } from '../../domaine/commande.ts';
+import { blocagesCommande, controlerCommande, controlerLigne, quantiteAvecUnite, type CommandeSaisie, type ContexteCommande } from '../../domaine/commande.ts';
 import { compterSymboles, symbolesDuTexte } from '../../domaine/minimums.ts';
 import { controlerSupplementEcriture } from '../../domaine/supplements.ts';
 import { DELAIS_PAR_DEFAUT, REGLEMENT_COMMANDE, SUPPLEMENT_ECRITURE } from '../../domaine/constantes.ts';
@@ -19,6 +19,7 @@ import {
   ecrireChiffresOuLettres,
   gateauxAuBon,
   ligneVide,
+  quantiteDuCarnet,
   resoudreLocal,
   saisirSurLeGateau,
   supplementImpose,
@@ -247,7 +248,7 @@ test('5. « Autre demande » : « C’est un gâteau ? » obligatoire, jamais de
   assert.equal(r.code, 'ERR_CHAMP_OBLIGATOIRE');
   assert.equal(r.champ, 'lignes[0].gateauLibre');
   assert.equal(libelleManque(r, [libre({})], cat).titre, 'Gâteau ou non — Gâteau licorne');
-  const non = controlerLigne(versLigneSaisie(libre({ gateauLibre: false }), null), 0, DATE, ctx);
+  const non = controlerLigne(versLigneSaisie(libre({ gateauLibre: false, uniteLibre: 'pièces' }), null), 0, DATE, ctx);
   assert.ok(non.ok);
   assert.equal(non.donnees.nbGateaux, 0);
 });
@@ -267,7 +268,43 @@ test('5. gâteau libre : goût exigé (sortie « Au choix du pâtissier »), par
   assert.equal(ok.donnees.nbGateaux, 1);
   assert.equal(ok.donnees.totalCentimes, 12 * PRIX);
   assert.equal(gateauxAuBon([libre({ gateauLibre: true })], cat, FAMILLES), 1, 'écriture et photo possibles sous le gâteau libre');
-  assert.equal(gateauxAuBon([libre({ gateauLibre: false })], cat, FAMILLES), 0);
+  assert.equal(gateauxAuBon([libre({ gateauLibre: false, uniteLibre: 'pièces' })], cat, FAMILLES), 0);
+});
+
+// « 8 quoi ? » (26/11/2026) : une ligne libre dit de quoi on parle, jamais « 8 × » muet.
+
+test('« Autre demande » non gâteau : « 8 quoi ? » obligatoire, jamais pièces par défaut', () => {
+  const sans = controlerLigne(versLigneSaisie(libre({ gateauLibre: false }), null), 0, DATE, ctx);
+  assert.equal(sans.ok, false);
+  if (sans.ok) return;
+  assert.equal(sans.code, 'ERR_CHAMP_OBLIGATOIRE');
+  assert.equal(sans.champ, 'lignes[0].uniteLibre');
+  // Choisi mais pas encore écrit (« Autre… » vide) : même refus.
+  const vide = controlerLigne(versLigneSaisie(libre({ gateauLibre: false, uniteLibre: '   ' }), null), 0, DATE, ctx);
+  assert.equal(vide.ok, false);
+  // Trop long : refusé (la base borne à 30).
+  const long = controlerLigne(versLigneSaisie(libre({ gateauLibre: false, uniteLibre: 'x'.repeat(31) }), null), 0, DATE, ctx);
+  assert.equal(long.ok, false);
+});
+
+test('« Autre demande » : l’unité choisie traverse le domaine ; un gâteau libre est toujours en parts', () => {
+  const pers = controlerLigne(versLigneSaisie(libre({ gateauLibre: false, uniteLibre: ' personnes ', quantite: 8 }), null), 0, DATE, ctx);
+  assert.ok(pers.ok);
+  assert.equal(pers.donnees.uniteLibre, 'personnes');
+  const gateau = controlerLigne(versLigneSaisie(libre({ gateauLibre: true, uniteLibre: 'pièces', quantite: 12, gouts: [GOUT_AU_CHOIX] }), null), 0, DATE, ctx);
+  assert.ok(gateau.ok);
+  assert.equal(gateau.donnees.uniteLibre, 'parts', 'le vendeur ne choisit pas : un gâteau libre se compte en parts');
+});
+
+test('« 8 quoi ? » : la quantité est écrite avec son unité, au singulier à 1 pour les unités proposées', () => {
+  assert.equal(quantiteAvecUnite(8, 'personnes'), '8 personnes');
+  assert.equal(quantiteAvecUnite(1, 'personnes'), '1 personne');
+  assert.equal(quantiteAvecUnite(1, 'pièces'), '1 pièce');
+  assert.equal(quantiteAvecUnite(12, 'parts'), '12 parts');
+  assert.equal(quantiteAvecUnite(1, 'boîtes'), '1 boîtes', 'un mot écrit par le vendeur reste tel quel');
+  const l = { quantite: 8, unite: 'piece' as const, parPersonne: false, supplement: false };
+  assert.equal(quantiteDuCarnet({ ...l, uniteLibre: 'personnes' }), '8 personnes');
+  assert.equal(quantiteDuCarnet(l), '8 ×', 'ligne catalogue : inchangé');
 });
 
 // ===================================================================== 6. « À corriger »

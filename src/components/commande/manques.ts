@@ -35,6 +35,7 @@ export const MOTS_MANQUANTS: Readonly<Record<string, string>> = {
   prixCentimes: 'Prix',
   nbObjets: 'Nombre de sandwichs',
   gateauLibre: 'Gâteau ou non',
+  uniteLibre: 'Pièces, personnes… (8 quoi ?)',
   libelle: 'décrivez la demande',
 };
 

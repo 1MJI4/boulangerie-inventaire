@@ -387,6 +387,8 @@ function preparer(
       formesLibres: l.formesLibres === true,
       // Ligne libre : « C'est un gâteau ? » (réponse explicite, jamais déduite du libellé).
       gateauLibre: typeof l.gateauLibre === 'boolean' ? l.gateauLibre : null,
+      // Ligne libre : « 8 quoi ? » (pièces, personnes…) — contrôlé par le domaine.
+      uniteLibre: !produitId ? texte(l.uniteLibre, 60) || null : null,
       // Ligne « Autre demande » (sans produit) : « Décrivez la demande » plutôt que « sans produit ».
       ligneLibre: !produitId,
       nbObjets: entierOuNull(l.nbObjets),
@@ -546,6 +548,8 @@ function lignesAEnregistrer(r: Ok, fiches: Controle['fiches'], prep: Extract<Pre
       decorations: prep.decorations[ordre],
       photoModele: prep.photos[ordre] ?? null,
       nbObjets: prep.saisie.lignes[ordre].nbObjets ?? null,
+      // Ligne libre : « 8 quoi ? » retenu par le domaine (parts pour un gâteau). null hors ligne libre.
+      uniteLibre: libre ? (l.uniteLibre ?? null) : null,
       // Lot 2 : écriture et photo à imprimer de CE gâteau (domaine), NULL hors gâteau.
       texteGateau: l.nbGateaux > 0 ? (l.texteGateau ?? null) : null,
       sansEcriture: l.nbGateaux > 0 ? l.sansEcriture === true : null,
