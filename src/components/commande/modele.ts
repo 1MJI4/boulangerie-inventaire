@@ -475,7 +475,7 @@ export function versLigneSaisie(l: LigneEcran, fiche: FicheTarifee | null): Lign
       ligneLibre: true,
       prixUnitaireCentimes: l.prixUnitaireCentimes,
       gateauLibre: l.gateauLibre ?? null,
-      uniteLibre: l.gateauLibre === true ? null : l.uniteLibre?.trim() || null,
+      uniteLibre: l.uniteLibre?.trim() || null,
     };
   }
   if (!fiche) return base;

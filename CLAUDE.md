@@ -209,7 +209,7 @@ Liste et produits = donnée (`src/catalogue/goutsSurCommande.ts`).
 
 « Autre demande » : 8 quoi ? (propriétaire, 26/11/2026) : une ligne libre qui n'est pas un gâteau
 porte **l'unité choisie par le vendeur** — Pièces · Personnes · « Autre… » (un mot à écrire) — jamais
-présélectionnée, sinon `ERR_CHAMP_OBLIGATOIRE`. Un gâteau libre reste en **parts**. Le bon écrit
+présélectionnée, sinon `ERR_CHAMP_OBLIGATOIRE`. Un gâteau libre choisit aussi : Parts · Personnes · « Autre… ». Le bon écrit
 « Plateau fruits — 8 personnes » au lieu d'un « 8 × » muet. Règle : `validerUniteLibre`
 (`src/domaine/commande.ts`) ; colonne `LigneCommande.uniteLibre` (anciennes lignes : NULL, « N × »).
 

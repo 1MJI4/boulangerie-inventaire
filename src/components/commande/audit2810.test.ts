@@ -254,16 +254,16 @@ test('5. « Autre demande » : « C’est un gâteau ? » obligatoire, jamais de
 });
 
 test('5. gâteau libre : goût exigé (sortie « Au choix du pâtissier »), parts exigées, compte pour un gâteau', () => {
-  const sansGout = controlerLigne(versLigneSaisie(libre({ gateauLibre: true, quantite: 12 }), null), 0, DATE, ctx);
+  const sansGout = controlerLigne(versLigneSaisie(libre({ gateauLibre: true, uniteLibre: 'parts', quantite: 12 }), null), 0, DATE, ctx);
   assert.equal(sansGout.ok, false);
   if (!sansGout.ok) {
     assert.equal(sansGout.code, 'ERR_GOUT_MANQUANT');
     assert.equal(sansGout.valeurProposee, GOUT_AU_CHOIX);
   }
-  const sansParts = controlerLigne(versLigneSaisie(libre({ gateauLibre: true, quantite: null, gouts: ['Vanille'] }), null), 0, DATE, ctx);
+  const sansParts = controlerLigne(versLigneSaisie(libre({ gateauLibre: true, uniteLibre: 'parts', quantite: null, gouts: ['Vanille'] }), null), 0, DATE, ctx);
   assert.equal(sansParts.ok, false);
   if (!sansParts.ok) assert.equal(sansParts.code, 'ERR_QUANTITE_INVALIDE');
-  const ok = controlerLigne(versLigneSaisie(libre({ gateauLibre: true, quantite: 12, gouts: [GOUT_AU_CHOIX] }), null), 0, DATE, ctx);
+  const ok = controlerLigne(versLigneSaisie(libre({ gateauLibre: true, uniteLibre: 'parts', quantite: 12, gouts: [GOUT_AU_CHOIX] }), null), 0, DATE, ctx);
   assert.ok(ok.ok);
   assert.equal(ok.donnees.nbGateaux, 1);
   assert.equal(ok.donnees.totalCentimes, 12 * PRIX);
@@ -287,13 +287,15 @@ test('« Autre demande » non gâteau : « 8 quoi ? » obligatoire, jamais pièc
   assert.equal(long.ok, false);
 });
 
-test('« Autre demande » : l’unité choisie traverse le domaine ; un gâteau libre est toujours en parts', () => {
+test('« Autre demande » : l’unité choisie traverse le domaine, gâteau ou non (parts, personnes…)', () => {
   const pers = controlerLigne(versLigneSaisie(libre({ gateauLibre: false, uniteLibre: ' personnes ', quantite: 8 }), null), 0, DATE, ctx);
   assert.ok(pers.ok);
   assert.equal(pers.donnees.uniteLibre, 'personnes');
-  const gateau = controlerLigne(versLigneSaisie(libre({ gateauLibre: true, uniteLibre: 'pièces', quantite: 12, gouts: [GOUT_AU_CHOIX] }), null), 0, DATE, ctx);
+  const gateau = controlerLigne(versLigneSaisie(libre({ gateauLibre: true, uniteLibre: 'personnes', quantite: 12, gouts: [GOUT_AU_CHOIX] }), null), 0, DATE, ctx);
   assert.ok(gateau.ok);
-  assert.equal(gateau.donnees.uniteLibre, 'parts', 'le vendeur ne choisit pas : un gâteau libre se compte en parts');
+  assert.equal(gateau.donnees.uniteLibre, 'personnes');
+  const sansChoix = controlerLigne(versLigneSaisie(libre({ gateauLibre: true, quantite: 12, gouts: [GOUT_AU_CHOIX] }), null), 0, DATE, ctx);
+  assert.equal(sansChoix.ok, false, 'un gâteau libre aussi dit « 12 quoi » (parts, personnes…)');
 });
 
 test('« 8 quoi ? » : la quantité est écrite avec son unité, au singulier à 1 pour les unités proposées', () => {

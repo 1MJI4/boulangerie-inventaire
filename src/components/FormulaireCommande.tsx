@@ -63,7 +63,7 @@ import {
   LONGUEUR_MAX_UNITE_LIBRE,
   libelleProduit,
   totalEnCours,
-  UNITE_GATEAU_LIBRE,
+  UNITES_GATEAU_LIBRE_PROPOSEES,
   UNITES_LIBRES_PROPOSEES,
   type CommandeControlee,
   type ContexteCommande,
@@ -187,9 +187,9 @@ const TITRE = 'mb-2 text-base font-semibold text-ink';
 /** Unité affichée d'une quantité en pièces : parts pour un prix par personne (donnée du catalogue). */
 function uniteDe(fiche: FicheTarifee | null, ligne?: Pick<LigneEcran, 'produitId' | 'gateauLibre' | 'uniteLibre'>): string {
   // Ligne libre déclarée gâteau (« C'est un gâteau ? » : oui) : la quantité est en parts.
-  if (ligne && ligne.produitId === null && ligne.gateauLibre === true) return 'parts';
-  // Ligne libre : le mot choisi par le vendeur (« personnes », « boîtes »…).
+  // Ligne libre : le mot choisi par le vendeur (« personnes », « boîtes »…) ; gâteau sans choix : parts.
   if (ligne && ligne.produitId === null && ligne.uniteLibre?.trim()) return ligne.uniteLibre.trim();
+  if (ligne && ligne.produitId === null && ligne.gateauLibre === true) return 'parts';
   return fiche?.prix.basePrix === 'personne' ? 'parts' : 'pièces';
 }
 
@@ -2637,13 +2637,13 @@ function lignesDepuisCommande(c: Commande): LigneEcran[] {
       // la question est reposée (jamais deviné « non », LOI 6 / règle de doute).
       gateauLibre: produitId
         ? null
-        : (l.gouts ?? []).some((g) => g.trim() !== '') || l.uniteLibre === UNITE_GATEAU_LIBRE
+        : (l.gouts ?? []).some((g) => g.trim() !== '')
           ? true
           : l.uniteLibre
             ? false
             : null,
       // « 8 quoi ? » enregistré (pièces, personnes…) : relu tel quel ; un gâteau est en parts, sans choix.
-      uniteLibre: produitId || l.uniteLibre === UNITE_GATEAU_LIBRE ? null : (l.uniteLibre ?? null),
+      uniteLibre: produitId ? null : (l.uniteLibre ?? null),
       gouts: l.gouts ?? [],
       decorations: l.decorations ?? [],
       nbObjets: l.nbObjets ?? null,
@@ -3309,7 +3309,8 @@ function LigneDuBon({
   const libre = ligne.produitId === null;
   // « Autre… » choisi (mot à écrire) : une unité non vide qui n'est pas un bouton ; ' ' = choisi mais pas encore écrit.
   const uniteSaisie = ligne.uniteLibre ?? '';
-  const uniteAutre = uniteSaisie !== '' && !(UNITES_LIBRES_PROPOSEES as readonly string[]).includes(uniteSaisie.trim());
+  const unitesProposees: readonly string[] = ligne.gateauLibre === true ? UNITES_GATEAU_LIBRE_PROPOSEES : UNITES_LIBRES_PROPOSEES;
+  const uniteAutre = uniteSaisie !== '' && !unitesProposees.includes(uniteSaisie.trim());
   const regime = fiche?.produit.regimePrix ?? null;
   const plancher = regime === 'C' && fiche?.prix.prixEstPlancher === true;
   const auKilo = fiche?.produit.unite === 'kg';
@@ -3429,13 +3430,13 @@ function LigneDuBon({
         </div>
       ) : null}
 
-      {libre && ligne.gateauLibre === false ? (
+      {libre && ligne.gateauLibre !== null && ligne.gateauLibre !== undefined ? (
         // « 8 quoi ? » : le vendeur dit de quoi on parle (pièces, personnes ou son mot) —
         // jamais présélectionné, jamais deviné ; le bon l'écrit à côté du nombre.
         <div role="group" aria-label="8 quoi ?" className="mt-2">
           <div className="flex flex-wrap items-center gap-1">
             <span className="mr-1 text-sm font-semibold text-ink">Quantité en&nbsp;?</span>
-            {UNITES_LIBRES_PROPOSEES.map((u) => (
+            {unitesProposees.map((u) => (
               <button
                 key={u}
                 type="button"
@@ -3578,7 +3579,7 @@ function LigneDuBon({
         {/* Gâteau aux tailles : le prix n'apparaît qu'une fois la taille choisie. */}
         {(plancher || libre) && !(parTailles || aFormes ? ligne.quantite === null : false) ? (
           <ChampPave
-            libelle={libre ? (ligne.gateauLibre ? 'Prix / part' : 'Prix unitaire') : unite === 'parts' ? 'Prix / pers.' : 'Prix à la pièce'}
+            libelle={libre ? (ligne.gateauLibre ? (ligne.uniteLibre?.trim() === 'personnes' ? 'Prix / pers.' : 'Prix / part') : 'Prix unitaire') : unite === 'parts' ? 'Prix / pers.' : 'Prix à la pièce'}
             valeur={
               ligne.prixUnitaireCentimes !== null
                 ? formaterEuros(ligne.prixUnitaireCentimes)
@@ -4092,7 +4093,7 @@ function LigneCarnet({
     parPersonne,
     supplement: fiche ? estSupplement(fiche) : false,
     // « Autre demande » : « 8 personnes », « 12 parts » — le × ne dit pas 8 quoi.
-    uniteLibre: l.produitId !== null ? null : l.gateauLibre === true ? UNITE_GATEAU_LIBRE : l.uniteLibre?.trim() || null,
+    uniteLibre: l.produitId !== null ? null : l.uniteLibre?.trim() || null,
   });
   const gouts = (l.gouts ?? []).map((x) => x.trim()).filter(Boolean);
   // R73 : la viande fait partie du nom — « 15 × Mini burger · Kefta », pour

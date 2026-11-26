@@ -114,7 +114,7 @@ export type LigneSaisie = {
   /**
    * Ligne libre qui n'est pas un gâteau : DE QUOI on parle (« pièces »,
    * « personnes », ou le mot du vendeur) — choisi à chaque ligne, jamais deviné.
-   * Obligatoire (`ERR_CHAMP_OBLIGATOIRE`) ; un gâteau libre est toujours en parts.
+   * Obligatoire (`ERR_CHAMP_OBLIGATOIRE`), gâteau ou non (parts, personnes…).
    */
   uniteLibre?: string | null;
   /** Pain surprise : nombre de sandwichs demandés au total. */
@@ -607,6 +607,8 @@ export const UNITE_GATEAU_LIBRE = 'parts';
 export const LONGUEUR_MAX_UNITE_LIBRE = 30;
 /** Unités proposées en boutons pour une ligne libre ; « Autre » = un mot à écrire (donnée, pas déduit du libellé). */
 export const UNITES_LIBRES_PROPOSEES = ['pièces', 'personnes'] as const;
+/** Unités proposées pour un gâteau libre. */
+export const UNITES_GATEAU_LIBRE_PROPOSEES = ['parts', 'personnes'] as const;
 
 /**
  * « 8 personnes », « 1 pièce », « 3 boîtes » : la quantité suivie de SON unité
@@ -655,8 +657,8 @@ function controlerLigneLibre(saisie: LigneSaisie, libelle: string, delais: Delai
   const gateau = saisie.gateauLibre;
   const q = validerQuantite('piece', saisie.quantite);
   if (!q.ok) return q;
-  // « 8 quoi ? » : un gâteau est en parts ; sinon le vendeur le dit (pièces, personnes, autre).
-  const uniteChoisie = gateau ? succes(UNITE_GATEAU_LIBRE) : validerUniteLibre(saisie.uniteLibre);
+  // « 8 quoi ? » : gâteau ou non, le vendeur le dit (parts, pièces, personnes, autre).
+  const uniteChoisie = validerUniteLibre(saisie.uniteLibre);
   if (!uniteChoisie.ok) return uniteChoisie;
   if (gateau && !(saisie.gouts ?? []).some((g) => String(g ?? '').trim() !== '')) {
     return signaler(
