@@ -16,7 +16,7 @@
 
 import type { Commande, LigneCommande } from './commandes';
 import { lignesSurLeGateau } from './commandes.ts';
-import { formaterEuros } from '../domaine/argent.ts';
+import { formaterEuros, mentionPaiementSurPlace } from '../domaine/argent.ts';
 import { formaterQuantite, totalLigne } from '../domaine/unites.ts';
 import { formaterHeure, lireHeure, nomJour } from '../domaine/reglement.ts';
 import { LIBELLES_FORME } from '../domaine/messages.ts';
@@ -942,6 +942,11 @@ function dessiner(plume: Plume, destination: Destination, commande: Commande) {
     montant(plume, 'Total', formaterEuros(commande.totalCentimes), true);
     montant(plume, 'Acompte', formaterEuros(commande.acompteCentimes));
     montant(plume, 'Restant dû', formaterEuros(reste));
+    const surPlace = mentionPaiementSurPlace(commande.totalCentimes, commande.acompteCentimes);
+    if (surPlace) {
+      plume.espace(8);
+      mention(plume, 'Paiement', surPlace);
+    }
   }
   plume.espace(16);
 

@@ -103,6 +103,18 @@ export function resteDu(totalCentimes: number, acompteCentimes: number): number 
 }
 
 /**
+ * Commande sans aucun acompte (accord du gérant, LOI 11) : la mention écrite sur les
+ * bons pour que personne n'oublie que tout se règle au retrait. `null` s'il y a un
+ * acompte, ou rien à payer. Une seule règle, utilisée par le bon A6, le ticket et la fiche.
+ */
+export function mentionPaiementSurPlace(totalCentimes: number, acompteCentimes: number): string | null {
+  if (acompteCentimes !== 0) return null;
+  const reste = resteDu(totalCentimes, acompteCentimes);
+  if (reste === 0) return null;
+  return `SANS ACOMPTE — À PAYER SUR PLACE : ${formaterEuros(reste)}`;
+}
+
+/**
  * Part minimale d'un montant, en POURCENT entier, arrondie au centime SUPÉRIEUR
  * (le plus sûr : un acompte « à 50 % » d'un total impair ne descend jamais sous
  * la moitié). Exemple fictif : 50 % de 2 931 c = 1 466 c. Calcul en entiers.

@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { formaterEuros, lireMontant, multiplier, partMinimale, prixAuPoids, resteDu, somme } from './argent.ts';
+import { formaterEuros, lireMontant, multiplier, partMinimale, mentionPaiementSurPlace, prixAuPoids, resteDu, somme } from './argent.ts';
 
 test('lireMontant : virgule, point, euros entiers, symbole, espaces → centimes entiers', () => {
   const cas: [string, number][] = [
@@ -91,4 +91,10 @@ test('partMinimale : pourcentage entier, arrondi au centime supérieur, en entie
   assert.throws(() => partMinimale(12.5, 50), RangeError);
   assert.throws(() => partMinimale(100, 101), RangeError);
   assert.throws(() => partMinimale(100, 50.5), RangeError);
+});
+
+test('mentionPaiementSurPlace : seulement sans aucun acompte et avec un reste à payer', () => {
+  assert.equal(mentionPaiementSurPlace(12700, 0), 'SANS ACOMPTE — À PAYER SUR PLACE : ' + formaterEuros(12700));
+  assert.equal(mentionPaiementSurPlace(12700, 100), null);
+  assert.equal(mentionPaiementSurPlace(0, 0), null);
 });

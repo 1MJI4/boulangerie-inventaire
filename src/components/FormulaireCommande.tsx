@@ -2415,7 +2415,13 @@ function SaisieCommande({ commande, onRecommencer, brouillon = false }: { comman
 
       {enTeteChargement}
 
-      {accesGerant ? <div className="mb-4">{accesGerant}</div> : null}
+      {/* Écran étroit : fenêtre flottante, visible où qu'on soit dans la page (le bouton « Sans acompte »
+          est en bas : un bloc posé en haut de page s'ouvrait hors de vue, « rien ne se passait »). */}
+      {accesGerant ? (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-3 pt-16">
+          <div className="w-full max-w-md rounded-2xl bg-surface p-1 shadow-lg">{accesGerant}</div>
+        </div>
+      ) : null}
 
       {/* Trois étapes (19/11/2026) : la barre reste en haut pendant qu'on fait défiler. */}
       {cal && catalogue ? (

@@ -313,6 +313,14 @@ Trois invariants vérifiables mécaniquement (à mettre en pré-commit) :
 2. Aucun `mardi`, `getDay()`, `day === 2` hors de `src/domaine/`
 3. Aucune arithmétique sur un montant en dehors des helpers « centimes »
 
+## Règle d'ergonomie — toute réponse à un geste apparaît là où l'on regarde
+
+Un toucher qui ne produit rien **de visible** est un bug bloquant : l'employé, debout et pressé,
+le répète, s'énerve, ou contourne l'application. Fenêtre de code gérant, refus, confirmation,
+avertissement : s'affichent **par-dessus la page, au premier plan** (ou à côté du bouton touché),
+jamais dans un bloc posé en haut de page alors que le bouton est en bas. À vérifier sur écran
+étroit (téléphone) **et** large (tablette) pour tout nouveau message ou fenêtre.
+
 ## Règle de doute
 
 Si une règle est ambiguë, incomplète ou contradictoire : **ne pas deviner**. Implémenter le

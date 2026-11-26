@@ -33,7 +33,7 @@ import {
   type Destination,
 } from '@/lib/ticketCanvas';
 import { depuisApi, messageConfirmation, type Commande, type CommandeApi, type ModePaiement } from '@/lib/commandes';
-import { formaterEuros, resteDu } from '@/domaine/argent';
+import { formaterEuros, mentionPaiementSurPlace, resteDu } from '@/domaine/argent';
 import { formatDateLong } from '@/lib/dateProduction';
 import { RappelChargement } from '@/components/rappels';
 import { ListeSignalements } from '@/components/signalement';
@@ -242,6 +242,11 @@ export default function ImprimerCommande() {
               </dd>
             </div>
           ) : null}
+          {mentionPaiementSurPlace(commande.totalCentimes, commande.acompteCentimes) ? (
+            <p className="mt-2 rounded-md border border-line px-2 py-1 text-center text-[14px] font-semibold text-ink">
+              {mentionPaiementSurPlace(commande.totalCentimes, commande.acompteCentimes)}
+            </p>
+          ) : null}
         </dl>
       </section>
 
@@ -392,6 +397,7 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
   // « 0,750 kg » est plus large que « 12 × » : la colonne s'élargit pour tout le bon.
   const avecKg = commande.lignes.some((l) => l.unite === 'kg') ? ' avec-kg' : '';
   const reste = resteDu(commande.totalCentimes, commande.acompteCentimes);
+  const surPlace = mentionPaiementSurPlace(commande.totalCentimes, commande.acompteCentimes);
   // Même règle que le ticket Star : une version modifiée le dit (audit 28/10/2026).
   const modification = bandeauModification(commande, destination);
   // R74 : bon de production — échéance du poste, autres postes, pas de montants.
@@ -551,6 +557,7 @@ function Bon({ destination, commande }: { destination: Destination; commande: Co
               <span>Restant</span>
               <b>{formaterEuros(reste)}</b>
             </div>
+            {surPlace ? <div className="sur-place">{surPlace}</div> : null}
           </div>
         )}
       </div>
@@ -651,6 +658,7 @@ const CSS_IMPRESSION = `
 .bon-montants span { font-weight:600; letter-spacing:.06em; text-transform:uppercase; }
 .bon-montants b { font-size:7.6pt; }
 .bon-montants .total { background:#000; color:#fff; }
+.bon-montants .sur-place { justify-content:center; font-weight:700; font-size:6.4pt; letter-spacing:.04em; border-top:.4mm solid #000; }
 
 .bon-merci { font-size:5.6pt; text-align:center; margin-top:1.4mm; color:#333; }
 
