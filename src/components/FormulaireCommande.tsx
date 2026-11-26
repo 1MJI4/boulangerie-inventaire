@@ -1773,6 +1773,8 @@ function SaisieCommande({ commande, onRecommencer, brouillon = false }: { comman
             onBasculer={() => setActif(actif === 'acompte' ? null : 'acompte')}
             enErreur={signauxMontants.some((s) => s.niveau === 'bloquant' && champLocal(s.champ) === 'acompte')}
           />
+          {/* Juste sous le champ Acompte (propriétaire, 26/11/2026), pas en bas de colonne. */}
+          {boutonPasAcompte}
           {avecMode ? <div className="mt-1.5 flex flex-wrap gap-2">{choixMode}</div> : null}
         </div>
         {rendre(signauxMontants)}
@@ -1828,7 +1830,6 @@ function SaisieCommande({ commande, onRecommencer, brouillon = false }: { comman
     cal && catalogue ? (
       <div className="grid gap-3">
         {paiement}
-        {boutonPasAcompte}
         <div className="flex items-baseline justify-between border-t border-line pt-3">
           <span className="text-base text-ink-2">Reste à payer au retrait</span>
           <span className="chiffres text-xl font-semibold text-ink">{texteReste.replace(/^reste /, '')}</span>
@@ -1952,6 +1953,15 @@ function SaisieCommande({ commande, onRecommencer, brouillon = false }: { comman
       }}
       onAnnuler={() => setDemande(null)}
     />
+  ) : null;
+
+  // Fenêtre FLOTTANTE, au centre de l'écran, quelle que soit la disposition (téléphone ou
+  // tablette) : un bloc posé dans un panneau (défilable, loin du bouton touché) restait hors
+  // de vue et « le bouton ne faisait rien » (26/11/2026, règle d'ergonomie de CLAUDE.md).
+  const fenetreGerant = accesGerant ? (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-3 pt-16">
+      <div className="w-full max-w-md rounded-2xl bg-surface p-1 shadow-lg">{accesGerant}</div>
+    </div>
   ) : null;
 
   const titre = modification ? `Modifier la commande ${commande.numero}` : brouillon ? 'Nouveau brouillon WhatsApp' : 'Nouvelle commande';
@@ -2116,12 +2126,8 @@ function SaisieCommande({ commande, onRecommencer, brouillon = false }: { comman
 
   if (!etroit) {
     const gauche = cotePave === 'gauche';
-    // Accès du manager : par-dessus la zone de gauche, quelle que soit l'étape.
-    const voileGerant = accesGerant ? (
-      <div className="absolute inset-0 z-20 overflow-y-auto overscroll-contain rounded-2xl border-2 border-accent bg-surface p-4 shadow-lg">
-        {accesGerant}
-      </div>
-    ) : null;
+    // Accès du manager : `fenetreGerant` (flottante), posée une fois pour toutes les étapes.
+    const voileGerant = fenetreGerant;
 
     const styleCadre: CSSProperties = {
       // Pleine largeur de la tablette (la page est limitée à max-w-5xl), plafonnée à 90rem.
@@ -2308,7 +2314,6 @@ function SaisieCommande({ commande, onRecommencer, brouillon = false }: { comman
                           <div className="flex gap-1.5">{choixMode}</div>
                         </div>
                         {paiementColonne}
-                        {boutonPasAcompte}
                       </section>
                       )}
                     </>
@@ -2417,11 +2422,7 @@ function SaisieCommande({ commande, onRecommencer, brouillon = false }: { comman
 
       {/* Écran étroit : fenêtre flottante, visible où qu'on soit dans la page (le bouton « Sans acompte »
           est en bas : un bloc posé en haut de page s'ouvrait hors de vue, « rien ne se passait »). */}
-      {accesGerant ? (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-3 pt-16">
-          <div className="w-full max-w-md rounded-2xl bg-surface p-1 shadow-lg">{accesGerant}</div>
-        </div>
-      ) : null}
+      {fenetreGerant}
 
       {/* Trois étapes (19/11/2026) : la barre reste en haut pendant qu'on fait défiler. */}
       {cal && catalogue ? (
