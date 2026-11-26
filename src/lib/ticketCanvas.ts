@@ -235,8 +235,25 @@ export function bandeauModification(
 ): { titre: string; consigne: string | null } | null {
   const quand = modifieeApresImpression(commande);
   if (!quand) return null;
-  if (destination === 'CLIENT') return { titre: `Version du ${dateHeureCourte(quand)}`, consigne: null };
-  return { titre: `MODIFIÉE le ${dateHeureCourte(quand)}`, consigne: 'Jetez l’ancien bon' };
+  const version = numeroVersion(commande);
+  if (destination === 'CLIENT') return { titre: `Version ${version} du ${dateHeureCourte(quand)}`, consigne: null };
+  // Demande du propriétaire (26/11/2026) : dire que c'est la version N de la commande
+  // initiale, et avertir du doublon de papier (l'ancien bon est encore quelque part).
+  return {
+    titre: `VERSION ${version}`,
+    consigne: `de la commande initiale, modifiée le ${dateHeureCourte(quand)}. ATTENTION DOUBLON DE PAPIER : retirez l’ancien bon`,
+  };
+}
+
+/**
+ * Numéro de version du bon : 1 = commande telle qu'imprimée la première fois ;
+ * +1 à chaque modification qui l'a renvoyée « à réimprimer » (historique tracé).
+ */
+export function numeroVersion(commande: Pick<Commande, 'evenements'>): number {
+  const n = (commande.evenements ?? []).filter(
+    (x) => x.action === 'modification' && (x.detail ?? '').includes('à réimprimer'),
+  ).length;
+  return n + 1;
 }
 
 /**

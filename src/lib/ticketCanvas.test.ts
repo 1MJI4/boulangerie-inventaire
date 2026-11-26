@@ -641,17 +641,22 @@ test('Number Cake : « CHIFFRES OU LETTRES : 2  5 », double espace conservé ju
   }
 });
 
-test('bandeau « MODIFIÉE » : même règle pour les trois formats ; CLIENT : « Version du … » sans consigne', () => {
+test('bandeau modification : version N de la commande initiale + doublon de papier ; CLIENT : « Version N du … » sans consigne', () => {
   const evenements = [{ quand: '2026-10-22T16:40:00Z', action: 'modification', detail: 'produits, à réimprimer' }];
+  const consigne = 'de la commande initiale, modifiée le 22/10 à 18h40. ATTENTION DOUBLON DE PAPIER : retirez l’ancien bon';
   assert.equal(bandeauModification({ evenements: [] }, 'ATELIER'), null);
   for (const d of ['BUREAU', 'MAGASIN', 'ATELIER'] as const) {
-    assert.deepEqual(bandeauModification({ evenements }, d), { titre: 'MODIFIÉE le 22/10 à 18h40', consigne: 'Jetez l’ancien bon' });
+    assert.deepEqual(bandeauModification({ evenements }, d), { titre: 'VERSION 2', consigne });
     const t = textes(d, commande({ evenements })).map((x) => x.texte);
-    assert.ok(t.includes('MODIFIÉE le 22/10 à 18h40') && t.includes('Jetez l’ancien bon'), d);
+    // La consigne est longue : le ticket la coupe en plusieurs lignes (entre deux mots).
+    assert.ok(t.includes('VERSION 2') && t.join(' ').includes(consigne), d);
   }
-  assert.deepEqual(bandeauModification({ evenements }, 'CLIENT'), { titre: 'Version du 22/10 à 18h40', consigne: null });
+  assert.deepEqual(bandeauModification({ evenements }, 'CLIENT'), { titre: 'Version 2 du 22/10 à 18h40', consigne: null });
   const client = textes('CLIENT', commande({ evenements })).map((x) => x.texte);
-  assert.ok(client.includes('Version du 22/10 à 18h40') && !client.some((x) => x.startsWith('MODIFIÉE')));
+  assert.ok(client.includes('Version 2 du 22/10 à 18h40') && !client.some((x) => x.startsWith('VERSION')));
+  // Deuxième modification renvoyée « à réimprimer » → version 3.
+  const deux = [...evenements, { quand: '2026-10-22T17:10:00Z', action: 'modification', detail: 'client, à réimprimer' }];
+  assert.equal(bandeauModification({ evenements: deux }, 'MAGASIN')?.titre, 'VERSION 3');
 });
 
 test('écriture : rien d’imprimé sans écriture, l’écriture SOUS son gâteau si elle existe (lot 2, 28/10/2026)', () => {
